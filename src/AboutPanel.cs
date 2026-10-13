@@ -16,8 +16,8 @@ namespace Dafeiyu
         public AboutPanel(PetWindow companion)
         {
             pet=companion;Margin=new Thickness(24,22,24,20);var panel=new StackPanel();Children.Add(Ui.Scroll(panel));var heading=Ui.Text("关于桌面伙伴",25);heading.FontWeight=FontWeights.SemiBold;panel.Children.Add(heading);
-            var avatars=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,14,0,6)};foreach(string id in new[]{"dafeiyu","e-bao"}){var image=new Image{Source=SkinCatalog.GetPreview(pet.Catalog.Find(id)),Width=105,Height=118,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,12,0)};RenderOptions.SetBitmapScalingMode(image,BitmapScalingMode.HighQuality);avatars.Children.Add(image);}panel.Children.Add(avatars);
-            panel.Children.Add(Ui.Text("版本 "+Assembly.GetExecutingAssembly().GetName().Version.ToString(3),13,Ui.Blue));panel.Children.Add(Ui.Text("作者 · "+ReleaseInfo.Author,16));panel.Children.Add(Ui.Text("大肥鱼与 E包 · 高清桌面伙伴\n陪你写代码、做设计，也陪你整理思路。",12,Ui.Muted));
+            var logo=new Image{Source=Ui.ApplicationIcon(),Width=88,Height=88,Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,14,0,8)};RenderOptions.SetBitmapScalingMode(logo,BitmapScalingMode.HighQuality);panel.Children.Add(logo);
+            panel.Children.Add(Ui.Text("版本 "+ReleaseInfo.DisplayVersion,13,Ui.Blue));panel.Children.Add(Ui.Text("作者 · "+ReleaseInfo.Author,16));panel.Children.Add(Ui.Text("E包与大肥鱼 · 高清桌面伙伴\n陪你写代码、做设计，也陪你整理思路。",12,Ui.Muted));
             var repository=Ui.Text("",13,Ui.Blue);repository.Name="RepositoryUrl";repository.Margin=new Thickness(0,7,0,8);
             var link=new Hyperlink(new Run(ReleaseInfo.RepositoryUrl)){NavigateUri=new Uri(ReleaseInfo.RepositoryUrl)};link.RequestNavigate+=delegate(object sender,System.Windows.Navigation.RequestNavigateEventArgs args){args.Handled=true;Open(ReleaseInfo.RepositoryUrl);};repository.Inlines.Add(link);Ui.Label(panel,"GitHub 仓库",repository);
             panel.Children.Add(Ui.Text("点击地址在默认浏览器打开。更新始终来自这个仓库的正式 Release。",11,Ui.Muted));

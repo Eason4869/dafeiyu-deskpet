@@ -13,7 +13,7 @@ New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
 if ($Target -eq 'App') {
     $outputRoot = Join-Path (Split-Path $projectRoot -Parent) 'outputs\DafeiyuDeskPet'
     New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
-    $destination = Join-Path $outputRoot '大肥鱼桌宠.exe'
+    $destination = Join-Path $outputRoot '桌面伙伴.exe'
     $sources = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.cs' | Select-Object -ExpandProperty FullName)
     $options = @('/target:winexe','/main:Dafeiyu.Program',('/win32manifest:' + (Join-Path $projectRoot 'app.manifest')),('/win32icon:' + (Join-Path $projectRoot 'assets\pet.ico')))
 } else {

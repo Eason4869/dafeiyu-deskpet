@@ -1,14 +1,18 @@
 # 安装、升级与自启
 
-Windows 10/11 x64，需 .NET Framework 4.8 或更新版本。下载来自 [GitHub Releases](https://github.com/Eason4869/dafeiyu-deskpet/releases/latest)。
+Windows 10/11 x64，需 .NET Framework 4.8 或更新版本。下载来自 [GitHub Releases](https://github.com/Eason4869/deskpet/releases/latest)。
 
 ## 安装
 
-运行 DafeiyuDeskPet-Setup-1.3.0.exe，按中文向导安装到当前用户目录，默认 `%LOCALAPPDATA%\Programs\DafeiyuDeskPet`。不要求管理员权限；可选桌面快捷方式，开始菜单有启动和卸载入口。完成后可以启动桌宠。
+运行 DeskPet-Setup-0.3.1.exe，按中文向导安装到当前用户目录，默认 `%LOCALAPPDATA%\Programs\DafeiyuDeskPet`。不要求管理员权限；可选桌面快捷方式，开始菜单有启动和卸载入口。首次使用默认 E包，大肥鱼为第二套内置外观。
 
 安装包没有默认开启自启，也不会调用模型或打开麦克风。自启在设置 → 伙伴与外观 → **开启自启** 中选择；开关立即应用于当前程序路径，关闭后撤销。移动程序文件夹后，请在新位置重新开启自启。
 
 ## 升级
+
+0.3.1 将软件名统一为“桌面伙伴”，仓库改为 `Eason4869/deskpet`。从 1.3.x 调整版本编号后，旧版的数字比较不会提示这个较小的版本号，请手动下载 0.3.1 安装一次。安装器保留原应用标识和安装目录，迁移本目录已经开启的自启到 `桌面伙伴.exe`，移除旧名称 EXE 和旧名称快捷方式；`data` 保留。新安装默认不开启自启。
+
+免安装版请完整解压到新目录后复制旧版 `data`，或覆盖原目录。旧版开启了自启时，请在新版重新开启，以绑定新的 EXE 名称。不要再从旧名称 EXE 启动。
 
 设置 → 关于与更新 → 检查更新 → 下载更新包 → 打开下载文件夹。先从托盘退出桌宠，再运行安装包，选择原安装目录；覆盖升级保留 `data` 中的设置、导入外观和下载。程序运行时会提示先退出，再继续安装或卸载。
 
@@ -18,6 +22,6 @@ Windows 10/11 x64，需 .NET Framework 4.8 或更新版本。下载来自 [GitHu
 
 使用 Windows 的“已安装的应用”或开始菜单卸载入口。卸载移除程序、快捷方式和指向本安装目录的自启项，保留 `data`。需要彻底清除个人配置时，在确认不再需要后自行删除安装目录中的 `data`；备份则复制该文件夹。
 
-仍提供 Windows 免安装 ZIP：完整解压到可写目录，运行大肥鱼桌宠.exe。请保留 docs、templates 和 previews 文件夹。免安装版自启绑定解压位置。
+仍提供 Windows 免安装 ZIP：完整解压到可写目录，运行桌面伙伴.exe。请保留 docs、templates 和 previews 文件夹。免安装版自启绑定解压位置。
 
 安装包当前未做应用代码签名。发布页附 SHA256 校验文件；程序下载更新时还检查附件大小和 GitHub 提供的摘要。当前不提供自动静默安装。

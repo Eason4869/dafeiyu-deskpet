@@ -22,7 +22,7 @@ namespace Dafeiyu.Tests
                 pet.Show();pet.ShowSettings();Pump();var settings=app.Windows.OfType<SettingsWindow>().Single();
                 Check(Find<CheckBox>(settings,"AutoStart")!=null,"settings expose the autostart switch");Save(settings,Path.Combine(folder,"companion.png"));
                 settings.SelectPage(6);Pump();var repository=Find<TextBlock>(settings,"RepositoryUrl");
-                Check(repository!=null && repository.Inlines.OfType<Hyperlink>().Any(link=>link.NavigateUri.AbsoluteUri=="https://github.com/Eason4869/dafeiyu-deskpet"),"repository is a fixed clickable hyperlink");
+                Check(repository!=null && repository.Inlines.OfType<Hyperlink>().Any(link=>link.NavigateUri.AbsoluteUri=="https://github.com/Eason4869/deskpet"),"repository is a fixed clickable hyperlink");
                 Check(Find<TextBox>(settings,"RepositoryUrl")==null && Find<Button>(settings,"SaveRepository")==null,"repository has no edit or save controls");
                 Check(!Find<Button>(settings,"DownloadUpdate").IsEnabled,"download waits for an explicit successful version check");
                 Check(All<TextBlock>(settings).Any(item=>item.Text.Contains("彧晟Eason")),"author attribution is present");

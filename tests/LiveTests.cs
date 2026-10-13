@@ -27,12 +27,13 @@ namespace Dafeiyu.Tests
             socket=new FakeSocket();mic=new FakeMic();speaker=new FakeOutput();session=new GeminiLiveSession(()=>socket,()=>mic,()=>speaker);socket.Push("{\"error\":{\"code\":401,\"message\":\"dummy-key provider private details\"}}");
             try{await session.StartAsync(cfg,"角色");throw new Exception("server failure accepted");}catch(ApiException e){Check(!e.Message.Contains("dummy-key") && !e.Message.Contains("private") && e.Message.Contains("Live"),"Live service error is actionable without leaking response details");}
             await session.StopAsync();Check(!mic.Started && socket.Disposed,"failed setup never starts a microphone");session.Dispose();
-            using(var server=new WebSocketFixture())
+            foreach(bool binary in new[]{false,true})
+            using(var server=new WebSocketFixture(binary))
             {
                 mic=new FakeMic();speaker=new FakeOutput();session=new GeminiLiveSession(()=>new GeminiLiveSocket(),()=>mic,()=>speaker);
                 var local=new PetSettings();local.Live=new ConnectionSettings{BaseUrl=server.Url,Model="live-test",ApiKey="dummy-key"};string output="";session.TurnCompleted+=(a,b)=>output=b;
                 await session.StartAsync(local,"真实握手角色");mic.Emit(new byte[]{1,2,3,4});await Eventually(()=>output=="真实 WS 回复");
-                Check(server.Setup.Contains("真实握手角色") && server.Audio.Contains("audio/pcm;rate=16000") && speaker.Chunks==1,"actual WebSocket upgrade, fragmented JSON and bidirectional PCM work");await session.StopAsync();Check(mic.Disposed && speaker.Disposed,"actual WebSocket cancellation frees audio devices");session.Dispose();
+                Check(server.Setup.Contains("真实握手角色") && server.Audio.Contains("audio/pcm;rate=16000") && speaker.Chunks==1,"actual WebSocket "+(binary?"binary":"text")+" JSON, UTF-8 fragments and bidirectional PCM work");await session.StopAsync();Check(mic.Disposed && speaker.Disposed,"actual WebSocket cancellation frees audio devices");session.Dispose();
             }
             foreach(string url in new[]{"ws://example.com/live","wss://user:pass@example.com/live","wss://example.com/live?key=secret"})
             {try{GeminiLiveSocket.Endpoint(new ConnectionSettings{BaseUrl=url,Model="live",ApiKey="dummy-key"});throw new Exception("unsafe Live URL accepted");}catch(ApiException){passed++;}}
@@ -54,8 +55,8 @@ namespace Dafeiyu.Tests
         {public int Chunks,Rate,Volume,Interruptions;public bool Disposed;public void Enqueue(byte[] bytes,int rate){Chunks++;Rate=rate;}public void Interrupt(){Interruptions++;}public void SetVolume(int value){Volume=value;}public void Dispose(){Disposed=true;}}
         internal sealed class WebSocketFixture : IDisposable
         {
-            readonly System.Net.Sockets.TcpListener listener;System.Net.Sockets.TcpClient client;public string Url,Setup,Audio;readonly Task work;
-            public WebSocketFixture(){listener=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,0);listener.Start();Url="ws://127.0.0.1:"+((System.Net.IPEndPoint)listener.LocalEndpoint).Port+"/live";work=Task.Run((Func<Task>)Serve);}
+            readonly System.Net.Sockets.TcpListener listener;System.Net.Sockets.TcpClient client;public string Url,Setup,Audio;readonly Task work;readonly int opcode;
+            public WebSocketFixture(bool binary=false){opcode=binary?2:1;listener=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,0);listener.Start();Url="ws://127.0.0.1:"+((System.Net.IPEndPoint)listener.LocalEndpoint).Port+"/live";work=Task.Run((Func<Task>)Serve);}
             async Task Serve()
             {
                 try
@@ -66,8 +67,8 @@ namespace Dafeiyu.Tests
                         string headers=System.Text.Encoding.ASCII.GetString(bytes.ToArray());string key="";foreach(string line in headers.Split(new[]{"\r\n"},StringSplitOptions.None))if(line.StartsWith("Sec-WebSocket-Key:",StringComparison.OrdinalIgnoreCase))key=line.Substring(18).Trim();
                         string accept;using(var sha=System.Security.Cryptography.SHA1.Create())accept=Convert.ToBase64String(sha.ComputeHash(System.Text.Encoding.ASCII.GetBytes(key+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
                         byte[] response=System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+accept+"\r\n\r\n");await stream.WriteAsync(response,0,response.Length);Setup=await ReadFrame(stream);
-                        byte[] setup=System.Text.Encoding.UTF8.GetBytes("{\"setupComplete\":{},\"note\":\"鱼\"}");int split=setup.Length-3;await Frame(stream,1,false,setup,0,split);await Frame(stream,0,true,setup,split,setup.Length-split);
-                        Audio=await ReadFrame(stream);byte[] turn=System.Text.Encoding.UTF8.GetBytes("{\"serverContent\":{\"inputTranscription\":{\"text\":\"真实麦克风输入\"},\"outputTranscription\":{\"text\":\"真实 WS 回复\"},\"modelTurn\":{\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/pcm;rate=24000\",\"data\":\"AQIDBA==\"}}]},\"turnComplete\":true}}");await Frame(stream,1,true,turn,0,turn.Length);byte[] buffer=new byte[8192];while(await stream.ReadAsync(buffer,0,buffer.Length)>0){}
+                        byte[] setup=System.Text.Encoding.UTF8.GetBytes("{\"setupComplete\":{},\"note\":\"鱼\"}");int split=setup.Length-(opcode==2?4:3);await Frame(stream,opcode,false,setup,0,split);await Frame(stream,0,true,setup,split,setup.Length-split);
+                        Audio=await ReadFrame(stream);byte[] turn=System.Text.Encoding.UTF8.GetBytes("{\"serverContent\":{\"inputTranscription\":{\"text\":\"真实麦克风输入\"},\"outputTranscription\":{\"text\":\"真实 WS 回复\"},\"modelTurn\":{\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/pcm;rate=24000\",\"data\":\"AQIDBA==\"}}]},\"turnComplete\":true}}");await Frame(stream,opcode,true,turn,0,turn.Length);byte[] buffer=new byte[8192];while(await stream.ReadAsync(buffer,0,buffer.Length)>0){}
                     }
                 }
                 catch(System.IO.IOException){}catch(System.Net.Sockets.SocketException){}catch(ObjectDisposedException){}

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="330" viewBox="0 0 1000 330" role="img" aria-label="桌面伙伴操作流程：双击角色打开快速对话，再展开完整聊天；设置中配置外观人格与服务">
+  <rect width="1000" height="330" rx="22" fill="#F2F6FC"/>
+  <g font-family="Microsoft YaHei UI,Microsoft YaHei,Arial,sans-serif">
+    <text x="40" y="48" fill="#203754" font-size="23" font-weight="600">从桌面角色开始</text>
+    <g fill="#FFFFFF" stroke="#DCE5F4" stroke-width="2">
+      <rect x="40" y="85" width="230" height="122" rx="16"/>
+      <rect x="384" y="85" width="230" height="122" rx="16"/>
+      <rect x="728" y="85" width="230" height="122" rx="16"/>
+    </g>
+    <g text-anchor="middle">
+      <g fill="#203754" font-size="21" font-weight="600">
+        <text x="155" y="130">桌面角色</text><text x="499" y="130">头顶快速对话</text><text x="843" y="130">完整聊天</text>
+      </g>
+      <g fill="#72839B" font-size="16">
+        <text x="155" y="167">默认 E包 · 拖动定位</text><text x="499" y="167">写一句话 · TTS 开关</text><text x="843" y="167">文字 · 分步语音 · Live</text>
+        <text x="327" y="118">双击角色</text><text x="671" y="118">展开聊天</text>
+      </g>
+    </g>
+    <g stroke="#456DE6" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M291 149h72m-10-8 10 8-10 8"/><path d="M635 149h72m-10-8 10 8-10 8"/>
+    </g>
+    <path d="M40 232h918" stroke="#DCE5F4"/>
+    <text x="40" y="271" fill="#456DE6" font-size="18" font-weight="600">右键 → 设置</text>
+    <text x="230" y="271" fill="#203754" font-size="17">伙伴与外观 / 人格</text>
+    <text x="488" y="271" fill="#203754" font-size="17">模型 / 语音 / 代理</text>
+    <text x="755" y="271" fill="#203754" font-size="17">自启 / 关于与更新</text>
+    <text x="40" y="307" fill="#72839B" font-size="14">气泡与完整聊天共享当前伙伴的会话，切换形象会同步切换人格。</text>
+  </g>
+</svg>

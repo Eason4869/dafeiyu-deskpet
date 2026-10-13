@@ -73,7 +73,7 @@ namespace Dafeiyu
         private void Defaults()
         {
             Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false;
-            SkinId = "dafeiyu";
+            SkinId = "e-bao";
             ReadReplies = true; UseCloudVoice = false; VoiceUsesTextService = false; VoiceName = "";
             Text = new ConnectionSettings(); Transcription = new ConnectionSettings(); Speech = new ConnectionSettings();
             Live = new ConnectionSettings { BaseUrl="wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", Model="gemini-3.8-live", Protocol="gemini-live" };
@@ -97,7 +97,7 @@ namespace Dafeiyu
             // Older MiMo configurations reused the text endpoint only for ASR.
             if(PersonaProfileVersion==0 && Speech.Model.StartsWith("mimo-",StringComparison.OrdinalIgnoreCase) && String.IsNullOrWhiteSpace(Speech.BaseUrl) && String.IsNullOrEmpty(Speech.EncryptedKey)) SpeechUsesTextService=true;
             VoiceName = (VoiceName ?? "").Trim(); SystemPrompt = SystemPrompt ?? "";
-            SkinId = String.IsNullOrWhiteSpace(SkinId) ? "dafeiyu" : SkinId;
+            SkinId = String.IsNullOrWhiteSpace(SkinId) ? "e-bao" : SkinId;
         }
         public ConnectionSettings TranscriptionConnection()
         {

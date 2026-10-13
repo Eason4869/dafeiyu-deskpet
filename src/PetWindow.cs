@@ -82,7 +82,7 @@ namespace Dafeiyu
             try { if(Skin.Id!="dafeiyu") atlas=Skin.Load(); }
             catch { Skin=Catalog.Find("dafeiyu"); Notice="之前导入的外观无法读取，已切回大肥鱼。"; }
             PersonaProfiles.Activate(Settings,Skin); Animation=new AnimationPlayer();
-            Title="桌面伙伴 · "+Skin.Name; AllowsTransparency=true; WindowStyle=WindowStyle.None;
+            Title="桌面伙伴 · "+Skin.Name;Icon=Ui.ApplicationIcon(); AllowsTransparency=true; WindowStyle=WindowStyle.None;
             ResizeMode=ResizeMode.NoResize; Background=Brushes.Transparent; ShowInTaskbar=false;
             ShowActivated=false; Focusable=false; Topmost=Settings.Topmost;
             Width=192*Settings.Scale; Height=208*Settings.Scale;
@@ -271,6 +271,13 @@ namespace Dafeiyu
         public void ReloadConversation(){if(chat!=null)chat.ReloadHistory();if(quick!=null)quick.RefreshPersona();}
         public void UpdateVoiceVolume(int volume){if(conversation!=null)conversation.SetVolume(volume);if(live!=null)live.SetVolume(volume);}
         public void StopReplySpeech(){if(conversation!=null)conversation.StopSpeech();}
+        public event Action ReplySpeechChanged;
+        public void SetReplySpeech(bool enabled)
+        {
+            if(Settings.ReadReplies==enabled)return;
+            Settings.ReadReplies=enabled;if(!enabled)StopReplySpeech();SaveSettings();
+            if(ReplySpeechChanged!=null)ReplySpeechChanged();
+        }
         private void ConversationChanged()
         {
             if(closing)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(ConversationChanged));return;}

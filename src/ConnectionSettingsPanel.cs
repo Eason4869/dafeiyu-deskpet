@@ -18,7 +18,7 @@ namespace Dafeiyu
             reuseSpeech=Ui.Toggle("复用文字服务的地址、密钥和代理",pet.Settings.SpeechUsesTextService,v=>synthesis.SetAddressEnabled(!v && cloud.IsChecked==true));reuseSpeech.Name="ReuseTextForSpeech";synthesis.Children.Insert(3,reuseSpeech);
             voice=Ui.Field(pet.Settings.VoiceName);voice.Name="SpeechVoice";Ui.Label(synthesis,"音色名称",voice);synthesis.Children.Add(Ui.Text("MiMo：苏打、白桦、冰糖、茉莉、mimo_default。\n关闭云端 TTS 时使用 Windows 系统语音。",11,Ui.Muted));SetCloud(pet.Settings.UseCloudVoice);
             var sound=new StackPanel{Margin=new Thickness(0,16,0,0)};
-            sound.Children.Add(Ui.Toggle("自动朗读文字回复",pet.Settings.ReadReplies,v=>{pet.Settings.ReadReplies=v;if(!v)pet.StopReplySpeech();pet.SaveSettings();}));
+            sound.Children.Add(Ui.ReplySpeechToggle(pet));
             var label=Ui.Text("音量 · "+pet.Settings.Volume+"%",12,Ui.Blue);sound.Children.Add(label);
             var volume=new Slider{Name="VoiceVolume",Minimum=0,Maximum=100,TickFrequency=5,IsSnapToTickEnabled=true,Value=pet.Settings.Volume,Margin=new Thickness(0,8,0,12)};
             volume.ValueChanged+=delegate {int value=(int)Math.Round(volume.Value);label.Text="音量 · "+value+"%";pet.Settings.Volume=value;pet.UpdateVoiceVolume(value);pet.SaveSettings();};sound.Children.Add(volume);synthesis.Children.Add(sound);

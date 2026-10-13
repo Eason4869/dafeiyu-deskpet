@@ -39,6 +39,7 @@ namespace Dafeiyu
             status=Ui.Text("",12,Ui.Muted);status.Name="ChatStatus";status.Margin=new Thickness(0,0,0,8);composer.Children.Add(status);
             input=Ui.Field("",true);input.Name="MessageInput";input.MinHeight=76;input.MaxHeight=140;input.MaxLength=8000;input.ToolTip="Enter 发送，Shift + Enter 换行";input.PreviewKeyDown+=delegate(object sender,KeyEventArgs e) {if(e.Key==Key.Enter && (Keyboard.Modifiers&ModifierKeys.Shift)==0){e.Handled=true;if(!pet.DialogueBusy)SendText();}};composer.Children.Add(input);
             var controls=new DockPanel {Margin=new Thickness(0,10,0,0),LastChildFill=false};
+            var tts=Ui.ReplySpeechToggle(pet);tts.Margin=new Thickness(12,8,0,0);DockPanel.SetDock(tts,Dock.Right);controls.Children.Add(tts);
             send=Ui.Button("发送",true);send.Name="SendMessage";send.Margin=new Thickness(8,0,0,0);send.Click+=delegate {SendText();};DockPanel.SetDock(send,Dock.Right);controls.Children.Add(send);
             clear=Ui.Button("清空");clear.Name="ClearChat";clear.Click+=delegate {try{session.Clear();messages.Children.Clear();Welcome();ShowStatus("已清空当前会话。");}catch(Exception e){ShowError(e);}};DockPanel.SetDock(clear,Dock.Right);controls.Children.Add(clear);
             record=Ui.Button("点击说话");record.Name="VoiceRecord";record.Click+=delegate {if(pet.LiveActive || pet.Settings.VoiceMode=="live")ToggleLive();else if(session.Stage==ConversationStage.Recording)FinishRecording();else StartRecording();};DockPanel.SetDock(record,Dock.Left);controls.Children.Add(record);
@@ -51,7 +52,7 @@ namespace Dafeiyu
             Loaded+=delegate {input.Focus();};
         }
         public void RefreshAppearance()
-        {title.Text=pet.Skin.Name;Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetPreview(pet.Skin);Icon=avatar.Source;service.Text=String.IsNullOrWhiteSpace(pet.Settings.Text.Model)?pet.Skin.Description+" · 填写连接设置开始聊天":pet.Skin.Description+"\n"+pet.Settings.Text.Model;if(voiceMode!=null){refreshing=true;voiceMode.SelectedIndex=pet.Settings.VoiceMode=="live"?1:0;refreshing=false;}}
+        {if(!pet.LiveActive)liveCaption.Text="";title.Text=pet.Skin.Name;Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetPreview(pet.Skin);service.Text=String.IsNullOrWhiteSpace(pet.Settings.Text.Model)?pet.Skin.Description+" · 填写连接设置开始聊天":pet.Skin.Description+"\n"+pet.Settings.Text.Model;if(voiceMode!=null){refreshing=true;voiceMode.SelectedIndex=pet.Settings.VoiceMode=="live"?1:0;refreshing=false;}}
         public void ReloadHistory(){messages.Children.Clear();showingWelcome=false;foreach(ChatMessage message in session.History.Messages)AddMessage(message);if(messages.Children.Count==0)Welcome();}
         private void Welcome()
         {showingWelcome=true;var panel=new StackPanel {Margin=new Thickness(26,28,26,26)};var character=new Image{Source=SkinCatalog.GetPreview(pet.Skin),Width=154,Height=164,Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left};RenderOptions.SetBitmapScalingMode(character,BitmapScalingMode.HighQuality);panel.Children.Add(character);var heading=Ui.Text("一起聊聊今天的想法",24);heading.FontWeight=FontWeights.SemiBold;panel.Children.Add(heading);panel.Children.Add(Ui.Text("聊代码、设计，或刚想到的小点子。\n每位伙伴拥有各自的人格与会话。",13,Ui.Muted));var starters=new WrapPanel{Margin=new Thickness(0,18,0,0)};foreach(string idea in new[]{"帮我梳理一个想法","一起检查这段代码"}){string value=idea;var button=Ui.Button(idea);button.Margin=new Thickness(0,0,8,8);button.Click+=delegate {input.Text=value;input.Focus();};starters.Children.Add(button);}panel.Children.Add(starters);messages.Children.Add(panel);}
@@ -86,7 +87,7 @@ namespace Dafeiyu
         private void StartRecording(){if(pet.DialogueBusy){ShowStatus("请先结束当前对话。");return;}try{ownsOperation=true;session.StartRecording(pet.Settings);}catch(Exception e){ownsOperation=false;ShowError(e);}}
         private async void FinishRecording(){recordTimer.Stop();try{await session.FinishRecordingAsync(pet.Skin.Name);}catch(Exception e){ShowError(e);}finally{ownsOperation=false;}}
         private async void ToggleLive(){try{if(pet.LiveActive){await pet.Live.StopAsync();ownsLive=false;}else{ownsLive=true;await pet.StartLiveAsync();}}catch(Exception e){ownsLive=false;ShowError(e);}}
-        private void PartialTranscript(string role,string text){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>PartialTranscript(role,text)));return;}liveCaption.Text=(role=="user"?"你：":pet.Skin.Name+"：")+text;}
+        private void PartialTranscript(string role,string text){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>PartialTranscript(role,text)));return;}if(!pet.LiveActive)return;liveCaption.Text=(role=="user"?"你：":pet.Skin.Name+"：")+text;}
         private void ShowStatus(string text){if(!closed)status.Text=text;}
         private void ShowError(Exception error)
         {if(error is OperationCanceledException)ShowStatus("已停止。");else if(error is ApiException || error is InvalidOperationException)ShowStatus(error.Message);else ShowStatus("操作未完成，请检查连接设置、麦克风或音频输出。当前文字回复会保留。");}

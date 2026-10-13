@@ -9,6 +9,8 @@ from PIL import Image
 PROJECT=Path(__file__).resolve().parent
 OUTPUT=PROJECT.parent/'outputs'
 APP=OUTPUT/'DafeiyuDeskPet'
+release_source=(PROJECT/'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')
+version=re.search(r'DisplayVersion="([^"]+)"',release_source).group(1)
 PREVIEWS=APP/'previews'
 PREVIEWS.mkdir(parents=True,exist_ok=True)
 (APP/'docs').mkdir(exist_ok=True)
@@ -33,11 +35,14 @@ for prefix in ['', 'e-bao-']:
                     assert bbox is None, (prefix,row,col,'unused cell')
     print('PASS HD source validation: '+(prefix or 'dafeiyu'))
 
-runtime_files=[file for file in APP.rglob('*') if file.is_file() and 'data' not in file.relative_to(APP).parts]
-runtime_zip=OUTPUT/'大肥鱼桌宠-Windows.zip'
+runtime_files=[APP/name for name in ['桌面伙伴.exe','桌面伙伴.exe.config','README.md','CHANGELOG.md']]
+runtime_files += [APP/'docs'/name for name in ['skin-format.md','dialogue-setup.md','verification.md','sources.md','installation.md']]
+for folder in ['templates','previews']:
+    runtime_files += [APP/file.relative_to(PROJECT) for file in (PROJECT/folder).rglob('*') if file.is_file()]
+runtime_zip=OUTPUT/('DeskPet-Windows-'+version+'.zip')
 with ZipFile(runtime_zip,'w',ZIP_DEFLATED,compresslevel=6) as bundle:
     for file in sorted(runtime_files): bundle.write(file,'DafeiyuDeskPet/'+file.relative_to(APP).as_posix())
-source_zip=OUTPUT/'大肥鱼桌宠-源码.zip'
+source_zip=OUTPUT/('DeskPet-Source-'+version+'.zip')
 with ZipFile(source_zip,'w',ZIP_DEFLATED,compresslevel=6) as bundle:
     for file in sorted(PROJECT.rglob('*')):
         relative=file.relative_to(PROJECT)
@@ -57,13 +62,11 @@ with ZipFile(runtime_zip) as bundle:
     assert bundle.testzip() is None
     assert not any('/data/' in name for name in bundle.namelist())
     assert 'DafeiyuDeskPet/templates/pet.json' in bundle.namelist() and 'DafeiyuDeskPet/templates/grid-guide.svg' in bundle.namelist()
-    exe_name='DafeiyuDeskPet/大肥鱼桌宠.exe'
-    assert hashlib.sha256(bundle.read(exe_name)).digest()==hashlib.sha256((APP/'大肥鱼桌宠.exe').read_bytes()).digest()
+    exe_name='DafeiyuDeskPet/桌面伙伴.exe'
+    assert hashlib.sha256(bundle.read(exe_name)).digest()==hashlib.sha256((APP/'桌面伙伴.exe').read_bytes()).digest()
 with ZipFile(source_zip) as bundle: assert bundle.testzip() is None
-artifacts=[APP/'大肥鱼桌宠.exe',runtime_zip,source_zip,OUTPUT/'E包-高清外观包.zip',OUTPUT/'大肥鱼-高清外观包.zip']
-release_source=(PROJECT/'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')
-version=re.search(r'DisplayVersion="([^"]+)"',release_source).group(1)
-setup=OUTPUT/('DafeiyuDeskPet-Setup-'+version+'.exe')
+artifacts=[APP/'桌面伙伴.exe',runtime_zip,source_zip,OUTPUT/'E包-高清外观包.zip',OUTPUT/'大肥鱼-高清外观包.zip']
+setup=OUTPUT/('DeskPet-Setup-'+version+'.exe')
 if setup.exists(): artifacts.append(setup)
 (OUTPUT/'SHA256.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(OUTPUT)) for p in artifacts)+'\n',encoding='utf-8')
 print('PASS archive integrity, executable identity and clean settings')

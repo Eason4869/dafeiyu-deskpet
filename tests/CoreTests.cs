@@ -10,6 +10,11 @@ namespace Dafeiyu.Tests
         private static int failed;
         public static int Main()
         {
+            Test("new installs default to Ebao without overriding saved selections", delegate {
+                Equal("e-bao",new PetSettings().SkinId);
+                var saved=new PetSettings {SkinId="dafeiyu"};saved.Normalize();Equal("dafeiyu",saved.SkinId);
+                var empty=new PetSettings {SkinId=""};empty.Normalize();Equal("e-bao",empty.SkinId);
+            });
             Test("cursor cardinals use screen coordinates", delegate {
                 Equal(0, PetMath.LookDirection(0, -100));
                 Equal(4, PetMath.LookDirection(100, 0));
@@ -88,7 +93,7 @@ namespace Dafeiyu.Tests
             });
             Test("legacy settings cannot redirect the official update repository", delegate {
                 PetSettings settings = new PetSettings { RepositoryUrl = "https://github.com/other-owner/other-repo" };
-                settings.Normalize(); Equal("https://github.com/Eason4869/dafeiyu-deskpet", settings.RepositoryUrl);
+                settings.Normalize(); Equal("https://github.com/Eason4869/deskpet", settings.RepositoryUrl);
             });
             Console.WriteLine("Core tests: " + passed + " passed, " + failed + " failed");
             return failed == 0 ? 0 : 1;

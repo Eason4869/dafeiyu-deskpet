@@ -20,7 +20,7 @@ namespace Dafeiyu.Tests
             try
             {
                 var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};string folder=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"chat-smoke");Directory.CreateDirectory(folder);
-                pet=new PetWindow(new SpriteAtlas(),new PetSettings {ReadReplies=false,FollowCursor=false},new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump(.2);pet.ShowChat();Pump(.2);
+                pet=new PetWindow(new SpriteAtlas(),new PetSettings {SkinId="dafeiyu",ReadReplies=false,FollowCursor=false},new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump(.2);pet.ShowChat();Pump(.2);
                 var chat=app.Windows.OfType<ChatWindow>().Single();var input=Find<TextBox>(chat,"MessageInput");var send=Find<Button>(chat,"SendMessage");
                 Check(input!=null && send!=null && Find<Button>(chat,"VoiceRecord")!=null && Find<Button>(chat,"StopConversation")!=null,"chat exposes text, microphone and stop controls");
                 input.Text="你好";send.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.1);Check(Find<TextBlock>(chat,"ChatStatus").Text.Contains("设置"),"missing configuration points to settings");
@@ -70,7 +70,27 @@ namespace Dafeiyu.Tests
                 settings.SelectPage(2);Pump(.1);Find<TextBox>(settings,"TextServiceModel").Text="unsaved-draft";settings.SelectPage(3);Pump(.1);settings.SelectPage(2);Pump(.1);Check(Find<TextBox>(settings,"TextServiceModel").Text=="unsaved-draft","navigation preserves unsaved service drafts");
                 var preset=Find<ComboBox>(settings,"TextServicePreset");preset.SelectedIndex=1;Pump(.1);Check(Find<PasswordBox>(settings,"TextServiceKey").Password.Length==0,"switching provider origin clears the previous API key");
                 settings.SelectPage(6);Pump(.1);Check(All<TextBlock>(settings).Any(t=>t.Text.Contains("彧晟Eason")) && Find<TextBlock>(settings,"RepositoryUrl").Inlines.OfType<System.Windows.Documents.Hyperlink>().Any(link=>link.NavigateUri.AbsoluteUri==ReleaseInfo.RepositoryUrl),"about page contains author and fixed repository link");Check(Find<TextBox>(settings,"RepositoryUrl")==null && Find<Button>(settings,"SaveRepository")==null && !Find<Button>(settings,"DownloadUpdate").IsEnabled,"official repository is read-only and downloads require a version check");Save(settings,Path.Combine(folder,"about.png"));
-                pet.Settings.ReadReplies=false;pet.ShowQuickChat();Pump(.2);var quick=app.Windows.OfType<QuickChatWindow>().Single();
+                pet.SetReplySpeech(false);pet.ShowQuickChat();Pump(.2);var quick=app.Windows.OfType<QuickChatWindow>().Single();
+                var chatTts=Find<CheckBox>(chat,"TtsOutput");var quickTts=Find<CheckBox>(quick,"TtsOutput");
+                Check(chatTts!=null && quickTts!=null && chatTts.IsChecked==false && quickTts.IsChecked==false,"full chat and bubble expose the saved TTS output switch");
+                quickTts.IsChecked=true;Pump(.1);Check(chatTts.IsChecked==true && pet.Settings.ReadReplies && pet.Store.Load().ReadReplies,"bubble TTS switch updates full chat and persists");
+                settings.SelectPage(4);Pump(.1);var settingsTts=Find<CheckBox>(settings,"TtsOutput");Check(settingsTts!=null && settingsTts.IsChecked==true,"TTS settings synchronize when returning to the voice page");
+                chatTts.IsChecked=false;Pump(.1);Check(quickTts.IsChecked==false && settingsTts.IsChecked==false && !pet.Store.Load().ReadReplies,"full chat TTS switch updates bubble and open settings immediately");
+                settingsTts.IsChecked=true;Pump(.1);Check(chatTts.IsChecked==true && quickTts.IsChecked==true,"settings TTS switch updates both conversation windows");chatTts.IsChecked=false;
+                using(var model=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"只显示这段文字。\"}}]}"))
+                using(var synthesis=new ApiTests.Fixture(WaveData.EncodePcm(new byte[16000]),"audio/wav"))
+                {
+                    model.DelayBodyMilliseconds=400;pet.Settings.Text.BaseUrl=model.Url;pet.Settings.Speech=new ConnectionSettings{BaseUrl=synthesis.Url,Model="tts",ApiKey="dummy-key",Protocol="openai"};pet.Settings.UseCloudVoice=true;pet.Settings.SpeechUsesTextService=false;pet.Settings.Volume=35;
+                    chatTts.IsChecked=true;var pending=pet.Conversation.SendTextAsync("等待期间关闭朗读",pet.Settings,pet.Skin.Name);Wait(()=>pet.Conversation.Stage==ConversationStage.Thinking,2);quickTts.IsChecked=false;Wait(()=>pending.IsCompleted,5);pending.GetAwaiter().GetResult();
+                    Check(synthesis.Body==null && pet.Conversation.History.Messages.Last().Content=="只显示这段文字。","disabling TTS during model wait prevents synthesis and retains the reply");pet.Conversation.Clear();
+                }
+                using(var model=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"停止声音，保留回复。\"}}]}"))
+                using(var synthesis=new ApiTests.Fixture(WaveData.EncodePcm(new byte[16000]),"audio/wav"))
+                {
+                    synthesis.DelayBodyMilliseconds=800;pet.Settings.Text.BaseUrl=model.Url;pet.Settings.Speech.BaseUrl=synthesis.Url;chatTts.IsChecked=true;
+                    var reading=pet.Conversation.SendTextAsync("关闭正在合成的语音",pet.Settings,pet.Skin.Name);Wait(()=>synthesis.Body!=null && pet.Conversation.Stage==ConversationStage.Speaking,5);quickTts.IsChecked=false;Wait(()=>reading.IsCompleted,3);reading.GetAwaiter().GetResult();
+                    Check(!pet.Conversation.IsBusy && pet.Conversation.History.Messages.Last().Content=="停止声音，保留回复。" && pet.Conversation.LastNotice.Contains("朗读已停止"),"TTS switch cancels active synthesis without cancelling or deleting the model reply");pet.Conversation.Clear();
+                }
                 using(var server=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"头顶气泡回复。\"}}]}"))
                 {pet.Settings.Text.BaseUrl=server.Url;Find<TextBox>(quick,"QuickMessageInput").Text="快速聊聊";Find<Button>(quick,"SendQuickMessage").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>!pet.Conversation.IsBusy && pet.Conversation.History.Messages.Count==2,5);Check(Find<TextBox>(quick,"QuickReply").Text=="头顶气泡回复。" && All<TextBox>(chat).Any(t=>t.Text=="头顶气泡回复。"),"quick bubble and full chat share actual model replies");}
                 pet.ReturnHome();quick.FollowPet();Pump(.1);Save(quick,Path.Combine(folder,"quick-chat.png"));
@@ -95,6 +115,14 @@ namespace Dafeiyu.Tests
                     Check(Find<Button>(chat,"SendMessage").IsEnabled && Find<TextBlock>(chat,"ChatStatus").Text.Contains("结束"),"ending Live closes audio and restores text controls");
                     var cleanup=pet.StopDialogueAsync();Wait(()=>cleanup.IsCompleted,5);cleanup.GetAwaiter().GetResult();
                     Find<ComboBox>(chat,"ChatVoiceMode").SelectedIndex=0;pet.Settings.Volume=35;
+                }
+                // Capture the default character and current controls for the public README.
+                pet.SelectSkin(pet.Catalog.Find("e-bao"));pet.Conversation.Clear();pet.SetReplySpeech(false);
+                Check(Find<TextBlock>(chat,"LiveCaption").Text.Length==0,"ended Live captions do not leak into another pet or pipeline chat");
+                using(var model=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"哼，这还不简单？先说清目标，再把问题拆成几步。把你的想法发过来，我陪你一起整理。\"}}]}"))
+                {
+                    pet.Settings.Text.BaseUrl=model.Url;input=Find<TextBox>(chat,"MessageInput");input.Text="E包，帮我梳理一下今天的想法。";Find<Button>(chat,"SendMessage").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>!pet.Conversation.IsBusy && pet.Conversation.History.Messages.Count==2,5);pet.SetReplySpeech(true);Pump(.1);Save(chat,Path.Combine(folder,"chat-window.png"));
+                    pet.ShowQuickChat();Pump(.1);quick=app.Windows.OfType<QuickChatWindow>().Single();pet.ReturnHome();quick.FollowPet();Pump(.1);Save(quick,Path.Combine(folder,"quick-chat.png"));
                 }
                 using(var model=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"关闭时的声音测试。\"}}]}"))
                 using(var synthesis=new ApiTests.Fixture(WaveData.EncodePcm(new byte[160000]),"audio/wav"))

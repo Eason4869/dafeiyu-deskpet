@@ -40,7 +40,9 @@ namespace Dafeiyu
             using(var message=new MemoryStream())
             {
                 byte[] buffer=new byte[8192];WebSocketReceiveResult result;
-                do{result=await socket.ReceiveAsync(new ArraySegment<byte>(buffer),token).ConfigureAwait(false);if(result.MessageType==WebSocketMessageType.Close)throw new ApiException("Live 连接已关闭，请检查模型权限后重新连接。");if(result.MessageType!=WebSocketMessageType.Text || message.Length+result.Count>2*1024*1024)throw new ApiException("Live 返回的消息格式不受支持或内容过大。");message.Write(buffer,0,result.Count);}while(!result.EndOfMessage);
+                // Gemini sends JSON in binary WebSocket messages as well as text messages.
+                // Assemble all fragments before decoding UTF-8; PCM remains base64 inside JSON.
+                do{result=await socket.ReceiveAsync(new ArraySegment<byte>(buffer),token).ConfigureAwait(false);if(result.MessageType==WebSocketMessageType.Close)throw new ApiException("Live 连接已关闭，请检查模型权限后重新连接。");if((result.MessageType!=WebSocketMessageType.Text && result.MessageType!=WebSocketMessageType.Binary) || message.Length+result.Count>2*1024*1024)throw new ApiException("Live 返回的消息格式不受支持或内容过大。");message.Write(buffer,0,result.Count);}while(!result.EndOfMessage);
                 return Encoding.UTF8.GetString(message.ToArray());
             }
         }

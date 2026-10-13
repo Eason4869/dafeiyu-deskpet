@@ -5,7 +5,8 @@ using System.Security.Principal;
 using System.Threading;
 using System.Windows;
 
-[assembly: AssemblyTitle("大肥鱼桌面伙伴")]
+[assembly: AssemblyTitle(Dafeiyu.ReleaseInfo.ProductName)]
+[assembly: AssemblyProduct(Dafeiyu.ReleaseInfo.ProductName)]
 [assembly: AssemblyDescription("高清 Windows 桌面伙伴，外观导入与文字、语音对话")]
 [assembly: AssemblyVersion(Dafeiyu.ReleaseInfo.AssemblyVersion)]
 [assembly: AssemblyFileVersion(Dafeiyu.ReleaseInfo.AssemblyVersion)]
@@ -43,7 +44,7 @@ namespace Dafeiyu
                     }
                     catch (Exception)
                     {
-                        MessageBox.Show("桌宠无法启动。请将完整文件夹解压到可写入的位置，并确认 Windows 已安装 .NET Framework 4.8。", "大肥鱼", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show("桌面伙伴无法启动。请将完整文件夹解压到可写入的位置，并确认 Windows 已安装 .NET Framework 4.8。", ReleaseInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                     finally { mutex.ReleaseMutex(); }
                 }

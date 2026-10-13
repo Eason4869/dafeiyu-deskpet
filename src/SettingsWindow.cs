@@ -28,7 +28,7 @@ namespace Dafeiyu
         public SettingsWindow(PetWindow companion)
         {
             pet=companion; Ui.Window(this,"桌面伙伴 · 设置",850,790);MinWidth=700;
-            Icon=SkinCatalog.GetPreview(pet.Skin);
+            Icon=Ui.ApplicationIcon();
             var root=new StackPanel { Margin=new Thickness(24,20,24,20) };
             var header=new Grid { Margin=new Thickness(0,0,0,18) };
             header.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(118) }); header.ColumnDefinitions.Add(new ColumnDefinition());
@@ -114,7 +114,7 @@ namespace Dafeiyu
                 ShowNotice("导入失败：请使用有效的透明 PNG 精灵图（8 列 × 11 行，每个动作都应有画面），或同文件夹内的 pet.json。");
             }
         }
-        private void RefreshAvatar() { name.Text=pet.Skin.Name; avatar.Source=SkinCatalog.GetPreview(pet.Skin); Icon=avatar.Source;if(persona!=null)persona.RefreshPersona(); }
+        private void RefreshAvatar() { name.Text=pet.Skin.Name; avatar.Source=SkinCatalog.GetPreview(pet.Skin);if(persona!=null)persona.RefreshPersona(); }
         public void RefreshState()
         {
             if(name.Text!=pet.Skin.Name)RefreshAvatar();

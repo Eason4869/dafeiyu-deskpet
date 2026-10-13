@@ -8,7 +8,7 @@ $productVersion = [regex]::Match($releaseSource, 'DisplayVersion="([^"]+)"').Gro
 $assemblyVersion = [regex]::Match($releaseSource, 'AssemblyVersion="([^"]+)"').Groups[1].Value
 $repositoryUrl = [regex]::Match($releaseSource, 'RepositoryUrl="([^"]+)"').Groups[1].Value
 if (!$productVersion -or !$assemblyVersion -or !$repositoryUrl) { throw 'ReleaseInfo metadata is incomplete.' }
-$runtimeVersion = [System.Reflection.AssemblyName]::GetAssemblyName((Join-Path $runtimeRoot '大肥鱼桌宠.exe')).Version.ToString()
+$runtimeVersion = [System.Reflection.AssemblyName]::GetAssemblyName((Join-Path $runtimeRoot '桌面伙伴.exe')).Version.ToString()
 if ($runtimeVersion -ne $assemblyVersion) { throw 'Rebuild the application before creating the installer.' }
 if (!$Compiler) { $Compiler = $env:INNO_SETUP_COMPILER }
 if (!$Compiler) {
@@ -19,7 +19,7 @@ if (!$Compiler -or !(Test-Path -LiteralPath $Compiler)) { throw 'Install Inno Se
 $definitions = @('/Qp',('/DRuntimeDir='+$runtimeRoot),('/DOutputDir='+$outputRoot),('/DProductVersion='+$productVersion),('/DAssemblyVersion='+$assemblyVersion),('/DRepositoryUrl='+$repositoryUrl))
 & $Compiler @definitions (Join-Path $projectRoot 'installer\DeskPet.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-$installerPath = Join-Path $outputRoot ('DafeiyuDeskPet-Setup-'+$productVersion+'.exe')
+$installerPath = Join-Path $outputRoot ('DeskPet-Setup-'+$productVersion+'.exe')
 $manifestPath = Join-Path $outputRoot 'SHA256.txt'
 $installerName = [System.IO.Path]::GetFileName($installerPath)
 $manifestLines = @()

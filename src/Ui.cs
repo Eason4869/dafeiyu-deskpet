@@ -11,10 +11,22 @@ namespace Dafeiyu
         public static readonly SolidColorBrush Ink = Brush("#203754"), Muted = Brush("#72839B"), Blue = Brush("#456DE6"), Pale = Brush("#EDF3FF"), Line = Brush("#DCE5F4");
         private static Style buttonStyle;
         private static Style comboStyle,navigationStyle;
+        private static System.Windows.Media.Imaging.BitmapSource applicationIcon;
+        public static System.Windows.Media.Imaging.BitmapSource ApplicationIcon()
+        {
+            if(applicationIcon==null)
+                using(var stream=System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("Dafeiyu.Icon"))
+                {
+                    var decoder=System.Windows.Media.Imaging.BitmapDecoder.Create(stream,System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                    foreach(var frame in decoder.Frames)if(applicationIcon==null || frame.PixelWidth>applicationIcon.PixelWidth)applicationIcon=frame;
+                    applicationIcon.Freeze();
+                }
+            return applicationIcon;
+        }
         public static SolidColorBrush Brush(string hex) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)); brush.Freeze(); return brush; }
         public static void Window(Window window, string title, double width, double height)
         {
-            window.Title = title; window.Width = width; window.Height = height;
+            window.Title = title; window.Width = width; window.Height = height;window.Icon=ApplicationIcon();
             window.MinWidth = width - 40; window.MinHeight = Math.Min(430, height);
             window.MaxHeight = Math.Max(430, SystemParameters.WorkArea.Height - 36);
             window.FontFamily = new FontFamily("Microsoft YaHei UI"); window.FontSize = 13;
@@ -49,6 +61,14 @@ namespace Dafeiyu
         {
             var toggle = new CheckBox { Content = label, IsChecked = value, Margin = new Thickness(0, 6, 0, 9), VerticalContentAlignment = VerticalAlignment.Center };
             toggle.Checked += delegate { changed(true); }; toggle.Unchecked += delegate { changed(false); }; return toggle;
+        }
+        public static CheckBox ReplySpeechToggle(PetWindow pet)
+        {
+            var toggle=Toggle("TTS 输出",pet.Settings.ReadReplies,pet.SetReplySpeech);toggle.Name="TtsOutput";
+            toggle.ToolTip="自动朗读文字回复和 ASR 对话回复。关闭会停止当前朗读。Live 音频由实时语音模式输出。";
+            Action sync=()=>toggle.IsChecked=pet.Settings.ReadReplies;
+            toggle.Loaded+=delegate {sync();pet.ReplySpeechChanged+=sync;};
+            toggle.Unloaded+=delegate {pet.ReplySpeechChanged-=sync;};return toggle;
         }
         public static ScrollViewer Scroll(UIElement child) { return new ScrollViewer { Content = child, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; }
     }

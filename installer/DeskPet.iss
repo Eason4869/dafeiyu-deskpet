@@ -10,14 +10,15 @@
 
 [Setup]
 AppId={{3B63C162-076E-4B2F-BDCC-2572664875A9}
-AppName=大肥鱼桌面伙伴
+AppName=桌面伙伴
 AppVersion={#ProductVersion}
 AppPublisher=彧晟Eason
 AppPublisherURL={#RepositoryUrl}
 AppSupportURL={#RepositoryUrl}/issues
 AppUpdatesURL={#RepositoryUrl}/releases/latest
 DefaultDirName={localappdata}\Programs\DafeiyuDeskPet
-DefaultGroupName=大肥鱼桌面伙伴
+DefaultGroupName=桌面伙伴
+UsePreviousGroup=no
 DisableProgramGroupPage=auto
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible and not arm64
@@ -27,10 +28,10 @@ AppMutex=Local\Dafeiyu.DeskPet.Installation
 CloseApplications=no
 RestartApplications=no
 OutputDir={#OutputDir}
-OutputBaseFilename=DafeiyuDeskPet-Setup-{#ProductVersion}
+OutputBaseFilename=DeskPet-Setup-{#ProductVersion}
 SetupIconFile=..\assets\pet.ico
-UninstallDisplayIcon={app}\大肥鱼桌宠.exe
-UninstallDisplayName=大肥鱼桌面伙伴
+UninstallDisplayIcon={app}\桌面伙伴.exe
+UninstallDisplayName=桌面伙伴
 VersionInfoVersion={#AssemblyVersion}
 WizardStyle=modern
 Compression=lzma2
@@ -45,23 +46,68 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: unchecked
 
 [Files]
-Source: "{#RuntimeDir}\大肥鱼桌宠.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RuntimeDir}\大肥鱼桌宠.exe.config"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RuntimeDir}\桌面伙伴.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RuntimeDir}\桌面伙伴.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RuntimeDir}\templates\*"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RuntimeDir}\previews\*"; DestDir: "{app}\previews"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+Type: files; Name: "{app}\大肥鱼桌宠.exe"
+Type: files; Name: "{app}\大肥鱼桌宠.exe.config"
+
 [Icons]
-Name: "{group}\大肥鱼桌面伙伴"; Filename: "{app}\大肥鱼桌宠.exe"; WorkingDir: "{app}"
-Name: "{group}\卸载大肥鱼桌面伙伴"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\大肥鱼桌面伙伴"; Filename: "{app}\大肥鱼桌宠.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\桌面伙伴"; Filename: "{app}\桌面伙伴.exe"; WorkingDir: "{app}"
+Name: "{group}\卸载桌面伙伴"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\桌面伙伴"; Filename: "{app}\桌面伙伴.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\大肥鱼桌宠.exe"; Description: "启动大肥鱼桌面伙伴"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\桌面伙伴.exe"; Description: "启动桌面伙伴"; Flags: nowait postinstall skipifsilent
 
 [Code]
+var
+  PreviousIconGroup: String;
+
+procedure RemoveLegacyShortcut(Path, Target: String);
+var
+  Shell, Shortcut: Variant;
+begin
+  if not FileExists(Path) then Exit;
+  try
+    Shell := CreateOleObject('WScript.Shell');
+    Shortcut := Shell.CreateShortcut(Path);
+    if CompareText(Shortcut.TargetPath, Target) = 0 then DeleteFile(Path);
+  except
+    { A user-modified or unreadable shortcut is left untouched. }
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  RegisteredCommand, LegacyCommand, NewCommand: String;
+begin
+  if CurStep = ssInstall then
+    RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{3B63C162-076E-4B2F-BDCC-2572664875A9}_is1', 'Inno Setup: Icon Group', PreviousIconGroup);
+  if CurStep = ssPostInstall then
+  begin
+    LegacyCommand := '"' + ExpandConstant('{app}\大肥鱼桌宠.exe') + '" --startup';
+    NewCommand := '"' + ExpandConstant('{app}\桌面伙伴.exe') + '" --startup';
+    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'DafeiyuDeskPet', RegisteredCommand) then
+      if CompareText(RegisteredCommand, LegacyCommand) = 0 then
+        RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'DafeiyuDeskPet', NewCommand);
+    RemoveLegacyShortcut(ExpandConstant('{userprograms}\大肥鱼桌面伙伴\大肥鱼桌面伙伴.lnk'), ExpandConstant('{app}\大肥鱼桌宠.exe'));
+    RemoveLegacyShortcut(ExpandConstant('{userprograms}\大肥鱼桌面伙伴\卸载大肥鱼桌面伙伴.lnk'), ExpandConstant('{app}\unins000.exe'));
+    RemoveLegacyShortcut(ExpandConstant('{autodesktop}\大肥鱼桌面伙伴.lnk'), ExpandConstant('{app}\大肥鱼桌宠.exe'));
+    if PreviousIconGroup <> '' then
+    begin
+      RemoveLegacyShortcut(AddBackslash(ExpandConstant('{userprograms}')) + AddBackslash(PreviousIconGroup) + '大肥鱼桌面伙伴.lnk', ExpandConstant('{app}\大肥鱼桌宠.exe'));
+      RemoveLegacyShortcut(AddBackslash(ExpandConstant('{userprograms}')) + AddBackslash(PreviousIconGroup) + '卸载大肥鱼桌面伙伴.lnk', ExpandConstant('{app}\unins000.exe'));
+    end;
+  end;
+end;
+
 function InitializeSetup(): Boolean;
 begin
   Result := IsDotNetInstalled(net48, 0);
@@ -75,7 +121,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
-    ExpectedCommand := '"' + ExpandConstant('{app}\大肥鱼桌宠.exe') + '" --startup';
+    ExpectedCommand := '"' + ExpandConstant('{app}\桌面伙伴.exe') + '" --startup';
     if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'DafeiyuDeskPet', RegisteredCommand) then
       if CompareText(RegisteredCommand, ExpectedCommand) = 0 then
         RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'DafeiyuDeskPet');

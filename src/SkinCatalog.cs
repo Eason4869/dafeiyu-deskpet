@@ -46,8 +46,8 @@ namespace Dafeiyu
         public SkinCatalog(string dataDirectory)
         {
             directory=Path.Combine(dataDirectory,"skins");
-            skins.Add(new SkinDefinition("dafeiyu","大肥鱼","Dafeiyu.Atlas","Dafeiyu.Preview",true));
             skins.Add(new SkinDefinition("e-bao","E包","Dafeiyu.EbaoAtlas","Dafeiyu.EbaoPreview",true));
+            skins.Add(new SkinDefinition("dafeiyu","大肥鱼","Dafeiyu.Atlas","Dafeiyu.Preview",true));
             if(!Directory.Exists(directory)) return;
             foreach(string folder in Directory.GetDirectories(directory))
             {

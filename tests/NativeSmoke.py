@@ -11,7 +11,7 @@ PROJECT=Path(__file__).resolve().parents[1]
 WORK=PROJECT/'work/native-smoke'
 WORK.mkdir(parents=True,exist_ok=True)
 EXE=WORK/'DafeiyuDeskPet.exe'
-SHIPPED=PROJECT.parent/'outputs/DafeiyuDeskPet/大肥鱼桌宠.exe'
+SHIPPED=PROJECT.parent/'outputs/DafeiyuDeskPet/桌面伙伴.exe'
 shutil.copy2(SHIPPED,EXE)
 shutil.copy2(Path(str(SHIPPED)+'.config'),Path(str(EXE)+'.config'))
 user=ctypes.WinDLL('user32',use_last_error=True)

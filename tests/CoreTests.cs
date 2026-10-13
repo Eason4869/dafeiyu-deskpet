@@ -10,6 +10,29 @@ namespace Dafeiyu.Tests
         private static int failed;
         public static int Main()
         {
+            Test("eightfold samples preserve original animation time", delegate {
+                var original=new AnimationPlayer(); var smooth=new AnimationPlayer(8);
+                foreach(string state in AnimationPlayer.States) {
+                    original.Play(state,0); smooth.Play(state,0);
+                    for(int tick=0;tick<400;tick++) {
+                        original.Advance(1.0/60); smooth.Advance(1.0/60);
+                        Equal(original.Frame,smooth.Frame/8);
+                    }
+                }
+                smooth.Play("idle",0);smooth.Advance(.04);Assert(smooth.Frame>0,"intermediate frame missing");
+                smooth.Advance(Double.PositiveInfinity);Assert(smooth.Frame<48,"invalid clock corrupted frame");
+                smooth.Play("jumping",.7);smooth.Advance(.8);Equal("idle",smooth.State);
+            });
+            Test("gaze takes shortest wrap route and ignores center noise", delegate {
+                var gaze=new GazeController();gaze.Reset(15.5);gaze.Advance(0,-100,.02);
+                Assert(gaze.Direction>15.5,"wrap moved the long way");
+                double before=gaze.Direction;gaze.Advance(2,2,.2);Equal(before,gaze.Direction);
+                gaze.Advance(100,0,Double.NaN);Equal(before,gaze.Direction);
+                var a=new GazeController();var b=new GazeController();a.Reset(0);b.Reset(0);
+                for(int i=0;i<60;i++)a.Advance(100,0,1.0/60);
+                for(int i=0;i<30;i++)b.Advance(100,0,1.0/30);
+                Assert(Math.Abs(a.Direction-b.Direction)<1e-9,"gaze depends on refresh rate");
+            });
             Test("new installs default to Ebao without overriding saved selections", delegate {
                 Equal("e-bao",new PetSettings().SkinId);
                 var saved=new PetSettings {SkinId="dafeiyu"};saved.Normalize();Equal("dafeiyu",saved.SkinId);

@@ -89,7 +89,9 @@ namespace Dafeiyu.Tests
             public Feed()
             {
                 string digest;using(var sha=SHA256.Create())digest=BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-","");
-                Release=new UpdateRelease{VersionTag="v0.3.3",AssetName="DeskPet-Windows-0.3.3.zip",Size=4,Digest="sha256:"+digest,AssetUrl=ReleaseInfo.RepositoryUrl+"/releases/download/v0.3.3/DeskPet-Windows-0.3.3.zip"};
+                var current=new Version(ReleaseInfo.DisplayVersion);
+                string next=new Version(current.Major,current.Minor,current.Build+1).ToString();
+                Release=new UpdateRelease{VersionTag="v"+next,AssetName="DeskPet-Windows-"+next+".zip",Size=4,Digest="sha256:"+digest,AssetUrl=ReleaseInfo.RepositoryUrl+"/releases/download/v"+next+"/DeskPet-Windows-"+next+".zip"};
             }
             public Task<UpdateRelease> CheckAsync(string repository,bool useProxy,string address,bool portable,CancellationToken token){Checks++;Repository=repository;Portable=portable;return Task.FromResult(Release);}
             public async Task<string> DownloadAsync(UpdateRelease release,string folder,bool proxy,string address,IProgress<double> progress,CancellationToken token)

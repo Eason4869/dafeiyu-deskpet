@@ -22,7 +22,7 @@ for name in ['skin-format.md','dialogue-setup.md','verification.md','sources.md'
 shutil.copytree(PROJECT/'previews',PREVIEWS,dirs_exist_ok=True)
 
 counts=[6,8,8,4,5,8,6,6,6,8,8]
-for prefix in ['', 'e-bao-']:
+for prefix in ['', 'e-bao-', 'marfu-']:
     with Image.open(PROJECT/'assets'/(prefix+'spritesheet.png')) as image:
         assert image.size==(3840,5720) and image.mode=='RGBA'
         for row,count in enumerate(counts):
@@ -50,10 +50,10 @@ with ZipFile(source_zip,'w',ZIP_DEFLATED,compresslevel=6) as bundle:
             bundle.write(file,'DafeiyuDeskPet/'+relative.as_posix())
 
 persona_source=(PROJECT/'src/PersonaProfiles.cs').read_text(encoding='utf-8-sig')
-personas={name:re.search(r'public const string '+field+r'="([^"]+)";',persona_source).group(1) for name,field in [('E包','Ebao'),('大肥鱼','Dafeiyu')]}
-for name,prefix in [('E包','e-bao-'),('大肥鱼','')]:
+personas={name:re.search(r'public const string '+field+r'="([^"]+)";',persona_source).group(1) for name,field in [('E包','Ebao'),('大肥鱼','Dafeiyu'),('马尔芙','Marfu')]}
+for name,prefix in [('E包','e-bao-'),('大肥鱼',''),('马尔芙','marfu-')]:
     with ZipFile(OUTPUT/(name+'-高清外观包.zip'),'w',ZIP_DEFLATED,compresslevel=6) as bundle:
-        bundle.writestr('pet.json',json.dumps({'version':1,'name':name,'atlas':'spritesheet.png','system_prompt':personas[name],'description':'傲娇毒舌 · 白发正太' if name=='E包' else '温和俏皮 · 蓝白鲸鱼娘'},ensure_ascii=False,indent=2))
+        bundle.writestr('pet.json',json.dumps({'version':1,'name':name,'atlas':'spritesheet.png','system_prompt':personas[name],'description':'傲娇毒舌 · 白发正太' if name=='E包' else '温和俏皮 · 蓝白鲸鱼娘' if name=='大肥鱼' else '聪明俏皮 · 金发绿眼魔法少女'},ensure_ascii=False,indent=2))
         bundle.write(PROJECT/'assets'/(prefix+'spritesheet.png'),'spritesheet.png')
         bundle.write(PROJECT/'assets'/(prefix+'pet-preview-hd.png'),'preview.png')
         bundle.write(PROJECT/'docs/skin-format.md','外观格式说明.md')
@@ -65,7 +65,7 @@ with ZipFile(runtime_zip) as bundle:
     exe_name='DafeiyuDeskPet/桌面伙伴.exe'
     assert hashlib.sha256(bundle.read(exe_name)).digest()==hashlib.sha256((APP/'桌面伙伴.exe').read_bytes()).digest()
 with ZipFile(source_zip) as bundle: assert bundle.testzip() is None
-artifacts=[APP/'桌面伙伴.exe',runtime_zip,source_zip,OUTPUT/'E包-高清外观包.zip',OUTPUT/'大肥鱼-高清外观包.zip']
+artifacts=[APP/'桌面伙伴.exe',runtime_zip,source_zip,OUTPUT/'E包-高清外观包.zip',OUTPUT/'大肥鱼-高清外观包.zip',OUTPUT/'马尔芙-高清外观包.zip']
 setup=OUTPUT/('DeskPet-Setup-'+version+'.exe')
 if setup.exists(): artifacts.append(setup)
 (OUTPUT/'SHA256.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(OUTPUT)) for p in artifacts)+'\n',encoding='utf-8')

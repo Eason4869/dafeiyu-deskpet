@@ -19,6 +19,21 @@ namespace Dafeiyu
         }
     }
 
+    public sealed class GazeController
+    {
+        // Continuous clockwise direction, in sixteenths of a full turn.
+        public double Direction { get; private set; }
+        public void Reset(double direction) { Direction=(direction%16+16)%16; }
+        public void Advance(double dx,double dy,double seconds)
+        {
+            if(Double.IsNaN(seconds) || Double.IsInfinity(seconds) || seconds<=0 || dx*dx+dy*dy<256) return;
+            double target=(Math.Atan2(dx,-dy)*8/Math.PI+16)%16;
+            double distance=(target-Direction+24)%16-8;
+            Reset(Direction+distance*(1-Math.Exp(-12*seconds)));
+        }
+        public int Frame(int multiplier) { return (int)Math.Round(Direction*multiplier)%(16*multiplier); }
+    }
+
     public sealed class AnimationPlayer
     {
         public static readonly string[] States = { "idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review" };
@@ -27,10 +42,15 @@ namespace Dafeiyu
         private static readonly double[] Periods = { .17, .11, .11, .16, .13, .16, .19, .18, .18 };
         private double elapsed;
         private double duration;
+        public int FrameMultiplier { get; private set; }
         public string State { get; private set; }
         public int Frame { get; private set; }
         public int Row { get { return Array.IndexOf(States, State); } }
-        public AnimationPlayer() { Play("idle", 0); }
+        public AnimationPlayer(int frameMultiplier=1)
+        {
+            if(frameMultiplier!=1 && frameMultiplier!=8) throw new ArgumentOutOfRangeException("frameMultiplier");
+            FrameMultiplier=frameMultiplier; Play("idle", 0);
+        }
         public void Play(string state, double seconds)
         {
             if (Array.IndexOf(States, state) < 0) throw new ArgumentException("Unknown animation state.");
@@ -38,10 +58,10 @@ namespace Dafeiyu
         }
         public void Advance(double seconds)
         {
-            if (seconds < 0 || Double.IsNaN(seconds)) return;
+            if (seconds < 0 || Double.IsNaN(seconds) || Double.IsInfinity(seconds)) return;
             elapsed += seconds;
             if (duration > 0 && elapsed >= duration) { Play("idle", 0); return; }
-            Frame = (int)(elapsed / Periods[Row]) % Counts[Row];
+            Frame = (int)((elapsed / Periods[Row] * FrameMultiplier) % (Counts[Row]*FrameMultiplier));
         }
     }
 

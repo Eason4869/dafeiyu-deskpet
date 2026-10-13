@@ -21,3 +21,5 @@ Gemini Live：[WebSocket 入门](https://ai.google.dev/gemini-api/docs/live-api/
 安装器：采用官方 [Inno Setup 6.7.3](https://jrsoftware.org/isdl.php)，下载时验证 GitHub SHA256 和 Pyrsys 数字签名。[当前用户安装](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)、[运行互斥保护](https://jrsoftware.org/ishelp/topic_setup_appmutex.htm)、[.NET 前置检查](https://jrsoftware.org/ishelp/topic_isxfunc_isdotnetinstalled.htm) 按官方规范实现。简体中文向导采用官方源码仓库的 [ChineseSimplified.isl](https://github.com/jrsoftware/issrc/blob/is-6_7_3/Files/Languages/Unofficial/ChineseSimplified.isl)，保留维护者声明。
 
 自动更新安装参数：[Inno Setup 命令行](https://jrsoftware.org/ishelp/topic_setupcmdline.htm)，使用静默安装、原目录、禁止系统重启和自动关闭其他程序的选项。
+
+0.3.3 新增「马尔芙」：根据用户提供的金发绿眼人物与黑绿魔法袍 Q 版参考图生成角色、九组动作及十六个基础视线方向。原始高清帧保存在 `assets/marfu-spritesheet.png`。三位角色的平滑图由 `PrepareMotion.py` 进行脚底定位、双向光流插值与预乘透明度处理后生成；不依赖运行时图像服务。

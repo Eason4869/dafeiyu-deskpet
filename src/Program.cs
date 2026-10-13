@@ -39,7 +39,7 @@ namespace Dafeiyu
                             args.Handled = true; app.Shutdown(1);
                         };
                         var store = new SettingsStore(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "settings.json"));
-                        var pet = new PetWindow(new SpriteAtlas(), store.Load(), store, wake);
+                        var pet = new PetWindow(null, store.Load(), store, wake);
                         pet.Loaded+=delegate {pet.Updates.StartAutomaticChecks();};
                         pet.Closed += delegate { app.Shutdown(); }; app.Run(pet);
                     }

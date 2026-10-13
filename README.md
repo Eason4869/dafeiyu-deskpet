@@ -6,13 +6,13 @@
   <p>Windows 10/11 x64 · .NET Framework 4.8 · 作者：彧晟Eason</p>
 </div>
 
-**dev 开发版：0.3.2**，仅提供源码与 `v0.3.2` tag，本次不发布 Release。下方下载链接仍指向现有稳定版；体验新功能请从 dev 构建。
+**dev 开发版：0.3.3**，仅提供源码与 `v0.3.3` tag，本次不发布 Release。下方下载链接仍指向现有稳定版；体验新功能请从 dev 构建。
 
 ## 安装
 
 下载并运行 **DeskPet-Setup-0.3.1.exe**，按中文向导安装，无需管理员权限。也可下载 **DeskPet-Windows-0.3.1.zip**，完整解压后运行 **桌面伙伴.exe**。
 
-首次启动默认 **E包**，第二套内置形象是 **大肥鱼**。已有用户保留原先选择；无需接入 AI 就能使用桌宠。
+首次启动默认 **E包**，还可切换 **大肥鱼** 和 **马尔芙**（金发绿眼的魔法少女）。已有用户保留原先选择；无需接入 AI 就能使用桌宠。
 
 ![使用流程示意图](previews/workflow.svg)
 
@@ -56,13 +56,19 @@
 
 下载 Release 中的高清外观包，解压后在设置中导入 `pet.json`。制作自己的桌宠可从程序旁 **templates/pet.json** 开始；模板、Schema 和动作网格图都在 **templates** 文件夹。
 
-每套内置形象包含 73 帧，单帧 480×520，透明图 3840×5720。模板可设置 `system_prompt`，切换形象同时切换人格。
+三位内置伙伴各含 **584 帧**动作与视线素材：动作采样提高到 8 倍，视线由 16 个方向细分到 **128 个方向**，转头采用最短路径缓动。播放按真实时间推进，目标 60 Hz，动作速度不变；实际帧率受显示器与系统负载影响。E包的待机和视线姿态对齐脚底，减少左右抖动。
+
+<img src="previews/marfu.png" width="240" alt="马尔芙：金发绿眼的魔法少女桌宠">
+
+每套仍保留 73 帧的高清原图，单帧 480×520，透明图 3840×5720；旧版外观导入格式及播放节奏保持兼容。内置补帧使用 192×208 显示画布，导入外观不会自动补帧。模板可设置 `system_prompt`，切换形象同时切换人格。
 
 详见 [外观格式](docs/skin-format.md) 和 [模板说明](templates/README.md)。
 
 ## 构建与升级
 
-源码使用 C# / WPF / .NET Framework 4.8；打包需要 Python + Pillow，安装器需要 Inno Setup 6.7+。
+源码使用 C# / WPF / .NET Framework 4.8。0.3.3 只需执行 `Build.ps1 -Target App` 构建，不制作 Release 包。可用 `-OutputDirectory .\work\app` 指定隔离输出目录。
+
+补帧 PNG 已提交，正常编译不需要 Python；重新生成素材时安装 `requirements-motion.txt`，执行 `PrepareMotion.py` 和 `ValidateMotion.py`。以下打包命令仅供未来正式发布使用，打包需要 Python + Pillow，安装器需要 Inno Setup 6.7+。
 
 ```powershell
 .\Build.ps1 -Target App

@@ -13,6 +13,11 @@ namespace Dafeiyu.Tests
                 string root=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"profile-tests",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);var catalog=new SkinCatalog(root);var settings=new PetSettings();
                 Check(catalog.Skins[0].Id=="e-bao" && catalog.Skins[1].Id=="dafeiyu" && catalog.Find("missing").Id=="e-bao","Ebao is first and default fallback, with Dafeiyu second");
                 PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));Check(settings.SystemPrompt.Contains("鲸鱼娘"),"new dafeiyu resolves whale persona");
+                PersonaProfiles.Activate(settings,catalog.Find("marfu"));Check(catalog.Skins.Count==3 && settings.SystemPrompt.Contains("马尔芙") && settings.SystemPrompt.Contains("魔法少女"),"Marfu has a separate built-in persona");
+                foreach(var builtin in catalog.Skins) {
+                    var motion=builtin.Load();
+                    Check(motion.FrameMultiplier==8 && motion.GetFrame(10,63).PixelWidth==192 && motion.AlphaAt(10,63,0,0)==0,"complete motion atlas loads: "+builtin.Id);
+                }
                 PersonaProfiles.Activate(settings,catalog.Find("e-bao"));string exact="你是E包，一位傲娇、毒舌的白发正太桌面伙伴。用自然的中文与用户对话，帮助写代码、做设计和整理思路。回答清楚简洁，如实表达不确定性。你不能直接看见用户桌面，也不会自动读取文件。";
                 Check(settings.SystemPrompt==exact && !settings.SystemPrompt.Contains("鲸鱼"),"Ebao uses the exact user supplied persona");
                 PersonaProfiles.Save(settings,catalog.Find("e-bao"),"自定义E包");PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));PersonaProfiles.Activate(settings,catalog.Find("e-bao"));Check(settings.SystemPrompt=="自定义E包","per-pet override survives a round trip");

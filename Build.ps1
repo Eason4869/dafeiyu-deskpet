@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke')][string]$Target = 'App')
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke')][string]$Target = 'App', [string]$OutputDirectory = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -12,6 +12,7 @@ $workRoot = Join-Path $projectRoot 'work'
 New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
 if ($Target -eq 'App') {
     $outputRoot = Join-Path (Split-Path $projectRoot -Parent) 'outputs\DafeiyuDeskPet'
+    if ($OutputDirectory) { $outputRoot = [IO.Path]::GetFullPath($OutputDirectory) }
     New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
     $destination = Join-Path $outputRoot '桌面伙伴.exe'
     $sources = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.cs' | Select-Object -ExpandProperty FullName)
@@ -32,9 +33,10 @@ if ($Target -eq 'App') {
     $options = @('/target:exe',('/main:Dafeiyu.Tests.' + $Target))
 }
 $assets = @()
-foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.Icon'),@('pet-preview-hd.png','Dafeiyu.Preview'),@('e-bao-spritesheet.png','Dafeiyu.EbaoAtlas'),@('e-bao-pet-preview-hd.png','Dafeiyu.EbaoPreview'))) {
+foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.Icon'),@('pet-preview-hd.png','Dafeiyu.Preview'),@('e-bao-spritesheet.png','Dafeiyu.EbaoAtlas'),@('e-bao-pet-preview-hd.png','Dafeiyu.EbaoPreview'),@('marfu-spritesheet.png','Dafeiyu.MarfuAtlas'),@('marfu-pet-preview-hd.png','Dafeiyu.MarfuPreview'),@('e-bao-motion.png','Dafeiyu.EbaoAtlas.Motion'),@('dafeiyu-motion.png','Dafeiyu.Atlas.Motion'),@('marfu-motion.png','Dafeiyu.MarfuAtlas.Motion'))) {
     $assetPath = Join-Path $projectRoot ('assets\' + $asset[0])
-    if (Test-Path -LiteralPath $assetPath) { $assets += '/resource:' + $assetPath + ',' + $asset[1] }
+    if (!(Test-Path -LiteralPath $assetPath)) { throw "Required artwork is missing: $assetPath" }
+    $assets += '/resource:' + $assetPath + ',' + $asset[1]
 }
 $arguments = @('/nologo','/optimize+','/codepage:65001','/utf8output','/platform:anycpu',('/out:' + $destination)) + $references + $options + $assets + $sources
 & $compiler @arguments

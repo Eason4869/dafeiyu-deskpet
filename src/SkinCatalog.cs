@@ -36,7 +36,12 @@ namespace Dafeiyu
             Description=description ?? (id=="e-bao" ? "傲娇毒舌 · 白发正太" : id=="dafeiyu" ? "温和俏皮 · 蓝白鲸鱼娘" : "你的专属桌面伙伴");
         }
         public override string ToString() { return Name; }
-        public SpriteAtlas Load() { return new SpriteAtlas(Source,Embedded); }
+        public SpriteAtlas Load()
+        {
+            // Imported version-1 skins retain the original HD atlas contract.
+            if(Embedded) return new SpriteAtlas(Source+".Motion",true,true);
+            return new SpriteAtlas(Source,false);
+        }
     }
     public sealed class SkinCatalog
     {
@@ -48,6 +53,9 @@ namespace Dafeiyu
             directory=Path.Combine(dataDirectory,"skins");
             skins.Add(new SkinDefinition("e-bao","E包","Dafeiyu.EbaoAtlas","Dafeiyu.EbaoPreview",true));
             skins.Add(new SkinDefinition("dafeiyu","大肥鱼","Dafeiyu.Atlas","Dafeiyu.Preview",true));
+            skins.Add(new SkinDefinition("marfu","马尔芙","Dafeiyu.MarfuAtlas","Dafeiyu.MarfuPreview",true,
+                PersonaProfiles.Marfu,
+                "聪明俏皮 · 金发绿眼魔法少女"));
             if(!Directory.Exists(directory)) return;
             foreach(string folder in Directory.GetDirectories(directory))
             {

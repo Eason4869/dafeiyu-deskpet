@@ -1,0 +1,170 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Reflection;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using Microsoft.Win32;
+
+namespace Dafeiyu
+{
+    [DataContract]
+    public sealed class UpdateJob
+    {
+        [DataMember] public string InstallationDirectory,WorkDirectory,PackagePath,Mode,InstalledVersion,TargetVersion,Digest,AssetUrl;
+        [DataMember] public long Size,ParentStartedUtcTicks;
+        [DataMember] public int ParentPid;
+    }
+    [DataContract]
+    public sealed class UpdateResult
+    {
+        [DataMember] public bool Success;
+        [DataMember] public string Version,Message;
+    }
+
+    public static class UpdateInstall
+    {
+        public const string ExecutableName="桌面伙伴.exe",WorkerName="DeskPet.Update.exe";
+        const string UninstallKey=@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{3B63C162-076E-4B2F-BDCC-2572664875A9}_is1";
+        static readonly HashSet<string> rootFiles=new HashSet<string>(StringComparer.OrdinalIgnoreCase){ExecutableName,ExecutableName+".config",WorkerName,WorkerName+".config","README.md","CHANGELOG.md"};
+        static Version VersionOf(string version)
+        {
+            Version result;if(!Version.TryParse((version??"").TrimStart('v','V'),out result))throw new InvalidOperationException("更新版本号无效。");
+            return new Version(result.Major,result.Minor,Math.Max(0,result.Build),Math.Max(0,result.Revision));
+        }
+        static string Full(string path){if(String.IsNullOrWhiteSpace(path))throw new InvalidOperationException("更新路径无效。");return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);}
+        static bool Same(string left,string right){return String.Equals(Full(left),Full(right),StringComparison.OrdinalIgnoreCase);}
+        public static bool IsInstalledDirectory(string directory)
+        {
+            foreach(var view in new[]{RegistryView.Registry64,RegistryView.Registry32})
+                using(var root=RegistryKey.OpenBaseKey(RegistryHive.CurrentUser,view))using(var key=root.OpenSubKey(UninstallKey,false))
+                {
+                    string value=key==null?null:key.GetValue("InstallLocation") as string;
+                    if(!String.IsNullOrWhiteSpace(value) && Same(value,directory))return true;
+                }
+            return false;
+        }
+        public static string Hash(string path)
+        {using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").ToLowerInvariant();}
+        public static void Validate(UpdateJob job)
+        {
+            if(job==null)throw new InvalidOperationException("更新任务为空。");
+            string directory=Full(job.InstallationDirectory),work=Full(job.WorkDirectory),package=Full(job.PackagePath);
+            if(Same(directory,Path.GetPathRoot(directory)) || !File.Exists(Path.Combine(directory,ExecutableName)))throw new InvalidOperationException("找不到原版伙伴，无法自动更新。");
+            string expected=Path.Combine(directory,"data","updates");
+            if(!Same(Path.GetDirectoryName(work),expected) || !Regex.IsMatch(Path.GetFileName(work),"^[a-f0-9]{32}$") || !Same(Path.GetDirectoryName(package),work))throw new InvalidOperationException("更新任务必须位于本安装的 data/updates 目录。");
+            EnsureNoLinks(directory,work);
+            string mode=job.Mode;if(mode!="installed" && mode!="portable")throw new InvalidOperationException("未知的更新方式。");
+            if(mode=="installed" && !IsInstalledDirectory(directory))throw new InvalidOperationException("安装记录与当前目录不符，无法自动安装。");
+            if(VersionOf(job.TargetVersion)<=VersionOf(job.InstalledVersion))throw new InvalidOperationException("该版本无需更新。");
+            string version=job.TargetVersion.TrimStart('v','V');
+            string name=(mode=="installed"?"DeskPet-Setup-":"DeskPet-Windows-")+version+(mode=="installed"?".exe":".zip");
+            Uri uri;string url=ReleaseInfo.RepositoryUrl+"/releases/download/v"+version+"/"+name;
+            if(Path.GetFileName(package)!=name || !Uri.TryCreate(job.AssetUrl,UriKind.Absolute,out uri) || !String.Equals(uri.AbsoluteUri,url,StringComparison.Ordinal) || uri.UserInfo.Length>0)throw new InvalidOperationException("自动更新只接受本仓库的正式发行包。");
+            if(job.Size<=0 || job.Size>300L*1024*1024 || !Regex.IsMatch(job.Digest??"","^[a-fA-F0-9]{64}$") || !File.Exists(package) || new FileInfo(package).Length!=job.Size || !String.Equals(Hash(package),job.Digest,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("更新包校验失败，已保留原版。请重新检查更新。");
+        }
+        static void EnsureNoLinks(string root,string path)
+        {
+            string basePath=Full(root),target=Full(path);
+            if(!Same(basePath,target) && !target.StartsWith(basePath+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("更新路径超出安装目录。");
+            while(true)
+            {
+                if((File.Exists(target) || Directory.Exists(target)) && (File.GetAttributes(target)&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("更新路径不能使用目录链接。");
+                if(Same(basePath,target))return;target=Path.GetDirectoryName(target);
+            }
+        }
+        static string Relative(ZipArchiveEntry entry)
+        {
+            string name=entry.FullName;
+            if(!name.StartsWith("DafeiyuDeskPet/",StringComparison.Ordinal) || name.IndexOf('\\')>=0 || ((entry.ExternalAttributes>>16)&0xf000)==0xa000)throw new InvalidOperationException("运行包包含不支持的路径。");
+            string relative=name.Substring("DafeiyuDeskPet/".Length).TrimEnd('/');
+            if(relative.Length==0)return null;
+            foreach(string part in relative.Split('/'))
+                if(part.Length==0 || part=="." || part==".." || part.IndexOfAny(Path.GetInvalidFileNameChars())>=0 || part.EndsWith(".") || part.EndsWith(" ") || Regex.IsMatch(part,@"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)",RegexOptions.IgnoreCase))throw new InvalidOperationException("运行包路径无效。");
+            if(name.EndsWith("/"))
+            {
+                if(relative!="docs" && relative!="templates" && relative!="previews" && !relative.StartsWith("docs/",StringComparison.Ordinal) && !relative.StartsWith("templates/",StringComparison.Ordinal) && !relative.StartsWith("previews/",StringComparison.Ordinal))throw new InvalidOperationException("运行包包含非发行目录。");
+                return null;
+            }
+            string extension=Path.GetExtension(relative).ToLowerInvariant();
+            bool known=rootFiles.Contains(relative) || (relative.StartsWith("docs/",StringComparison.Ordinal) && extension==".md") ||
+                (relative.StartsWith("templates/",StringComparison.Ordinal) && (extension==".json" || extension==".svg" || extension==".png" || extension==".md")) ||
+                (relative.StartsWith("previews/",StringComparison.Ordinal) && (extension==".png" || extension==".svg" || extension==".jpg" || extension==".webp"));
+            if(!known)throw new InvalidOperationException("运行包包含非发行文件或用户数据。");
+            return relative.Replace('/',Path.DirectorySeparatorChar);
+        }
+        public static void ApplyPortable(UpdateJob job,Action<int> afterReplace)
+        {
+            Validate(job);
+            string stage=Path.Combine(job.WorkDirectory,"staging"),backup=Path.Combine(job.WorkDirectory,"backup");
+            if(Directory.Exists(stage) || Directory.Exists(backup))throw new InvalidOperationException("此更新任务已经执行过，请重新检查更新。");
+            var files=new List<string>();var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using(var stream=new FileStream(job.PackagePath,FileMode.Open,FileAccess.Read,FileShare.Read))using(var zip=new ZipArchive(stream,ZipArchiveMode.Read))
+            {
+                long total=0;foreach(var entry in zip.Entries)
+                {
+                    string relative=Relative(entry);if(relative==null)continue;
+                    if(!seen.Add(relative))throw new InvalidOperationException("运行包存在重复文件。");
+                    total+=entry.Length;if(total>400L*1024*1024 || files.Count>=500)throw new InvalidOperationException("运行包解压大小超出限制。");files.Add(relative);
+                }
+                if(!seen.Contains(ExecutableName) || !seen.Contains(ExecutableName+".config") || !seen.Contains(WorkerName))throw new InvalidOperationException("运行包缺少必要的程序文件。");
+                Directory.CreateDirectory(stage);
+                foreach(var entry in zip.Entries)
+                {
+                    string relative=Relative(entry);if(relative==null)continue;string destination=Path.Combine(stage,relative);Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                    using(var input=entry.Open())using(var output=new FileStream(destination,FileMode.CreateNew,FileAccess.Write,FileShare.None))
+                    {byte[] block=new byte[32768];int read;long count=0;while((read=input.Read(block,0,block.Length))>0){count+=read;if(count>entry.Length)throw new InvalidOperationException("运行包长度无效。");output.Write(block,0,read);}if(count!=entry.Length)throw new InvalidOperationException("运行包不完整。");output.Flush(true);}
+                }
+            }
+            if(VersionOf(AssemblyName.GetAssemblyName(Path.Combine(stage,ExecutableName)).Version.ToString())!=VersionOf(job.TargetVersion))throw new InvalidOperationException("运行包版本与发行版本不一致。");
+            var applied=new List<string>();var existed=new HashSet<string>(StringComparer.OrdinalIgnoreCase);Directory.CreateDirectory(backup);
+            try
+            {
+                foreach(string relative in files)
+                {
+                    string target=Path.Combine(job.InstallationDirectory,relative),previous=Path.Combine(backup,relative);EnsureNoLinks(job.InstallationDirectory,target);
+                    if(File.Exists(target)){Directory.CreateDirectory(Path.GetDirectoryName(previous));File.Copy(target,previous,false);existed.Add(relative);}
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));ReplaceFile(Path.Combine(stage,relative),target);applied.Add(relative);
+                    if(afterReplace!=null)afterReplace(applied.Count);
+                }
+            }
+            catch
+            {
+                bool restored=true;for(int i=applied.Count-1;i>=0;i--)
+                {
+                    string relative=applied[i],target=Path.Combine(job.InstallationDirectory,relative);
+                    try{if(existed.Contains(relative))ReplaceFile(Path.Combine(backup,relative),target);else File.Delete(target);}catch(IOException){restored=false;}catch(UnauthorizedAccessException){restored=false;}
+                }
+                if(!restored)throw new InvalidOperationException("更新未完成，部分文件需要手动恢复。备份保存在 data/updates 的本次任务中。");
+                throw;
+            }
+        }
+        static void ReplaceFile(string source,string target)
+        {
+            string temporary=target+".deskpet-"+Guid.NewGuid().ToString("N")+".tmp";
+            try{File.Copy(source,temporary,false);if(File.Exists(target))File.Replace(temporary,target,null);else File.Move(temporary,target);}
+            finally{if(File.Exists(temporary))File.Delete(temporary);}
+        }
+        public static void ApplyInstaller(UpdateJob job)
+        {
+            Validate(job);
+            using(var locked=new FileStream(job.PackagePath,FileMode.Open,FileAccess.Read,FileShare.Read))
+            {
+                var start=new ProcessStartInfo(job.PackagePath,"/VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART /NORESTARTAPPLICATIONS /NOCLOSEAPPLICATIONS /DIR="+Quote(Full(job.InstallationDirectory)))
+                    {UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=job.WorkDirectory};
+                using(var installer=Process.Start(start)){installer.WaitForExit();if(installer.ExitCode!=0)throw new InvalidOperationException("安装未完成，请关闭其他伙伴实例后重新检查更新。");}
+            }
+            if(VersionOf(AssemblyName.GetAssemblyName(Path.Combine(job.InstallationDirectory,ExecutableName)).Version.ToString())!=VersionOf(job.TargetVersion))throw new InvalidOperationException("安装后的版本不符，请手动运行更新包。");
+        }
+        public static string Quote(string value)
+        {if(value==null || value.IndexOf('"')>=0 || value.IndexOf('\r')>=0 || value.IndexOf('\n')>=0)throw new InvalidOperationException("更新参数无效。");return "\""+value+"\"";}
+        public static T Read<T>(string path)
+        {using(var stream=File.OpenRead(path)){if(stream.Length>16384)throw new InvalidOperationException("更新任务过大。");return (T)new DataContractJsonSerializer(typeof(T)).ReadObject(stream);}}
+        public static void Write<T>(string path,T value)
+        {string temporary=path+".tmp";using(var stream=new FileStream(temporary,FileMode.Create,FileAccess.Write,FileShare.None)){new DataContractJsonSerializer(typeof(T)).WriteObject(stream,value);stream.Flush(true);}if(File.Exists(path))File.Replace(temporary,path,null);else File.Move(temporary,path);}
+    }
+}

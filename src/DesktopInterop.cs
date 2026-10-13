@@ -11,6 +11,9 @@ namespace Dafeiyu
         [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativePoint point);
         [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr handle, out NativeRect rect);
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr handle);
+        [DllImport("user32.dll",CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr handle,System.Text.StringBuilder name,int count);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
         [DllImport("user32.dll",EntryPoint="GetWindowLong")] private static extern int GetWindowLong32(IntPtr handle,int index);
         [DllImport("user32.dll",EntryPoint="SetWindowLong")] private static extern int SetWindowLong32(IntPtr handle,int index,int value);
@@ -46,6 +49,19 @@ namespace Dafeiyu
         {
             Rect mine = Bounds(window), companion = Bounds(pet), area = WorkArea(pet);
             Move(window, PetMath.ClampPosition(companion.X - mine.Width - 18, companion.Bottom - mine.Height, mine.Width, mine.Height, area));
+        }
+        public static bool ForegroundIsFullScreen()
+        {
+            var foreground=GetForegroundWindow();if(foreground==IntPtr.Zero)return true;
+            var name=new System.Text.StringBuilder(128);GetClassName(foreground,name,name.Capacity);
+            if(name.ToString()=="Progman" || name.ToString()=="WorkerW")return false;
+            Rect bounds=Bounds(foreground);var screen=Forms.Screen.FromHandle(foreground).Bounds;
+            return bounds.Left<=screen.Left+1 && bounds.Top<=screen.Top+1 && bounds.Right>=screen.Right-1 && bounds.Bottom>=screen.Bottom-1;
+        }
+        public static void ForegroundMenu(System.Windows.Controls.ContextMenu menu)
+        {
+            var source=PresentationSource.FromVisual(menu) as System.Windows.Interop.HwndSource;
+            if(source!=null)SetForegroundWindow(source.Handle);
         }
     }
 }

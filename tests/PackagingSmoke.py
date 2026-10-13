@@ -39,7 +39,17 @@ if result.returncode:
 print('PASS fresh source packaging needs no local test artifacts')
 with ZipFile(root / 'outputs' / ('DeskPet-Windows-' + version + '.zip')) as bundle:
     assert not any(name.endswith('大肥鱼桌宠.exe') or 'private-key' in name or '/data/' in name for name in bundle.namelist())
+    for name in ['桌面伙伴.exe', '桌面伙伴.exe.config', 'DeskPet.Update.exe', 'DeskPet.Update.exe.config']:
+        assert bundle.read('DafeiyuDeskPet/' + name) == (runtime / name).read_bytes()
 print('PASS portable archive excludes legacy binaries and private loose files')
+print('PASS portable archive includes the exact application and independent update helper')
+result = subprocess.run(['powershell.exe', '-NoProfile', '-Command',
+    '[Reflection.AssemblyName]::GetAssemblyName($env:DESKPET_TEST_HELPER).Version.ToString()'],
+    env=dict(os.environ, DESKPET_TEST_HELPER=str(runtime / 'DeskPet.Update.exe')),
+    capture_output=True, check=True)
+assert result.stdout.decode('ascii').strip() == version + '.0'
+assert (runtime / 'DeskPet.Update.exe').stat().st_size < 1024 * 1024, 'helper should not embed pet sprite assets'
+print('PASS update helper has the declared version and excludes sprite resources')
 readme = (runtime / 'README.md').read_text(encoding='utf-8-sig')
 images = re.findall(r'<img\s+src="([^"]+)"|!\[[^\]]*\]\(([^)]+)\)', readme)
 for alternatives in images:
@@ -70,4 +80,4 @@ if options.compiler:
         digest, name = line.split('  ', 1)
         assert digest == hashlib.sha256((root / 'outputs' / name).read_bytes()).hexdigest(), 'stale digest: ' + name
     print('PASS installer build leaves a complete matching SHA256 manifest')
-print('Packaging smoke:', 8 if options.compiler else 6, 'passed')
+print('Packaging smoke:', 10 if options.compiler else 8, 'passed')

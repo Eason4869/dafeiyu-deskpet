@@ -48,6 +48,8 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 [Files]
 Source: "{#RuntimeDir}\桌面伙伴.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\桌面伙伴.exe.config"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RuntimeDir}\DeskPet.Update.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RuntimeDir}\DeskPet.Update.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs

@@ -29,6 +29,20 @@ namespace Dafeiyu
         private ChatWindow chat;
         private ConversationSession conversation;
         private QuickChatWindow quick;
+        private GreetingBubbleWindow greeting;
+        private GreetingSchedule greetingSchedule;
+        private double lastGreetingProbe;
+        private int lastGreetingPhrase=-1;
+        private bool sessionLocked;
+        private UpdateCoordinator updates;
+        private UpdateNoticeWindow updateNotice;
+        public bool IsUpdating {get{return updates!=null && updates.IsApplying;}}
+        public UpdateCoordinator Updates {get{return updates ?? (updates=new UpdateCoordinator(this));}}
+        public bool CanApplyUpdate(bool manual)
+        {
+            return !closing && !LiveActive && (conversation==null || !conversation.IsBusy) && !sessionLocked && (ContextMenu==null || !ContextMenu.IsOpen) && (trayMenu==null || !trayMenu.Visible) && (chat==null || !chat.IsVisible) && (quick==null || !quick.IsVisible) &&
+                (preferences==null || (!preferences.HasUnsavedEdits && (!preferences.IsVisible || (manual && preferences.IsOnAboutPage)))) && !DesktopInterop.ForegroundIsFullScreen();
+        }
         private GeminiLiveSession live;
         private string liveSkinId;
         private bool closeAfterLive;
@@ -58,7 +72,7 @@ namespace Dafeiyu
             }
         }
         public bool LiveActive {get{return live!=null && live.IsActive;}}
-        public bool DialogueBusy {get{return LiveActive || (conversation!=null && conversation.IsBusy);}}
+        public bool DialogueBusy {get{return IsUpdating || LiveActive || (conversation!=null && conversation.IsBusy);}}
         public GeminiLiveSession Live
         {
             get
@@ -82,6 +96,9 @@ namespace Dafeiyu
             try { if(Skin.Id!="dafeiyu") atlas=Skin.Load(); }
             catch { Skin=Catalog.Find("dafeiyu"); Notice="之前导入的外观无法读取，已切回大肥鱼。"; }
             PersonaProfiles.Activate(Settings,Skin); Animation=new AnimationPlayer();
+            ResetGreetingSchedule();
+            Microsoft.Win32.SystemEvents.SessionSwitch+=SessionChanged;
+            Microsoft.Win32.SystemEvents.PowerModeChanged+=PowerChanged;
             Title="桌面伙伴 · "+Skin.Name;Icon=Ui.ApplicationIcon(); AllowsTransparency=true; WindowStyle=WindowStyle.None;
             ResizeMode=ResizeMode.NoResize; Background=Brushes.Transparent; ShowInTaskbar=false;
             ShowActivated=false; Focusable=false; Topmost=Settings.Topmost;
@@ -91,7 +108,7 @@ namespace Dafeiyu
             image.MouseLeftButtonDown+=BeginDrag; image.MouseMove+=Drag; image.MouseLeftButtonUp+=EndDrag;
             image.LostMouseCapture+=delegate { if(dragging) { dragging=false; walking=false; SavePosition(); Animation.Play("idle",0); } };
             ContextMenu=CreateMenu();
-            LocationChanged+=delegate {if(quick!=null && quick.IsVisible)quick.FollowPet();};
+            LocationChanged+=delegate {if(quick!=null && quick.IsVisible)quick.FollowPet();if(greeting!=null && greeting.IsVisible)greeting.FollowPet();if(updateNotice!=null && updateNotice.IsVisible)updateNotice.FollowPet();};
             SourceInitialized+=delegate
             {
                 handle=new WindowInteropHelper(this).Handle;
@@ -122,6 +139,7 @@ namespace Dafeiyu
         private ContextMenu CreateMenu()
         {
             var menu=new ContextMenu();
+            menu.StaysOpen=false;menu.Opened+=delegate {Dispatcher.BeginInvoke(DispatcherPriority.Input,new Action(delegate {if(menu.IsOpen)DesktopInterop.ForegroundMenu(menu);}));};
             AddMenu(menu,"快速对话…",ShowQuickChat);AddMenu(menu,"打开完整对话…",ShowChat); AddMenu(menu,"外观与设置…",ShowSettings); menu.Items.Add(new Separator());
             var actions=new MenuItem { Header="做个动作" };
             for(int i=0;i<AnimationPlayer.States.Length;i++)
@@ -149,6 +167,16 @@ namespace Dafeiyu
             if(closing) return;
             if(wake!=null && wake.WaitOne(0)) { RestorePet(); ShowSettings(); }
             double now=watch.Elapsed.TotalSeconds,delta=Math.Min(.2,Math.Max(0,now-previousTick)); previousTick=now;
+            if(now-lastGreetingProbe>=1)
+            {
+                lastGreetingProbe=now;
+                bool fullscreen=DesktopInterop.ForegroundIsFullScreen();
+                bool allowed=Settings.GreetingEnabled && IsVisible && !Paused && !dragging && !walking && !sessionLocked && !DialogueBusy && (updates==null || !updates.HasRestartCountdown) &&
+                    (ContextMenu==null || !ContextMenu.IsOpen) && !trayMenu.Visible &&
+                    (quick==null || !quick.IsVisible) && (chat==null || !chat.IsVisible) && (preferences==null || !preferences.IsVisible) && !fullscreen;
+                if(fullscreen && greeting!=null && greeting.IsVisible)greeting.Hide();
+                if(greetingSchedule.TryTake(DateTime.UtcNow,allowed))ShowGreeting();
+            }
             if(!IsVisible || Paused) return;
             if(quick!=null && quick.IsVisible)quick.FollowPet();
             Point cursor=DesktopInterop.Cursor(); if((cursor-lastCursor).Length>2) { lastCursor=cursor; lastCursorMove=now; }
@@ -226,7 +254,7 @@ namespace Dafeiyu
         public void PlayAction(string state,double duration)
         { walking=false; Paused=false; Animation.Play(state,duration); UpdateFrame(); if(preferences!=null) preferences.RefreshState(); }
         public void SetPaused(bool value)
-        { Paused=value; if(value && walking) { walking=false; Animation.Play("idle",0); SavePosition(); } if(preferences!=null) preferences.RefreshState(); }
+        { if(Paused!=value)DismissGreeting();Paused=value; if(value && walking) { walking=false; Animation.Play("idle",0); SavePosition(); } if(preferences!=null) preferences.RefreshState(); }
         public void ApplySettings()
         {
             Settings.Normalize(); Rect before=handle==IntPtr.Zero ? Rect.Empty : DesktopInterop.Bounds(handle);
@@ -246,6 +274,7 @@ namespace Dafeiyu
             try
             {
                 var replacement=skin.Load(); atlas=replacement; Skin=skin;PersonaProfiles.Activate(Settings,skin);if(conversation!=null)conversation.SelectPersona(skin.Id);
+                DismissGreeting();
                 shownRow=shownCol=-1; walking=false; Animation.Play("idle",0); UpdateFrame();
                 Title="桌面伙伴 · "+skin.Name; tray.Text=Title;if(chat!=null)chat.ReloadHistory();if(quick!=null)quick.RefreshPersona();RefreshChatAppearance(); SaveSettings(); return true;
             }
@@ -259,14 +288,48 @@ namespace Dafeiyu
         { ShowSettings(false); }
         public void ShowSettings(bool connections)
         {
+            if(closing || IsUpdating)return;
+            DismissGreeting();
             if(preferences==null) { preferences=new SettingsWindow(this); preferences.Closed+=delegate { preferences=null; }; }
             if(!preferences.IsVisible) preferences.Show(); preferences.Activate(); preferences.RefreshState();
             if(connections) preferences.SelectConnections();
         }
         public void ShowChat()
-        {if(closing)return;if(chat==null){chat=new ChatWindow(this);chat.Closed+=delegate {chat=null;};}if(!chat.IsVisible)chat.Show();if(chat.WindowState==WindowState.Minimized)chat.WindowState=WindowState.Normal;chat.Activate();}
+        {if(closing || IsUpdating)return;DismissGreeting();if(chat==null){chat=new ChatWindow(this);chat.Closed+=delegate {chat=null;};}if(!chat.IsVisible)chat.Show();if(chat.WindowState==WindowState.Minimized)chat.WindowState=WindowState.Normal;chat.Activate();}
         public void ShowQuickChat()
-        {if(closing)return;RestorePet();if(quick==null){quick=new QuickChatWindow(this);quick.Closed+=delegate {quick=null;};}if(!quick.IsVisible)quick.Show();quick.FollowPet();quick.Activate();quick.FocusInput();}
+        {if(closing || IsUpdating)return;DismissGreeting();RestorePet();if(quick==null){quick=new QuickChatWindow(this);quick.Closed+=delegate {quick=null;};}if(!quick.IsVisible)quick.Show();quick.FollowPet();quick.Activate();quick.FocusInput();}
+        internal void UpdateStateChanged(UpdateCoordinator controller)
+        {
+            if(closing)return;
+            IsEnabled=!controller.IsApplying;trayMenu.Enabled=!controller.IsApplying;if(preferences!=null)preferences.IsEnabled=!controller.IsApplying;
+            if(controller.HasRestartCountdown || controller.IsApplying)
+            {
+                if(greeting!=null)greeting.Hide();
+                if(updateNotice==null)updateNotice=new UpdateNoticeWindow(this,controller);updateNotice.Refresh();
+            }
+            else if(updateNotice!=null)updateNotice.Hide();
+        }
+        public void ConfigureGreetings(){Settings.Normalize();DismissGreeting();SaveSettings();}
+        private void ResetGreetingSchedule(){greetingSchedule=new GreetingSchedule(DateTime.UtcNow,Settings.GreetingMinMinutes,Settings.GreetingMaxMinutes,random.NextDouble);}
+        private void DismissGreeting(){if(greeting!=null)greeting.Hide();ResetGreetingSchedule();}
+        public void PreviewGreeting(){if(!closing && IsVisible)ShowGreeting();}
+        private void ShowGreeting()
+        {
+            if(greeting==null)greeting=new GreetingBubbleWindow(this);
+            int index=random.Next(4);if(index==lastGreetingPhrase)index=(index+1)%4;lastGreetingPhrase=index;
+            greeting.ShowGreeting(GreetingPhrases.Choose(Skin.Id,Skin.Name,DateTime.Now,index));
+            if(!Paused)PlayAction("waving",1.2);
+        }
+        private void SessionChanged(object sender,Microsoft.Win32.SessionSwitchEventArgs args)
+        {
+            if(closing)return;Dispatcher.BeginInvoke(new Action(delegate
+            {
+                if(closing)return;if(args.Reason==Microsoft.Win32.SessionSwitchReason.SessionLock)sessionLocked=true;
+                if(args.Reason==Microsoft.Win32.SessionSwitchReason.SessionUnlock)sessionLocked=false;DismissGreeting();
+            }));
+        }
+        private void PowerChanged(object sender,Microsoft.Win32.PowerModeChangedEventArgs args)
+        {if(!closing && args.Mode==Microsoft.Win32.PowerModes.Resume)Dispatcher.BeginInvoke(new Action(delegate {if(!closing)DismissGreeting();}));}
         public void RefreshChatAppearance(){if(chat!=null)chat.RefreshAppearance();if(quick!=null)quick.RefreshPersona();}
         public void ReloadConversation(){if(chat!=null)chat.ReloadHistory();if(quick!=null)quick.RefreshPersona();}
         public void UpdateVoiceVolume(int volume){if(conversation!=null)conversation.SetVolume(volume);if(live!=null)live.SetVolume(volume);}
@@ -281,10 +344,11 @@ namespace Dafeiyu
         private void ConversationChanged()
         {
             if(closing)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(ConversationChanged));return;}
+            if(DialogueBusy && greeting!=null)greeting.Hide();
             walking=false;if(Paused)return;var stage=conversation==null ? ConversationStage.Idle : conversation.Stage;string state=LiveActive ? "waiting" : stage==ConversationStage.Recording?"waiting":stage==ConversationStage.Recognizing?"review":stage==ConversationStage.Thinking?"running":stage==ConversationStage.Speaking?"waving":"idle";Animation.Play(state,0);UpdateFrame();
         }
-        public void HidePet() { walking=false; Animation.Play("idle",0); SavePosition();if(quick!=null)quick.Hide(); Hide();visibilityItem.Checked=false; timer.Interval=TimeSpan.FromMilliseconds(250); }
-        public void RestorePet() { if(!IsVisible) Show();visibilityItem.Checked=true; DesktopInterop.ClampWindow(handle); timer.Interval=TimeSpan.FromMilliseconds(40); previousTick=watch.Elapsed.TotalSeconds; }
+        public void HidePet() { DismissGreeting();walking=false; Animation.Play("idle",0); SavePosition();if(quick!=null)quick.Hide(); Hide();visibilityItem.Checked=false; timer.Interval=TimeSpan.FromMilliseconds(250); }
+        public void RestorePet() { if(!IsVisible){ResetGreetingSchedule();Show();}visibilityItem.Checked=true; DesktopInterop.ClampWindow(handle); timer.Interval=TimeSpan.FromMilliseconds(40); previousTick=watch.Elapsed.TotalSeconds; }
         public void ReturnHome()
         {
             if(handle==IntPtr.Zero) return; walking=false; Animation.Play("idle",0); UpdateFrame();
@@ -301,8 +365,10 @@ namespace Dafeiyu
         { if(handle==IntPtr.Zero) return; Rect bounds=DesktopInterop.Bounds(handle); Settings.X=bounds.Left; Settings.Y=bounds.Top; SaveSettings(); }
         private async void OnClosing(object sender,System.ComponentModel.CancelEventArgs args)
         {
+            if(updates!=null)updates.Dispose();
             if(LiveActive && !closeAfterLive){args.Cancel=true;if(closing)return;closing=true;try{await live.StopAsync();}catch(OperationCanceledException){}closeAfterLive=true;Close();return;}
             closing=true; timer.Stop(); SavePosition();if(quick!=null)quick.Close(); if(chat!=null)chat.Close();if(live!=null)live.Dispose();if(conversation!=null){conversation.StateChanged-=ConversationChanged;conversation.Dispose();}if(preferences!=null) preferences.Close();
+            Microsoft.Win32.SystemEvents.SessionSwitch-=SessionChanged;Microsoft.Win32.SystemEvents.PowerModeChanged-=PowerChanged;if(greeting!=null)greeting.Close();if(updateNotice!=null)updateNotice.Close();
             tray.Visible=false; tray.Dispose(); trayMenu.Dispose(); trayIcon.Dispose();
         }
     }

@@ -9,6 +9,12 @@ namespace Dafeiyu
     {
         readonly PetWindow pet;readonly ConnectionEditor text,recognition,synthesis,live;readonly TextBox voice,liveVoice;
         readonly CheckBox reuse,reuseSpeech,cloud;readonly TextBlock notice;readonly ContentControl page=new ContentControl();readonly StackPanel[] sections;
+        public bool HasUnsavedChanges
+        {
+            get{return !text.Matches(pet.Settings.Text) || !recognition.Matches(pet.Settings.Transcription) || !synthesis.Matches(pet.Settings.Speech) || !live.Matches(pet.Settings.Live) ||
+                (reuse.IsChecked==true)!=pet.Settings.VoiceUsesTextService || (reuseSpeech.IsChecked==true)!=pet.Settings.SpeechUsesTextService || (cloud.IsChecked==true)!=pet.Settings.UseCloudVoice ||
+                voice.Text.Trim()!=pet.Settings.VoiceName || liveVoice.Text.Trim()!=pet.Settings.LiveVoice;}
+        }
         public ConnectionSettingsPanel(PetWindow companion)
         {
             pet=companion;Margin=new Thickness(24,22,24,20);RowDefinitions.Add(new RowDefinition());RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});Children.Add(page);
@@ -70,6 +76,13 @@ namespace Dafeiyu
                 Ui.Label(this,"代理地址",proxyAddress);Children.Add(Ui.Text("默认 127.0.0.1:7890，可修改 HTTP 代理的地址或端口。\n仅勾选“使用代理连接”时生效。",11,Ui.Muted));
             }
             public ConnectionSettings Read(){string selectedProxy=ProxyConfiguration.Normalize(proxyAddress.Text);if(proxyAddress.IsEnabled)ProxyConfiguration.Endpoint(selectedProxy);return new ConnectionSettings{BaseUrl=address.Text.Trim(),Model=model.Text.Trim(),ApiKey=key.Password.Trim(),Protocol=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto",UseProxy=proxy.IsChecked==true,ProxyAddress=selectedProxy};}
+            public bool Matches(ConnectionSettings saved)
+            {
+                string selected=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto";
+                string expected=kind=="text"?(saved.Protocol=="anthropic"?"anthropic":"openai"):kind=="live"?"gemini-live":saved.Protocol=="mimo"?"mimo":saved.Protocol=="openai"?"openai":"auto";
+                return address.Text.Trim()==saved.BaseUrl && model.Text.Trim()==saved.Model && key.Password.Trim()==saved.ApiKey && selected==expected &&
+                    (proxy.IsChecked==true)==saved.UseProxy && ProxyConfiguration.Normalize(proxyAddress.Text)==ProxyConfiguration.Normalize(saved.ProxyAddress);
+            }
             public void SetAddressEnabled(bool value){address.IsEnabled=value;key.IsEnabled=value;proxy.IsEnabled=value;proxyAddress.IsEnabled=value;}
             public void SetFieldsEnabled(bool value){SetAddressEnabled(value);model.IsEnabled=value;protocol.IsEnabled=value;}
         }

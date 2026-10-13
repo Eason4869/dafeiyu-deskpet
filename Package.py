@@ -35,7 +35,7 @@ for prefix in ['', 'e-bao-']:
                     assert bbox is None, (prefix,row,col,'unused cell')
     print('PASS HD source validation: '+(prefix or 'dafeiyu'))
 
-runtime_files=[APP/name for name in ['桌面伙伴.exe','桌面伙伴.exe.config','README.md','CHANGELOG.md']]
+runtime_files=[APP/name for name in ['桌面伙伴.exe','桌面伙伴.exe.config','DeskPet.Update.exe','DeskPet.Update.exe.config','README.md','CHANGELOG.md']]
 runtime_files += [APP/'docs'/name for name in ['skin-format.md','dialogue-setup.md','verification.md','sources.md','installation.md']]
 for folder in ['templates','previews']:
     runtime_files += [APP/file.relative_to(PROJECT) for file in (PROJECT/folder).rglob('*') if file.is_file()]

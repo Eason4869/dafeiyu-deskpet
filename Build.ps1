@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests')][string]$Target = 'App')
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke')][string]$Target = 'App')
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -6,7 +6,7 @@ $compiler = Join-Path $frameworkRoot 'csc.exe'
 if (!(Test-Path -LiteralPath $compiler)) { throw '.NET Framework compiler is required.' }
 $speechAssembly = Get-ChildItem -LiteralPath (Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\System.Speech') -Filter 'System.Speech.dll' -Recurse | Select-Object -First 1 -ExpandProperty FullName
 if (!$speechAssembly) { throw 'Windows System.Speech assembly was not found.' }
-$referenceFiles = @('System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Net.Http.dll','System.Runtime.Serialization.dll','System.Security.dll','System.Web.Extensions.dll','System.Xaml.dll','WPF\WindowsBase.dll','WPF\PresentationCore.dll','WPF\PresentationFramework.dll')
+$referenceFiles = @('System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Net.Http.dll','System.Runtime.Serialization.dll','System.Security.dll','System.Web.Extensions.dll','System.IO.Compression.dll','System.IO.Compression.FileSystem.dll','System.Xaml.dll','WPF\WindowsBase.dll','WPF\PresentationCore.dll','WPF\PresentationFramework.dll')
 $references = @($referenceFiles | ForEach-Object { '/reference:' + (Join-Path $frameworkRoot $_) }) + @('/reference:' + $speechAssembly)
 $workRoot = Join-Path $projectRoot 'work'
 New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
@@ -25,6 +25,10 @@ if ($Target -eq 'App') {
     $sources = @($sourceNames | ForEach-Object { Join-Path $projectRoot ('src\' + $_) } | Where-Object { Test-Path -LiteralPath $_ }) + @((Join-Path $projectRoot ('tests\' + $Target + '.cs')))
     if ($Target -eq 'UiSmoke' -or $Target -eq 'ChatSmoke' -or $Target -eq 'AudioSmoke' -or $Target -eq 'LiveTests' -or $Target -eq 'UpdateTests' -or $Target -eq 'ProxyTests') { $sources += Join-Path $projectRoot 'tests\ApiTests.cs' }
     if ($Target -eq 'ChatSmoke') { $sources += Join-Path $projectRoot 'tests\LiveTests.cs' }
+    if ($Target -eq 'MenuSmoke') {
+        & $compiler @('/nologo','/codepage:65001','/target:winexe',('/out:' + (Join-Path $workRoot 'MenuBlankFixture.exe'))) @references (Join-Path $projectRoot 'tests\MenuBlankFixture.cs')
+        if ($LASTEXITCODE -ne 0) { throw 'Menu fixture compilation failed.' }
+    }
     $options = @('/target:exe',('/main:Dafeiyu.Tests.' + $Target))
 }
 $assets = @()
@@ -35,6 +39,13 @@ foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.I
 $arguments = @('/nologo','/optimize+','/codepage:65001','/utf8output','/platform:anycpu',('/out:' + $destination)) + $references + $options + $assets + $sources
 & $compiler @arguments
 if ($LASTEXITCODE -ne 0) { throw "Compilation failed ($Target)." }
+if ($Target -eq 'App') {
+    $workerDestination = Join-Path $outputRoot 'DeskPet.Update.exe'
+    $workerSources = @('UpdateInstall.cs','UpdateWorker.cs','ReleaseInfo.cs') | ForEach-Object { Join-Path $projectRoot ('src\' + $_) }
+    & $compiler @('/nologo','/optimize+','/codepage:65001','/utf8output','/platform:anycpu','/target:winexe','/main:Dafeiyu.UpdateWorkerProgram','/define:UPDATE_WORKER',('/out:' + $workerDestination),('/win32manifest:' + (Join-Path $projectRoot 'app.manifest'))) @references @workerSources
+    if ($LASTEXITCODE -ne 0) { throw 'Update helper compilation failed.' }
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'app.config') -Destination ($workerDestination + '.config') -Force
+}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'app.config') -Destination ($destination + '.config') -Force
 if ($Target -ne 'App') {
     & $destination

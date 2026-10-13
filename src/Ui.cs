@@ -1,0 +1,55 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Markup;
+using System.Windows.Media;
+
+namespace Dafeiyu
+{
+    public static class Ui
+    {
+        public static readonly SolidColorBrush Ink = Brush("#203754"), Muted = Brush("#72839B"), Blue = Brush("#456DE6"), Pale = Brush("#EDF3FF"), Line = Brush("#DCE5F4");
+        private static Style buttonStyle;
+        private static Style comboStyle,navigationStyle;
+        public static SolidColorBrush Brush(string hex) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)); brush.Freeze(); return brush; }
+        public static void Window(Window window, string title, double width, double height)
+        {
+            window.Title = title; window.Width = width; window.Height = height;
+            window.MinWidth = width - 40; window.MinHeight = Math.Min(430, height);
+            window.MaxHeight = Math.Max(430, SystemParameters.WorkArea.Height - 36);
+            window.FontFamily = new FontFamily("Microsoft YaHei UI"); window.FontSize = 13;
+            window.Foreground = Ink; window.Background = Brush("#F6F8FD"); window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            if(comboStyle==null)
+            {
+                comboStyle=(Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ComboBox'><Setter Property='Background' Value='White'/><Setter Property='BorderBrush' Value='#DCE5F4'/><Setter Property='Foreground' Value='#203754'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ComboBox'><Grid><ToggleButton Focusable='False' ClickMode='Press' IsChecked='{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}'><ToggleButton.Template><ControlTemplate TargetType='ToggleButton'><Border Background='White' BorderBrush='#DCE5F4' BorderThickness='1' CornerRadius='9'><Path Data='M0,0 L4,4 L8,0' Stroke='#72839B' StrokeThickness='1.3' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,14,0'/></Border></ControlTemplate></ToggleButton.Template></ToggleButton><ContentPresenter Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}' Margin='12,7,36,7' VerticalAlignment='Center' IsHitTestVisible='False'/><Popup x:Name='PART_Popup' Placement='Bottom' IsOpen='{TemplateBinding IsDropDownOpen}' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'><Border Background='White' BorderBrush='#DCE5F4' BorderThickness='1' CornerRadius='9' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}' Padding='4'><ScrollViewer MaxHeight='290' CanContentScroll='True'><ItemsPresenter KeyboardNavigation.DirectionalNavigation='Contained'/></ScrollViewer></Border></Popup></Grid><ControlTemplate.Triggers><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.5'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");
+                navigationStyle=(Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ListBoxItem'><Setter Property='Foreground' Value='#203754'/><Setter Property='Background' Value='Transparent'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ListBoxItem'><Border x:Name='surface' Background='{TemplateBinding Background}' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property='IsSelected' Value='True'><Setter Property='Background' Value='#456DE6'/><Setter Property='Foreground' Value='White'/></Trigger><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='surface' Property='Opacity' Value='0.82'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");
+            }
+            window.Resources[typeof(ComboBox)]=comboStyle;window.Resources[typeof(ListBoxItem)]=navigationStyle;
+        }
+        public static Button Button(string text, bool primary = false)
+        {
+            if (buttonStyle == null)
+                buttonStyle = (Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'><Border x:Name='surface' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='surface' Property='Opacity' Value='0.82'/></Trigger><Trigger Property='IsPressed' Value='True'><Setter TargetName='surface' Property='Opacity' Value='0.65'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='surface' Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");
+            return new Button { Content = text, Style = buttonStyle, MinHeight = 36, Padding = new Thickness(13, 6, 13, 6),
+                Background = primary ? Blue : Brushes.White, Foreground = primary ? Brushes.White : Ink,
+                BorderBrush = primary ? Blue : Line, Cursor = System.Windows.Input.Cursors.Hand, Margin = new Thickness(0, 0, 8, 0) };
+        }
+        public static TextBlock Text(string text, double size = 13, Brush color = null)
+        { return new TextBlock { Text = text, FontSize = size, Foreground = color ?? Ink, TextWrapping = TextWrapping.Wrap, LineHeight = size * 1.65 }; }
+        public static TextBox Field(string value = "", bool multiline = false)
+        { return new TextBox { Text = value ?? "", MinHeight = 37, Padding = new Thickness(10, 7, 10, 7), BorderBrush = Line, BorderThickness = new Thickness(1), Background = Brushes.White,
+            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap, AcceptsReturn = multiline, VerticalScrollBarVisibility = multiline ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden }; }
+        public static Border Card(UIElement child)
+        { return new Border { Child = child, Background = Brushes.White, CornerRadius = new CornerRadius(14), BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(17), Margin = new Thickness(0, 0, 0, 14) }; }
+        public static void Label(Panel panel, string caption, UIElement field)
+        {
+            var label = Text(caption, 12, Muted); label.Margin = new Thickness(0, 8, 0, 5); panel.Children.Add(label); panel.Children.Add(field);
+        }
+        public static CheckBox Toggle(string label, bool value, Action<bool> changed)
+        {
+            var toggle = new CheckBox { Content = label, IsChecked = value, Margin = new Thickness(0, 6, 0, 9), VerticalContentAlignment = VerticalAlignment.Center };
+            toggle.Checked += delegate { changed(true); }; toggle.Unchecked += delegate { changed(false); }; return toggle;
+        }
+        public static ScrollViewer Scroll(UIElement child) { return new ScrollViewer { Content = child, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; }
+    }
+}

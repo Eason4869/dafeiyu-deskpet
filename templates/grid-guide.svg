@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="1040" viewBox="0 0 1140 1040">
+<rect width="1140" height="1040" fill="#f6f8fd"/>
+<g font-family="Microsoft YaHei, sans-serif" fill="#203754">
+<text x="30" y="40" font-size="25" font-weight="bold">桌面伙伴 · 8 × 11 动作布局</text>
+<text x="30" y="69" font-size="14">每个格子是一帧，灰色格保持透明。此 SVG 是参考图；导入请使用 PNG。</text>
+<text x="25" y="138" font-size="14">1. 待机 idle</text>
+<rect x="205" y="100" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="139" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="100" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="139" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="100" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="139" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="100" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="139" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="100" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="139" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="100" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="139" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="100" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="928" y="139" text-anchor="middle" font-size="14">透明</text>
+<rect x="989" y="100" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="1040" y="139" text-anchor="middle" font-size="14">透明</text>
+<text x="25" y="216" font-size="14">2. 向右跑</text>
+<rect x="205" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="217" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="217" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="217" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="217" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="217" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="217" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="928" y="217" text-anchor="middle" font-size="14">7</text>
+<rect x="989" y="178" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="1040" y="217" text-anchor="middle" font-size="14">8</text>
+<text x="25" y="294" font-size="14">3. 向左跑</text>
+<rect x="205" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="295" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="295" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="295" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="295" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="295" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="295" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="928" y="295" text-anchor="middle" font-size="14">7</text>
+<rect x="989" y="256" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="1040" y="295" text-anchor="middle" font-size="14">8</text>
+<text x="25" y="372" font-size="14">4. 招呼 waving</text>
+<rect x="205" y="334" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="373" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="334" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="373" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="334" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="373" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="334" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="373" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="334" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="704" y="373" text-anchor="middle" font-size="14">透明</text>
+<rect x="765" y="334" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="816" y="373" text-anchor="middle" font-size="14">透明</text>
+<rect x="877" y="334" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="928" y="373" text-anchor="middle" font-size="14">透明</text>
+<rect x="989" y="334" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="1040" y="373" text-anchor="middle" font-size="14">透明</text>
+<text x="25" y="450" font-size="14">5. 跳跃 jumping</text>
+<rect x="205" y="412" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="451" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="412" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="451" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="412" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="451" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="412" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="451" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="412" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="451" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="412" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="816" y="451" text-anchor="middle" font-size="14">透明</text>
+<rect x="877" y="412" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="928" y="451" text-anchor="middle" font-size="14">透明</text>
+<rect x="989" y="412" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="1040" y="451" text-anchor="middle" font-size="14">透明</text>
+<text x="25" y="528" font-size="14">6. 委屈 failed</text>
+<rect x="205" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="529" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="529" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="529" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="529" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="529" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="529" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="928" y="529" text-anchor="middle" font-size="14">7</text>
+<rect x="989" y="490" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="1040" y="529" text-anchor="middle" font-size="14">8</text>
+<text x="25" y="606" font-size="14">7. 等待 waiting</text>
+<rect x="205" y="568" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="607" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="568" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="607" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="568" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="607" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="568" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="607" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="568" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="607" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="568" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="607" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="568" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="928" y="607" text-anchor="middle" font-size="14">透明</text>
+<rect x="989" y="568" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="1040" y="607" text-anchor="middle" font-size="14">透明</text>
+<text x="25" y="684" font-size="14">8. 思考 running</text>
+<rect x="205" y="646" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="685" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="646" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="685" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="646" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="685" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="646" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="685" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="646" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="685" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="646" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="685" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="646" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="928" y="685" text-anchor="middle" font-size="14">透明</text>
+<rect x="989" y="646" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="1040" y="685" text-anchor="middle" font-size="14">透明</text>
+<text x="25" y="762" font-size="14">9. 检查 review</text>
+<rect x="205" y="724" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="763" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="724" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="763" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="724" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="763" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="724" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="763" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="724" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="763" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="724" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="763" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="724" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="928" y="763" text-anchor="middle" font-size="14">透明</text>
+<rect x="989" y="724" width="102" height="66" rx="9" fill="#e3e7ee" stroke="#ccd8ee"/><text x="1040" y="763" text-anchor="middle" font-size="14">透明</text>
+<text x="25" y="840" font-size="14">10. 视线 0°–157.5°</text>
+<rect x="205" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="841" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="841" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="841" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="841" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="841" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="841" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="928" y="841" text-anchor="middle" font-size="14">7</text>
+<rect x="989" y="802" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="1040" y="841" text-anchor="middle" font-size="14">8</text>
+<text x="25" y="918" font-size="14">11. 视线 180°–337.5°</text>
+<rect x="205" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="256" y="919" text-anchor="middle" font-size="14">1</text>
+<rect x="317" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="368" y="919" text-anchor="middle" font-size="14">2</text>
+<rect x="429" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="480" y="919" text-anchor="middle" font-size="14">3</text>
+<rect x="541" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="592" y="919" text-anchor="middle" font-size="14">4</text>
+<rect x="653" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="704" y="919" text-anchor="middle" font-size="14">5</text>
+<rect x="765" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="816" y="919" text-anchor="middle" font-size="14">6</text>
+<rect x="877" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="928" y="919" text-anchor="middle" font-size="14">7</text>
+<rect x="989" y="880" width="102" height="66" rx="9" fill="#edf3ff" stroke="#ccd8ee"/><text x="1040" y="919" text-anchor="middle" font-size="14">8</text>
+<text x="30" y="1000" font-size="14">推荐单帧 480 × 520；完整 PNG 3840 × 5720。完整教程见 docs/skin-format.md。</text></g></svg>

@@ -1,0 +1,109 @@
+using System;
+using System.IO;
+using System.Windows;
+
+namespace Dafeiyu.Tests
+{
+    public static class CoreTests
+    {
+        private static int passed;
+        private static int failed;
+        public static int Main()
+        {
+            Test("cursor cardinals use screen coordinates", delegate {
+                Equal(0, PetMath.LookDirection(0, -100));
+                Equal(4, PetMath.LookDirection(100, 0));
+                Equal(8, PetMath.LookDirection(0, 100));
+                Equal(12, PetMath.LookDirection(-100, 0));
+                Equal(-1, PetMath.LookDirection(0, 0));
+            });
+            Test("cursor diagonals wrap evenly", delegate {
+                Equal(1, PetMath.LookDirection(38, -92));
+                Equal(3, PetMath.LookDirection(92, -38));
+                Equal(6, PetMath.LookDirection(70, 70));
+                Equal(10, PetMath.LookDirection(-70, 70));
+                Equal(13, PetMath.LookDirection(-92, -38));
+                Equal(15, PetMath.LookDirection(-38, -92));
+            });
+            Test("negative-coordinate monitor remains reachable", delegate {
+                Point p = PetMath.ClampPosition(-2500, 1200, 240, 260, new Rect(-1920, 0, 1920, 1040));
+                Equal(-1920.0, p.X); Equal(780.0, p.Y);
+                p = PetMath.ClampPosition(20, -5, 240, 260, new Rect(-1920, 0, 1920, 1040));
+                Equal(-240.0, p.X); Equal(0.0, p.Y);
+            });
+            Test("oversized pet still anchors inside a small monitor", delegate {
+                Point p = PetMath.ClampPosition(500, 500, 500, 500, new Rect(100, 20, 200, 200));
+                Equal(100.0, p.X); Equal(20.0, p.Y);
+            });
+            Test("short action returns to idle without stale frame", delegate {
+                AnimationPlayer player = new AnimationPlayer();
+                player.Play("jumping", 0.7); player.Advance(0.31);
+                Equal("jumping", player.State); Assert(player.Frame >= 1 && player.Frame < 5, "jump must animate");
+                player.Advance(0.6); Equal("idle", player.State); Equal(0, player.Frame);
+            });
+            Test("looped action advances within its row", delegate {
+                AnimationPlayer player = new AnimationPlayer();
+                player.Play("running-right", 0); player.Advance(0.36);
+                Equal("running-right", player.State); Equal(3, player.Frame);
+                player.Advance(2.0); Assert(player.Frame >= 0 && player.Frame < 8, "frame wrapped");
+            });
+            Test("invalid action fails without corrupting animation", delegate {
+                AnimationPlayer player = new AnimationPlayer();
+                try { player.Play("missing", 1); throw new Exception("missing action accepted"); }
+                catch (ArgumentException) { }
+                Equal("idle", player.State);
+            });
+            Test("successful context bounds by complete turns", delegate {
+                ConversationLog log = new ConversationLog();
+                for (int i = 0; i < 12; i++) log.Commit("u" + i, "a" + i);
+                Equal(20, log.Messages.Count); Equal("u2", log.Messages[0].Content);
+                var request = log.ForRequest("persona", "new question");
+                Equal(22, request.Count); Equal("system", request[0].Role); Equal("new question", request[21].Content);
+                Equal(20, log.Messages.Count); log.Clear(); Equal(0, log.Messages.Count);
+            });
+            Test("settings persist without plaintext secrets", delegate {
+                string path = Temp("settings.json");
+                SettingsStore store = new SettingsStore(path);
+                PetSettings settings = new PetSettings();
+                settings.Text.ApiKey = "test-secret-only";
+                settings.Text.BaseUrl = "https://example.com/v1";
+                settings.Text.Model = "custom-model"; settings.Volume = 35; settings.Scale = 1.5;
+                store.Save(settings);
+                Assert(!File.ReadAllText(path).Contains("test-secret-only"), "secret is stored in plaintext");
+                PetSettings loaded = store.Load(); Equal("test-secret-only", loaded.Text.ApiKey);
+                Equal("custom-model", loaded.Text.Model); Equal(35, loaded.Volume); Equal(1.5, loaded.Scale);
+            });
+            Test("damaged configuration is preserved with safe defaults", delegate {
+                string path = Temp("broken.json"); File.WriteAllText(path, "{ invalid configuration");
+                SettingsStore store = new SettingsStore(path); PetSettings loaded = store.Load();
+                Equal(1.25, loaded.Scale); Equal(50, loaded.Volume); Assert(!loaded.Wander, "wander starts disabled");
+                Assert(Directory.GetFiles(Path.GetDirectoryName(path), "broken.json.invalid-*").Length == 1, "broken file was not preserved");
+                Assert(!String.IsNullOrEmpty(store.Warning), "missing configuration warning");
+            });
+            Test("unsafe numeric settings normalize", delegate {
+                PetSettings settings = new PetSettings(); settings.Scale = Double.NaN; settings.Volume = 500;
+                settings.X = Double.PositiveInfinity; settings.Y = -400; settings.Normalize();
+                Equal(1.25, settings.Scale); Equal(100, settings.Volume); Assert(!settings.X.HasValue, "bad position retained");
+                Equal(-400.0, settings.Y.Value);
+            });
+            Test("legacy settings cannot redirect the official update repository", delegate {
+                PetSettings settings = new PetSettings { RepositoryUrl = "https://github.com/other-owner/other-repo" };
+                settings.Normalize(); Equal("https://github.com/Eason4869/dafeiyu-deskpet", settings.RepositoryUrl);
+            });
+            Console.WriteLine("Core tests: " + passed + " passed, " + failed + " failed");
+            return failed == 0 ? 0 : 1;
+        }
+        private static string Temp(string name)
+        {
+            string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "test-data", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder); return Path.Combine(folder, name);
+        }
+        private static void Test(string name, Action run)
+        {
+            try { run(); passed++; Console.WriteLine("PASS " + name); }
+            catch (Exception e) { failed++; Console.WriteLine("FAIL " + name + ": " + e.Message); }
+        }
+        private static void Assert(bool value, string message) { if (!value) throw new Exception(message); }
+        private static void Equal<T>(T expected, T actual) { if (!Object.Equals(expected, actual)) throw new Exception("Expected " + expected + ", got " + actual); }
+    }
+}

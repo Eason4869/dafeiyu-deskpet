@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "桌面伙伴外观 v1",
+  "type": "object",
+  "required": ["version", "name", "atlas"],
+  "properties": {
+    "version": {"const": 1},
+    "name": {"type": "string", "minLength": 1, "maxLength": 32},
+    "atlas": {"type": "string", "description": "同文件夹内的透明 PNG 文件名，不含路径", "pattern": "^[^/\\\\:]+\\.png$"},
+    "description": {"type": "string", "maxLength": 1000},
+    "system_prompt": {"type": "string", "maxLength": 8000, "description": "此桌宠的预设人格，缺省时生成通用设定"}
+  }
+}

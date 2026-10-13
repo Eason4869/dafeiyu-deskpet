@@ -1,0 +1,10 @@
+work/
+bin/
+obj/
+data/
+*.user
+*.tmp
+.superpowers/
+docs/superpowers/
+__pycache__/
+*.pyc

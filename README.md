@@ -41,7 +41,7 @@
 
 ## 想聊的时候再接入模型
 
-设置 → **对话模型**，选择服务预设或手动填写地址、模型与密钥，再点“保存服务设置”。支持 **OpenAI Chat Completions** 和 **Anthropic Messages**。
+设置 → **对话模型**，选择服务预设或手动填写地址、模型与密钥，再点“保存服务设置”。支持 **OpenAI Chat Completions** 和 **Anthropic Messages**。模型、ASR、TTS 与 Live 各有代理开关和可编辑地址，默认 `127.0.0.1:7890`；修改地址后保存即可，关闭开关时直接连接。
 
 预设包括 OpenAI/ChatGPT、Gemini、DeepSeek、MiMo、火山、Kimi、MiniMax、智谱、千问与 Claude。预设提供填表示例，实际可用模型和权限以你的账号为准；每项服务可独立选择本机 HTTP 代理 **127.0.0.1:7890**。
 
@@ -75,7 +75,7 @@ ASR 与 TTS 可分别配置，或复用文字服务的地址、密钥和代理�
 
 ## 更新、升级与个人数据
 
-“关于与更新”中的仓库地址固定为 [Eason4869/dafeiyu-deskpet](https://github.com/Eason4869/dafeiyu-deskpet)，点击用默认浏览器打开，也可复制。更新查询公开 GitHub Releases，优先下载 EXE/MSI 安装包，兼容 ZIP；显示进度、可取消，检查附件大小和 GitHub 提供的 SHA256 摘要。
+“关于与更新”中的仓库地址固定为 [Eason4869/dafeiyu-deskpet](https://github.com/Eason4869/dafeiyu-deskpet)，点击用默认浏览器打开，也可复制。更新有独立代理开关，代理地址默认 `127.0.0.1:7890`，可编辑并在移开焦点后保存。更新查询公开 GitHub Releases，优先下载 EXE/MSI 安装包，兼容 ZIP；显示进度、可取消，检查附件大小和 GitHub 提供的 SHA256 摘要。
 
 ![关于与更新](previews/about.png)
 
@@ -93,9 +93,9 @@ python .\Package.py
 .\BuildInstaller.ps1 -Compiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
-构建依赖 Windows 的 .NET Framework 4.8 编译器与 WPF、Python/Pillow，以及 Inno Setup 6.7 或更新版本。构建产物位于源码目录同级的 `outputs`，EXE 已嵌入两套外观。`PrepareAssets.py` 为原图导出的辅助脚本，普通构建不需要重新生成素材。
+构建依赖 Windows 的 .NET Framework 4.8 编译器与 WPF、Python/Pillow，以及 Inno Setup 6.7 或更新版本。构建产物位于源码目录同级的 `outputs`，EXE 已嵌入两套外观。安装包编译成功后，`BuildInstaller.ps1` 自动刷新其 SHA256 清单条目。修改源码后按上述顺序重新构建全部产物。`PrepareAssets.py` 为原图导出的辅助脚本，普通构建不需要重新生成素材。
 
-常规检查使用 `Build.ps1 -Target CoreTests`、`ProfileTests`、`ApiTests`、`ConversationTests`、`LiveTests`、`UpdateTests` 和 `StartupTests`。本机界面及硬件验证另有 `ReleaseUiSmoke`、`ChatSmoke`、`UiSmoke`、`AudioSmoke`、`tests/NativeSmoke.py` 与 `tests/InstallerSmoke.py`；`tests/PackagingSmoke.py` 验证源码独立打包。硬件和安装检查请在独立测试环境执行。
+常规检查使用 `Build.ps1 -Target CoreTests`、`ProfileTests`、`ApiTests`、`ConversationTests`、`LiveTests`、`UpdateTests`、`StartupTests` 和 `ProxyTests`。本机界面及硬件验证另有 `ReleaseUiSmoke`、`ChatSmoke`、`UiSmoke`、`AudioSmoke`、`tests/NativeSmoke.py` 与 `tests/InstallerSmoke.py`；`tests/PackagingSmoke.py` 验证源码独立编译及打包，增加 `--compiler <ISCC.exe>` 可验证完整安装包与 SHA256 清单。硬件和安装检查请在独立测试环境执行。
 
 ## 验证与来源
 

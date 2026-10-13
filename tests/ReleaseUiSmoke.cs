@@ -25,7 +25,11 @@ namespace Dafeiyu.Tests
                 Check(repository!=null && repository.Inlines.OfType<Hyperlink>().Any(link=>link.NavigateUri.AbsoluteUri=="https://github.com/Eason4869/dafeiyu-deskpet"),"repository is a fixed clickable hyperlink");
                 Check(Find<TextBox>(settings,"RepositoryUrl")==null && Find<Button>(settings,"SaveRepository")==null,"repository has no edit or save controls");
                 Check(!Find<Button>(settings,"DownloadUpdate").IsEnabled,"download waits for an explicit successful version check");
-                Check(All<TextBlock>(settings).Any(item=>item.Text.Contains("彧晟Eason")),"author attribution is present");Save(settings,Path.Combine(folder,"about.png"));
+                Check(All<TextBlock>(settings).Any(item=>item.Text.Contains("彧晟Eason")),"author attribution is present");
+                var updateProxy=Find<TextBox>(settings,"UpdateProxyAddress");Check(updateProxy!=null && updateProxy.IsEnabled && updateProxy.Text=="127.0.0.1:7890","update proxy is editable and defaults to 127.0.0.1:7890");
+                updateProxy.Text="localhost:17894";updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Check(pet.Store.Load().UpdateProxyAddress=="localhost:17894","edited update proxy persists through the settings UI");
+                updateProxy.Text="socks5://localhost:17894";updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Check(pet.Store.Load().UpdateProxyAddress=="localhost:17894" && Find<TextBlock>(settings,"UpdateStatus").Text.Contains("HTTP 代理"),"invalid update proxy shows a clear error without overwriting the saved address");
+                updateProxy.Text=ProxyConfiguration.DefaultAddress;updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Save(settings,Path.Combine(folder,"about.png"));
                 Console.WriteLine("Release UI: "+passed+" passed, "+failed+" failed");return failed==0?0:1;
             }
             finally{pet.Close();app.Shutdown();}

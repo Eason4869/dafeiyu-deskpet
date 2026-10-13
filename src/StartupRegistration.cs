@@ -23,7 +23,7 @@ namespace Dafeiyu
         public void SetEnabled(bool enabled)
         {
             if(enabled){using(var key=Registry.CurrentUser.CreateSubKey(keyPath)){if(key==null)throw new UnauthorizedAccessException();key.SetValue(valueName,Command,RegistryValueKind.String);}}
-            else{using(var key=Registry.CurrentUser.OpenSubKey(keyPath,true)){if(key!=null)key.DeleteValue(valueName,false);}}
+            else{using(var key=Registry.CurrentUser.OpenSubKey(keyPath,true)){if(key!=null && String.Equals(key.GetValue(valueName,null,RegistryValueOptions.DoNotExpandEnvironmentNames) as string,Command,StringComparison.OrdinalIgnoreCase))key.DeleteValue(valueName,false);}}
         }
     }
 }

@@ -23,21 +23,17 @@ namespace Dafeiyu
     }
     public sealed class ApiClient : IConversationApi
     {
-        private readonly HttpClient http,proxyHttp;
+        private readonly HttpClient http;
         private readonly TimeSpan requestTimeout;
         private const int MaxJsonBytes = 2 * 1024 * 1024;
         public ApiClient() : this(TimeSpan.FromSeconds(120)) { }
-        public ApiClient(TimeSpan timeout) : this(timeout,new Uri("http://127.0.0.1:7890")) { }
-        public ApiClient(TimeSpan timeout,Uri localProxy)
+        public ApiClient(TimeSpan timeout)
         {
             if(timeout<=TimeSpan.Zero) throw new ArgumentOutOfRangeException("timeout");
-            if(localProxy==null || !localProxy.IsLoopback || localProxy.Scheme!="http" || localProxy.UserInfo.Length>0 || localProxy.Query.Length>0)throw new ArgumentException("Proxy must be a local HTTP endpoint.");
             requestTimeout=timeout;
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy=false });
-            proxyHttp = new HttpClient(new HttpClientHandler { AllowAutoRedirect=false,UseProxy=true,Proxy=new WebProxy(localProxy,false) });
             http.Timeout = Timeout.InfiniteTimeSpan;
-            proxyHttp.Timeout = Timeout.InfiniteTimeSpan;
         }
         public static bool IsMiMo(ConnectionSettings settings) { return settings.Protocol=="mimo" || ((String.IsNullOrEmpty(settings.Protocol) || settings.Protocol=="auto") && (settings.Model ?? "").StartsWith("mimo-",StringComparison.OrdinalIgnoreCase)); }
         public static string ChatPath(ConnectionSettings settings) { return settings.Protocol=="anthropic" ? "messages" : "chat/completions"; }
@@ -182,6 +178,7 @@ namespace Dafeiyu
         private static bool Malformed(Exception e) { return e is ArgumentException || e is InvalidCastException || e is KeyNotFoundException || e is FormatException || e is IndexOutOfRangeException || e is NullReferenceException; }
         private async Task<byte[]> SendAsync(ConnectionSettings settings,HttpRequestMessage request, int maximum, CancellationToken cancel)
         {
+            using(var proxyHttp=settings.UseProxy?ProxyConfiguration.CreateHttpClient(settings.ProxyAddress,false):null)
             using(var bounded=CancellationTokenSource.CreateLinkedTokenSource(cancel))
             {
             bounded.CancelAfter(requestTimeout); CancellationToken token=bounded.Token;
@@ -223,10 +220,10 @@ namespace Dafeiyu
                 if(!(e is HttpRequestException || e is IOException || e is ObjectDisposedException)) throw;
                 if(cancel.IsCancellationRequested) throw new OperationCanceledException(cancel);
                 if(token.IsCancellationRequested) throw new ApiException("请求超时，可以重试或缩短本次提问。");
-                throw new ApiException(e is HttpRequestException ? (settings.UseProxy ? "无法经 127.0.0.1:7890 连接服务，请检查代理是否运行。" : "无法连接此服务，请检查地址及网络；需要代理时请在服务设置中开启。") : "连接中断，请稍后重试。");
+                throw new ApiException(e is HttpRequestException ? (settings.UseProxy ? "无法通过已配置的代理连接服务，请检查代理地址及代理是否运行。" : "无法连接此服务，请检查地址及网络；需要代理时请在服务设置中开启。") : "连接中断，请稍后重试。");
             }
             }
         }
-        public void Dispose() { http.Dispose(); proxyHttp.Dispose(); }
+        public void Dispose() { http.Dispose(); }
     }
 }

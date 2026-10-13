@@ -50,7 +50,7 @@ namespace Dafeiyu
         void ShowError(Exception e){notice.Text=e is OperationCanceledException?"朗读已停止。":e is ApiException || e is InvalidOperationException?e.Message:e is CryptographicException?"当前 Windows 用户无法加密密钥。":"设置或朗读未完成，请检查配置与输出设备。";}
         sealed class ConnectionEditor : StackPanel
         {
-            readonly TextBox address,model;readonly PasswordBox key;readonly ComboBox protocol;readonly CheckBox proxy;readonly string kind;readonly TextBlock hint;
+            readonly TextBox address,model,proxyAddress;readonly PasswordBox key;readonly ComboBox protocol;readonly CheckBox proxy;readonly string kind;readonly TextBlock hint;
             public ConnectionEditor(string title,string prefix,string serviceKind,ConnectionSettings settings)
             {
                 kind=serviceKind;var heading=Ui.Text(title,25);heading.FontWeight=FontWeights.SemiBold;Children.Add(heading);Children.Add(Ui.Text(kind=="text" ? "选择常用服务，或接入自己的兼容接口。" : kind=="live" ? "边说边听，支持字幕与语音打断。" : kind=="asr" ? "把录音转成文字，再交给当前对话模型。" : "给伙伴选一副声音。",12,Ui.Muted));
@@ -58,7 +58,8 @@ namespace Dafeiyu
                 key=new PasswordBox{Name=prefix+"Key",Password=settings.ApiKey,MinHeight=38,Padding=new Thickness(10,7,10,7),BorderBrush=Ui.Line,Background=Brushes.White};
                 protocol=new ComboBox{Name=prefix+"Protocol",ItemsSource=kind=="text" ? new[]{"OpenAI Chat Completions","Anthropic Messages"} : kind=="live" ? new[]{"Gemini Live WebSocket"} : new[]{"自动识别（MiMo 模型使用 MiMo 协议）","OpenAI Audio","MiMo Chat Audio"},MinHeight=38,Padding=new Thickness(8)};
                 protocol.SelectedIndex=kind=="text" ? (settings.Protocol=="anthropic"?1:0) : kind=="live"?0:settings.Protocol=="mimo"?2:settings.Protocol=="openai"?1:0;
-                proxy=Ui.Toggle("通过本机代理 127.0.0.1:7890 连接",settings.UseProxy,v=>{});proxy.Name=prefix+"Proxy";
+                proxy=Ui.Toggle("使用代理连接",settings.UseProxy,v=>{});proxy.Name=prefix+"Proxy";
+                proxyAddress=Ui.Field(ProxyConfiguration.Normalize(settings.ProxyAddress));proxyAddress.Name=prefix+"ProxyAddress";
                 var presets=new ComboBox{Name=prefix+"Preset",ItemsSource=ServicePresets.For(kind),SelectedIndex=0,MinHeight=38,Padding=new Thickness(8)};Ui.Label(this,"服务预设",presets);
                 hint=Ui.Text("可修改地址和模型。切换到其他服务域名时会清空密钥。",11,Ui.Muted);hint.Margin=new Thickness(0,7,0,3);Children.Add(hint);
                 string keyOrigin=address.Text;
@@ -66,9 +67,10 @@ namespace Dafeiyu
                 address.TextChanged+=delegate {if(key.Password.Length>0 && !ServicePresets.SameOrigin(keyOrigin,address.Text)){key.Clear();hint.Text="服务地址已改变，请填写该服务的 API 密钥。";}};
                 presets.SelectionChanged+=delegate {var preset=presets.SelectedItem as ServicePreset;if(preset==null || preset.Url.Length==0)return;if(!ServicePresets.SameOrigin(address.Text,preset.Url))key.Clear();address.Text=preset.Url;model.Text=preset.Model;protocol.SelectedIndex=kind=="text"?(preset.Protocol=="anthropic"?1:0):kind=="live"?0:preset.Protocol=="mimo"?2:1;hint.Text=preset.Note.Length==0 ? "已填入示例模型，请确认账号可用。" : preset.Note;};
                 Ui.Label(this,"接口协议",protocol);Ui.Label(this,kind=="live"?"完整 WSS 地址":"服务地址（保留 /v1 等前缀）",address);Ui.Label(this,"模型名称",model);Ui.Label(this,"API 密钥",key);Children.Add(proxy);
+                Ui.Label(this,"代理地址",proxyAddress);Children.Add(Ui.Text("默认 127.0.0.1:7890，可修改 HTTP 代理的地址或端口。\n仅勾选“使用代理连接”时生效。",11,Ui.Muted));
             }
-            public ConnectionSettings Read(){return new ConnectionSettings{BaseUrl=address.Text.Trim(),Model=model.Text.Trim(),ApiKey=key.Password.Trim(),Protocol=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto",UseProxy=proxy.IsChecked==true};}
-            public void SetAddressEnabled(bool value){address.IsEnabled=value;key.IsEnabled=value;proxy.IsEnabled=value;}
+            public ConnectionSettings Read(){string selectedProxy=ProxyConfiguration.Normalize(proxyAddress.Text);if(proxyAddress.IsEnabled)ProxyConfiguration.Endpoint(selectedProxy);return new ConnectionSettings{BaseUrl=address.Text.Trim(),Model=model.Text.Trim(),ApiKey=key.Password.Trim(),Protocol=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto",UseProxy=proxy.IsChecked==true,ProxyAddress=selectedProxy};}
+            public void SetAddressEnabled(bool value){address.IsEnabled=value;key.IsEnabled=value;proxy.IsEnabled=value;proxyAddress.IsEnabled=value;}
             public void SetFieldsEnabled(bool value){SetAddressEnabled(value);model.IsEnabled=value;protocol.IsEnabled=value;}
         }
     }

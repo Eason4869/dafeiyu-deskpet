@@ -16,7 +16,8 @@ namespace Dafeiyu
         [DataMember] public string EncryptedKey { get; set; }
         [DataMember] public string Protocol { get; set; }
         [DataMember] public bool UseProxy { get; set; }
-        public ConnectionSettings() { BaseUrl = ""; Model = ""; EncryptedKey = ""; Protocol = "auto"; }
+        [DataMember] public string ProxyAddress { get; set; }
+        public ConnectionSettings() { BaseUrl = ""; Model = ""; EncryptedKey = ""; Protocol = "auto"; ProxyAddress=ProxyConfiguration.DefaultAddress; }
         public string ApiKey
         {
             get
@@ -34,9 +35,9 @@ namespace Dafeiyu
         }
         public ConnectionSettings Copy()
         {
-            return new ConnectionSettings { BaseUrl = BaseUrl, Model = Model, EncryptedKey = EncryptedKey, Protocol = Protocol, UseProxy = UseProxy };
+            return new ConnectionSettings { BaseUrl = BaseUrl, Model = Model, EncryptedKey = EncryptedKey, Protocol = Protocol, UseProxy = UseProxy, ProxyAddress=ProxyAddress };
         }
-        public void Normalize() { BaseUrl = (BaseUrl ?? "").Trim(); Model = (Model ?? "").Trim(); EncryptedKey = EncryptedKey ?? ""; Protocol = String.IsNullOrWhiteSpace(Protocol) ? "auto" : Protocol; }
+        public void Normalize() { BaseUrl = (BaseUrl ?? "").Trim(); Model = (Model ?? "").Trim(); EncryptedKey = EncryptedKey ?? ""; Protocol = String.IsNullOrWhiteSpace(Protocol) ? "auto" : Protocol; ProxyAddress=ProxyConfiguration.Normalize(ProxyAddress); }
     }
 
     [DataContract]
@@ -61,6 +62,7 @@ namespace Dafeiyu
         [DataMember] public int PersonaProfileVersion { get; set; }
         [DataMember] public string RepositoryUrl { get; set; }
         [DataMember] public bool UpdateUseProxy { get; set; }
+        [DataMember] public string UpdateProxyAddress { get; set; }
         [DataMember] public string VoiceName { get; set; }
         [DataMember] public string SystemPrompt { get; set; }
         [DataMember] public ConnectionSettings Text { get; set; }
@@ -77,6 +79,7 @@ namespace Dafeiyu
             Live = new ConnectionSettings { BaseUrl="wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", Model="gemini-3.8-live", Protocol="gemini-live" };
             VoiceMode="pipeline"; LiveVoice="Kore"; PersonaOverrides=new Dictionary<string,string>();
             RepositoryUrl=ReleaseInfo.RepositoryUrl;
+            UpdateProxyAddress=ProxyConfiguration.DefaultAddress;
             SystemPrompt = "你是{pet_name}，一位温和、俏皮的桌面伙伴。用自然的中文与用户对话，帮助写代码、做设计和整理思路。回答清楚简洁，如实表达不确定性。你不能直接看见用户桌面，也不会自动读取文件。";
         }
         public void Normalize()
@@ -90,6 +93,7 @@ namespace Dafeiyu
             Live=Live ?? new ConnectionSettings(); Live.Normalize(); PersonaOverrides=PersonaOverrides ?? new Dictionary<string,string>();
             VoiceMode=VoiceMode=="live" ? "live" : "pipeline"; LiveVoice=String.IsNullOrWhiteSpace(LiveVoice) ? "Kore" : LiveVoice.Trim();
             RepositoryUrl=ReleaseInfo.RepositoryUrl;
+            UpdateProxyAddress=ProxyConfiguration.Normalize(UpdateProxyAddress);
             // Older MiMo configurations reused the text endpoint only for ASR.
             if(PersonaProfileVersion==0 && Speech.Model.StartsWith("mimo-",StringComparison.OrdinalIgnoreCase) && String.IsNullOrWhiteSpace(Speech.BaseUrl) && String.IsNullOrEmpty(Speech.EncryptedKey)) SpeechUsesTextService=true;
             VoiceName = (VoiceName ?? "").Trim(); SystemPrompt = SystemPrompt ?? "";
@@ -98,13 +102,13 @@ namespace Dafeiyu
         public ConnectionSettings TranscriptionConnection()
         {
             var copy = Transcription.Copy();
-            if (VoiceUsesTextService) { copy.BaseUrl = Text.BaseUrl; copy.EncryptedKey = Text.EncryptedKey; copy.UseProxy=Text.UseProxy; }
+            if (VoiceUsesTextService) { copy.BaseUrl = Text.BaseUrl; copy.EncryptedKey = Text.EncryptedKey; copy.UseProxy=Text.UseProxy; copy.ProxyAddress=Text.ProxyAddress; }
             return copy;
         }
         public ConnectionSettings SpeechConnection()
         {
             var copy=Speech.Copy();
-            if(SpeechUsesTextService) { copy.BaseUrl=Text.BaseUrl; copy.EncryptedKey=Text.EncryptedKey; copy.UseProxy=Text.UseProxy; }
+            if(SpeechUsesTextService) { copy.BaseUrl=Text.BaseUrl; copy.EncryptedKey=Text.EncryptedKey; copy.UseProxy=Text.UseProxy; copy.ProxyAddress=Text.ProxyAddress; }
             return copy;
         }
         public PetSettings Copy()
@@ -112,7 +116,7 @@ namespace Dafeiyu
             return new PetSettings { Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,
-                PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
+                PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
         }
     }
 

@@ -1,5 +1,7 @@
 """Build release archives from a fresh source tree with no local work directory."""
 from pathlib import Path
+import argparse
+import hashlib
 import re
 import shutil
 import subprocess
@@ -8,14 +10,19 @@ import uuid
 from zipfile import ZipFile
 
 PROJECT = Path(__file__).resolve().parents[1]
+arguments = argparse.ArgumentParser()
+arguments.add_argument('--compiler', help='Optional Inno ISCC.exe for full fresh installer verification')
+options = arguments.parse_args()
 root = PROJECT / 'work' / ('source-smoke-' + uuid.uuid4().hex)
 checkout = root / 'DafeiyuDeskPet'
 shutil.copytree(PROJECT, checkout, ignore=shutil.ignore_patterns(
     '.git', 'work', 'bin', 'obj', 'data', '__pycache__', '.superpowers', 'superpowers'))
 runtime = root / 'outputs' / 'DafeiyuDeskPet'
-runtime.mkdir(parents=True)
-for name in ['大肥鱼桌宠.exe', '大肥鱼桌宠.exe.config']:
-    shutil.copy2(PROJECT.parent / 'outputs' / 'DafeiyuDeskPet' / name, runtime / name)
+result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                         '-File', str(checkout / 'Build.ps1'), '-Target', 'App'],
+                        cwd=checkout, capture_output=True, timeout=60)
+assert result.returncode == 0, result.stdout.decode('utf-8', errors='replace') + result.stderr.decode('utf-8', errors='replace')
+print('PASS application compiles from the fresh public source tree')
 result = subprocess.run([sys.executable, str(checkout / 'Package.py')], cwd=checkout,
                         capture_output=True, text=True, encoding='utf-8', timeout=60)
 if result.returncode:
@@ -33,4 +40,22 @@ with ZipFile(root / 'outputs' / '大肥鱼桌宠-源码.zip') as bundle:
     assert not any(part in {'work', 'data', '.git', '.superpowers', 'superpowers'}
                    for name in bundle.namelist() for part in Path(name).parts)
 print('PASS source archive excludes private and local test files')
-print('Packaging smoke: 3 passed')
+with ZipFile(root / 'outputs' / '大肥鱼桌宠-源码.zip') as bundle:
+    for name in bundle.namelist():
+        assert bundle.read(name) == (root / name).read_bytes(), 'source archive differs: ' + name
+print('PASS source archive contains the exact public source files')
+if options.compiler:
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                             '-File', str(checkout / 'BuildInstaller.ps1'),
+                             '-Compiler', str(Path(options.compiler).resolve())],
+                            cwd=checkout, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stdout.decode('utf-8', errors='replace') + result.stderr.decode('utf-8', errors='replace')
+    print('PASS installer builds from the fresh public source tree')
+    manifest = (root / 'outputs' / 'SHA256.txt').read_text(encoding='utf-8-sig').splitlines()
+    installer_name = 'DafeiyuDeskPet-Setup-1.3.0.exe'
+    assert len([line for line in manifest if line.endswith('  ' + installer_name)]) == 1, 'installer must appear exactly once in the final manifest'
+    for line in manifest:
+        digest, name = line.split('  ', 1)
+        assert digest == hashlib.sha256((root / 'outputs' / name).read_bytes()).hexdigest(), 'stale digest: ' + name
+    print('PASS installer build leaves a complete matching SHA256 manifest')
+print('Packaging smoke:', 7 if options.compiler else 5, 'passed')

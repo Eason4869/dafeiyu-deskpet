@@ -16,8 +16,8 @@ namespace Dafeiyu.Tests
         public static int Main()
         {
             Run("proxy toggle actually routes HTTP through the selected local proxy",async delegate {
-                using(var proxy=new Fixture("",502))using(var api=new ApiClient(TimeSpan.FromSeconds(5),new Uri(proxy.Url)))
-                {var cfg=Connection("https://proxy-test.invalid/v1","chat");cfg.UseProxy=true;try{await api.ChatAsync(cfg,Messages(),CancellationToken.None);throw new Exception("fixture's rejected CONNECT accepted");}catch(ApiException){}await proxy.Done;Equal("proxy-test.invalid:443",proxy.Path);Assert(proxy.Headers.StartsWith("CONNECT ") && proxy.Authorization==null,"HTTPS did not reach the proxy tunnel or leaked auth before TLS");}
+                using(var proxy=new Fixture("",502))using(var api=new ApiClient(TimeSpan.FromSeconds(5)))
+                {var cfg=Connection("https://proxy-test.invalid/v1","chat");cfg.UseProxy=true;cfg.ProxyAddress=proxy.Url;try{await api.ChatAsync(cfg,Messages(),CancellationToken.None);throw new Exception("fixture's rejected CONNECT accepted");}catch(ApiException){}await proxy.Done;Equal("proxy-test.invalid:443",proxy.Path);Assert(proxy.Headers.StartsWith("CONNECT ") && proxy.Authorization==null,"HTTPS did not reach the proxy tunnel or leaked auth before TLS");}
             });
             Run("Anthropic separates system, authenticates and collects text blocks",async delegate {
                 using(var server=new Fixture("{\"content\":[{\"type\":\"thinking\",\"thinking\":\"private\"},{\"type\":\"text\",\"text\":\"你好\"},{\"type\":\"text\",\"text\":\"世界\"}]}"))using(var api=new ApiClient())

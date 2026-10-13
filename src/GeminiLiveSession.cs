@@ -29,7 +29,7 @@ namespace Dafeiyu
             return new Uri(uri.AbsoluteUri+(key.Length==0 ? "" : "?key="+Uri.EscapeDataString(key)));
         }
         public async Task ConnectAsync(ConnectionSettings settings,CancellationToken token)
-        {socket.Options.Proxy=settings.UseProxy ? new WebProxy("http://127.0.0.1:7890",false) : null;socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);await socket.ConnectAsync(Endpoint(settings),token).ConfigureAwait(false);}
+        {socket.Options.Proxy=settings.UseProxy ? new WebProxy(ProxyConfiguration.Endpoint(settings.ProxyAddress),false) : null;socket.Options.KeepAliveInterval=TimeSpan.FromSeconds(20);await socket.ConnectAsync(Endpoint(settings),token).ConfigureAwait(false);}
         public async Task SendTextAsync(string text,CancellationToken token)
         {
             await sendGate.WaitAsync(token).ConfigureAwait(false);

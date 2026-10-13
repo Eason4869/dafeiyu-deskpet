@@ -20,4 +20,16 @@ $definitions = @('/Qp',('/DRuntimeDir='+$runtimeRoot),('/DOutputDir='+$outputRoo
 & $Compiler @definitions (Join-Path $projectRoot 'installer\DeskPet.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 $installerPath = Join-Path $outputRoot ('DafeiyuDeskPet-Setup-'+$productVersion+'.exe')
+$manifestPath = Join-Path $outputRoot 'SHA256.txt'
+$installerName = [System.IO.Path]::GetFileName($installerPath)
+$manifestLines = @()
+if (Test-Path -LiteralPath $manifestPath) {
+    $manifestLines = @([System.IO.File]::ReadAllLines($manifestPath) | Where-Object { !$_.EndsWith('  '+$installerName,[System.StringComparison]::Ordinal) })
+}
+$installerStream = [System.IO.File]::OpenRead($installerPath)
+$installerHasher = [System.Security.Cryptography.SHA256]::Create()
+try { $installerDigest = [System.BitConverter]::ToString($installerHasher.ComputeHash($installerStream)).Replace('-','').ToLowerInvariant() }
+finally { $installerStream.Dispose(); $installerHasher.Dispose() }
+$manifestLines += $installerDigest+'  '+$installerName
+[System.IO.File]::WriteAllLines($manifestPath,$manifestLines,[System.Text.UTF8Encoding]::new($false))
 Get-Item -LiteralPath $installerPath | Select-Object FullName,Length

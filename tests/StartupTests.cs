@@ -21,6 +21,10 @@ namespace Dafeiyu.Tests
                 registration.SetEnabled(false);Check(!registration.IsEnabled,"disabling removes the pet entry");
                 using(var key=Registry.CurrentUser.OpenSubKey(root))Check((string)key.GetValue("OtherApp")=="preserve this value","disabling preserves other application values");
                 registration.SetEnabled(false);Check(!registration.IsEnabled,"disabling twice is safe");
+                string otherCommand="\""+Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"another copy","桌宠.exe")+"\" --startup";
+                using(var key=Registry.CurrentUser.OpenSubKey(root,true))key.SetValue("TestPet",otherCommand);
+                registration.SetEnabled(false);
+                using(var key=Registry.CurrentUser.OpenSubKey(root))Check((string)key.GetValue("TestPet")==otherCommand,"disabling preserves a different installation's autostart");
                 Console.WriteLine("Startup tests: "+passed+" passed");return 0;
             }
             catch(Exception e){Console.WriteLine("FAIL startup: "+e.Message);return 1;}

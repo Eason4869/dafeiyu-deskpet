@@ -35,6 +35,20 @@ namespace Dafeiyu.Tests
                 await session.StartAsync(local,"真实握手角色");mic.Emit(new byte[]{1,2,3,4});await Eventually(()=>output=="真实 WS 回复");
                 Check(server.Setup.Contains("真实握手角色") && server.Audio.Contains("audio/pcm;rate=16000") && speaker.Chunks==1,"actual WebSocket "+(binary?"binary":"text")+" JSON, UTF-8 fragments and bidirectional PCM work");await session.StopAsync();Check(mic.Disposed && speaker.Disposed,"actual WebSocket cancellation frees audio devices");session.Dispose();
             }
+            foreach(string ending in new[]{"interrupted","stopped"})
+            using(var server=new WebSocketFixture(false,ending))
+            using(var conversation=new ConversationSession(new NoopApi(),new NoopSpeech(),()=>null))
+            {
+                conversation.SelectPersona("e-bao");mic=new FakeMic();speaker=new FakeOutput();session=new GeminiLiveSession(()=>new GeminiLiveSocket(),()=>mic,()=>speaker);
+                // The legacy event must mean a successful pair to existing consumers.
+                int completed=0;session.TurnCompleted+=(a,b)=>completed++;
+                session.TurnCommitted+=(a,b,status)=>conversation.AddLiveTurn("e-bao",a,b,status);
+                var local=new PetSettings {Live=new ConnectionSettings{BaseUrl=server.Url,Model="live-test",ApiKey="dummy-key"}};
+                await session.StartAsync(local,"部分回复角色");mic.Emit(new byte[]{1,2,3,4});await Eventually(()=>speaker.Chunks==1);
+                if(ending=="interrupted")await Eventually(()=>speaker.Interruptions==1);
+                await session.StopAsync();Check(completed==0 && conversation.History.ForRequest("","next").Count==1,"actual WebSocket "+ending+" partial is never advertised as a successful legacy turn");
+                Check(conversation.History.Messages.Count==2 && conversation.History.Messages[1].Content=="真实 WS 回复" && conversation.History.Messages[1].Status==(ending=="interrupted"?"interrupted":"cancelled") && conversation.History.Messages[1].Source=="live","actual WebSocket "+ending+" subtitles retain their incomplete status in history exactly once");session.Dispose();
+            }
             foreach(string url in new[]{"ws://example.com/live","wss://user:pass@example.com/live","wss://example.com/live?key=secret"})
             {try{GeminiLiveSocket.Endpoint(new ConnectionSettings{BaseUrl=url,Model="live",ApiKey="dummy-key"});throw new Exception("unsafe Live URL accepted");}catch(ApiException){passed++;}}
         }
@@ -53,10 +67,19 @@ namespace Dafeiyu.Tests
         {public event Action<byte[]> PcmAvailable;public event Action<string> Failed;public bool Started,Disposed;public void Start(){Started=true;}public void Emit(byte[] bytes){PcmAvailable(bytes);}public void Dispose(){Disposed=true;}}
         sealed class FakeOutput : ILiveAudioOutput
         {public int Chunks,Rate,Volume,Interruptions;public bool Disposed;public void Enqueue(byte[] bytes,int rate){Chunks++;Rate=rate;}public void Interrupt(){Interruptions++;}public void SetVolume(int value){Volume=value;}public void Dispose(){Disposed=true;}}
+        sealed class NoopApi:IConversationApi
+        {
+            public Task<string> ChatAsync(ConnectionSettings c,IList<ChatMessage> messages,CancellationToken token){return Task.FromResult("unused");}
+            public Task<string> TranscribeAsync(ConnectionSettings c,byte[] wav,CancellationToken token){return Task.FromResult("unused");}
+            public Task<byte[]> SpeechAsync(ConnectionSettings c,string voice,string text,CancellationToken token){return Task.FromResult(new byte[0]);}
+            public void Dispose(){}
+        }
+        sealed class NoopSpeech:IReplySpeech
+        {public Task SpeakAsync(string reply,PetSettings settings,CancellationToken token){return Task.FromResult(0);}public void SetVolume(int volume){}public void Stop(){}public void Dispose(){} }
         internal sealed class WebSocketFixture : IDisposable
         {
-            readonly System.Net.Sockets.TcpListener listener;System.Net.Sockets.TcpClient client;public string Url,Setup,Audio;readonly Task work;readonly int opcode;
-            public WebSocketFixture(bool binary=false){opcode=binary?2:1;listener=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,0);listener.Start();Url="ws://127.0.0.1:"+((System.Net.IPEndPoint)listener.LocalEndpoint).Port+"/live";work=Task.Run((Func<Task>)Serve);}
+            readonly System.Net.Sockets.TcpListener listener;System.Net.Sockets.TcpClient client;public string Url,Setup,Audio;readonly Task work;readonly int opcode;readonly string ending;
+            public WebSocketFixture(bool binary=false,string terminal="complete"){ending=terminal;opcode=binary?2:1;listener=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,0);listener.Start();Url="ws://127.0.0.1:"+((System.Net.IPEndPoint)listener.LocalEndpoint).Port+"/live";work=Task.Run((Func<Task>)Serve);}
             async Task Serve()
             {
                 try
@@ -68,7 +91,9 @@ namespace Dafeiyu.Tests
                         string accept;using(var sha=System.Security.Cryptography.SHA1.Create())accept=Convert.ToBase64String(sha.ComputeHash(System.Text.Encoding.ASCII.GetBytes(key+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
                         byte[] response=System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+accept+"\r\n\r\n");await stream.WriteAsync(response,0,response.Length);Setup=await ReadFrame(stream);
                         byte[] setup=System.Text.Encoding.UTF8.GetBytes("{\"setupComplete\":{},\"note\":\"鱼\"}");int split=setup.Length-(opcode==2?4:3);await Frame(stream,opcode,false,setup,0,split);await Frame(stream,0,true,setup,split,setup.Length-split);
-                        Audio=await ReadFrame(stream);byte[] turn=System.Text.Encoding.UTF8.GetBytes("{\"serverContent\":{\"inputTranscription\":{\"text\":\"真实麦克风输入\"},\"outputTranscription\":{\"text\":\"真实 WS 回复\"},\"modelTurn\":{\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/pcm;rate=24000\",\"data\":\"AQIDBA==\"}}]},\"turnComplete\":true}}");await Frame(stream,opcode,true,turn,0,turn.Length);byte[] buffer=new byte[8192];while(await stream.ReadAsync(buffer,0,buffer.Length)>0){}
+                        Audio=await ReadFrame(stream);string body="{\"serverContent\":{\"inputTranscription\":{\"text\":\"真实麦克风输入\"},\"outputTranscription\":{\"text\":\"真实 WS 回复\"},\"modelTurn\":{\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/pcm;rate=24000\",\"data\":\"AQIDBA==\"}}]}"+(ending=="complete"?",\"turnComplete\":true":"")+"}}";byte[] turn=System.Text.Encoding.UTF8.GetBytes(body);await Frame(stream,opcode,true,turn,0,turn.Length);
+                        if(ending=="interrupted"){byte[] interrupt=System.Text.Encoding.UTF8.GetBytes("{\"serverContent\":{\"interrupted\":true}}");await Frame(stream,opcode,true,interrupt,0,interrupt.Length);}
+                        byte[] buffer=new byte[8192];while(await stream.ReadAsync(buffer,0,buffer.Length)>0){}
                     }
                 }
                 catch(System.IO.IOException){}catch(System.Net.Sockets.SocketException){}catch(ObjectDisposedException){}

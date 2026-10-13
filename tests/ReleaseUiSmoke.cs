@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -29,7 +29,7 @@ namespace Dafeiyu.Tests
                 Find<Button>(settings,"PreviewGreeting").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();var bubble=app.Windows.OfType<GreetingBubbleWindow>().Single();Check(bubble.IsVisible && !bubble.ShowActivated && settings.IsActive,"greeting preview appears without stealing focus");Save(bubble,Path.Combine(folder,"greeting.png"));
                 settings.Close();
                 var fullscreen=new Window{Title="DeskPet fullscreen test",WindowStyle=WindowStyle.None,WindowState=WindowState.Maximized,ShowInTaskbar=false,Topmost=true,Background=Brushes.White};
-                try{fullscreen.Show();fullscreen.Activate();Pump(1.3);Check(DesktopInterop.ForegroundIsFullScreen(),"fullscreen fixture covers its monitor");Check(!bubble.IsVisible,"an existing greeting is dismissed when fullscreen begins");}finally{fullscreen.Close();}
+                try{fullscreen.Show();fullscreen.Activate();Pump(1.3);Check(DesktopInterop.ForegroundIsFullScreen(),"fullscreen fixture covers its monitor");Check(bubble.IsVisible && !pet.AutoHidden,"own fullscreen window does not hide companion or greeting");}finally{fullscreen.Close();}
                 pet.PreviewGreeting();Pump();
                 Find<Button>(bubble,"GreetingQuickChat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(!bubble.IsVisible && app.Windows.OfType<QuickChatWindow>().Any(w=>w.IsVisible),"greeting opens quick chat when clicked");foreach(var quick in app.Windows.OfType<QuickChatWindow>().ToArray())quick.Close();
                 pet.ShowSettings();Pump();settings=app.Windows.OfType<SettingsWindow>().Single();settings.SelectPage(6);Pump();var repository=Find<TextBlock>(settings,"RepositoryUrl");

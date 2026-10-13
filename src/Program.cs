@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
 using System.Security.Principal;
@@ -7,7 +7,9 @@ using System.Windows;
 
 [assembly: AssemblyTitle(Dafeiyu.ReleaseInfo.ProductName)]
 [assembly: AssemblyProduct(Dafeiyu.ReleaseInfo.ProductName)]
-[assembly: AssemblyDescription("高清 Windows 桌面伙伴，外观导入与文字、语音对话")]
+[assembly: AssemblyDescription("桌面伙伴：E包、大肥鱼、马尔芙；聊天历史、流式回复、语音对话与免打扰")]
+[assembly: AssemblyCompany(Dafeiyu.ReleaseInfo.Author)]
+[assembly: AssemblyCopyright("Copyright © 2026 彧晟Eason")]
 [assembly: AssemblyVersion(Dafeiyu.ReleaseInfo.AssemblyVersion)]
 [assembly: AssemblyFileVersion(Dafeiyu.ReleaseInfo.AssemblyVersion)]
 

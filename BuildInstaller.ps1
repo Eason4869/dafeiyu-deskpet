@@ -1,8 +1,9 @@
-﻿param([string]$Compiler = '')
+﻿param([string]$Compiler = '', [string]$OutputDirectory = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
-$runtimeRoot = Join-Path (Split-Path $projectRoot -Parent) 'outputs\DafeiyuDeskPet'
-$outputRoot = Split-Path $runtimeRoot -Parent
+$outputRoot = Join-Path (Split-Path $projectRoot -Parent) 'outputs'
+if ($OutputDirectory) { $outputRoot = [IO.Path]::GetFullPath($OutputDirectory) }
+$runtimeRoot = Join-Path $outputRoot 'DafeiyuDeskPet'
 $releaseSource = Get-Content -LiteralPath (Join-Path $projectRoot 'src\ReleaseInfo.cs') -Raw -Encoding UTF8
 $productVersion = [regex]::Match($releaseSource, 'DisplayVersion="([^"]+)"').Groups[1].Value
 $assemblyVersion = [regex]::Match($releaseSource, 'AssemblyVersion="([^"]+)"').Groups[1].Value

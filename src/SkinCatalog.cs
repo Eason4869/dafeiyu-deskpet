@@ -22,6 +22,7 @@ namespace Dafeiyu
     }
     public sealed class SkinDefinition
     {
+        private static readonly int[] MarfuRightStride={0,2,3,2,4,2,6,2};
         public string Id { get; private set; }
         public string Name { get; private set; }
         public string Source { get; private set; }
@@ -38,9 +39,21 @@ namespace Dafeiyu
         public override string ToString() { return Name; }
         public SpriteAtlas Load()
         {
-            // Imported version-1 skins retain the original HD atlas contract.
-            if(Embedded) return new SpriteAtlas(Source+".Motion",true,true);
-            return new SpriteAtlas(Source,false);
+            return new SpriteAtlas(Source,Embedded);
+        }
+        public int ActionFrame(int row,int phase)
+        {
+            // Emphasize Marfu's planted/tucked/extended poses instead of holding
+            // several near-identical planted frames; every selection is real artwork.
+            if(!Embedded || Id!="marfu" || phase<0 || phase>=8) return phase;
+            return row==1 || row==2 ? MarfuRightStride[phase] : phase;
+        }
+        public int ActionRow(int row) { return MirrorsAction(row) ? 1 : row; }
+        public bool MirrorsAction(int row) { return Embedded && (Id=="marfu" || Id=="dafeiyu") && row==2; }
+        public AnimationPlayer CreateAnimation(int frameMultiplier=1)
+        {
+            double period=Embedded && (Id=="marfu" || Id=="e-bao" || Id=="dafeiyu") ? .22 : .11;
+            return new AnimationPlayer(frameMultiplier,period);
         }
     }
     public sealed class SkinCatalog

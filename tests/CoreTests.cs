@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Windows;
 
@@ -84,10 +84,10 @@ namespace Dafeiyu.Tests
             Test("successful context bounds by complete turns", delegate {
                 ConversationLog log = new ConversationLog();
                 for (int i = 0; i < 12; i++) log.Commit("u" + i, "a" + i);
-                Equal(20, log.Messages.Count); Equal("u2", log.Messages[0].Content);
+                Equal(24, log.Messages.Count); Equal("u0", log.Messages[0].Content);
                 var request = log.ForRequest("persona", "new question");
                 Equal(22, request.Count); Equal("system", request[0].Role); Equal("new question", request[21].Content);
-                Equal(20, log.Messages.Count); log.Clear(); Equal(0, log.Messages.Count);
+                Equal(24, log.Messages.Count); log.Clear(); Equal(0, log.Messages.Count);
             });
             Test("settings persist without plaintext secrets", delegate {
                 string path = Temp("settings.json");

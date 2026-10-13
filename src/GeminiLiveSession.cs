@@ -54,6 +54,7 @@ namespace Dafeiyu
         CancellationTokenSource cancellation;ILiveSocket socket;IPcmMicrophone microphone;ILiveAudioOutput speaker;Task running;TaskCompletionSource<bool> configured;bool disposed;int volume;
         public bool IsActive {get{lock(gate)return running!=null;}} public string Status {get;private set;}
         public event Action StateChanged;public event Action<string,string> PartialTranscript;public event Action<string,string> TurnCompleted;
+        public event Action<string,string,string> TurnCommitted;
         public GeminiLiveSession() : this(()=>new GeminiLiveSocket(),()=>new AudioRecorder(true),()=>new PcmOutput()){}
         public GeminiLiveSession(Func<ILiveSocket> transport,Func<IPcmMicrophone> capture,Func<ILiveAudioOutput> output){sockets=transport;microphones=capture;speakers=output;Status="Live 尚未连接。";}
         public async Task StartAsync(PetSettings settings,string persona)
@@ -100,8 +101,8 @@ namespace Dafeiyu
                     if(!ready)throw new ApiException("Live 未完成初始化便返回音频，请检查服务协议。");
                     var content=(Dictionary<string,object>)raw;
                     bool interrupted=content.ContainsKey("interrupted") && Object.Equals(content["interrupted"],true);
-                    if(interrupted){speaker.Interrupt();if(reply.Length>0){Commit(user,reply+"（已打断）");user=reply="";}}
                     user=Transcript(content,"inputTranscription",user,"user");reply=Transcript(content,"outputTranscription",reply,"assistant");
+                    if(interrupted){speaker.Interrupt();Commit(user,reply,"interrupted");user=reply="";}
                     if(!interrupted && content.TryGetValue("modelTurn",out raw))
                     {
                         var turn=(Dictionary<string,object>)raw;object parts;
@@ -117,7 +118,7 @@ namespace Dafeiyu
                             }
                         }
                     }
-                    if(content.ContainsKey("turnComplete") && Object.Equals(content["turnComplete"],true)){Commit(user,reply);user=reply="";SetStatus("Live 已连接 · 正在听 · 再次点击结束");}
+                    if(!interrupted && content.ContainsKey("turnComplete") && Object.Equals(content["turnComplete"],true)){Commit(user,reply,"complete");user=reply="";SetStatus("Live 已连接 · 正在听 · 再次点击结束");}
                 }
             }
             catch(OperationCanceledException){configured.TrySetCanceled();}
@@ -128,6 +129,7 @@ namespace Dafeiyu
             }
             finally
             {
+                Commit(user,reply,token.IsCancellationRequested?"cancelled":"error");
                 if(cancellation!=null)cancellation.Cancel();if(socket!=null)socket.Abort();
                 // Dispose the native recorder off its callback thread before completing its queue.
                 if(microphone!=null)microphone.Dispose();queue.CompleteAdding();
@@ -148,7 +150,13 @@ namespace Dafeiyu
             object raw;if(!content.TryGetValue(field,out raw))return current;var data=(Dictionary<string,object>)raw;object text;
             if(data.TryGetValue("text",out text) && text is string){current+=(string)text;if(current.Length>50000)throw new ApiException("Live 字幕过长，请重新连接。");if(!disposed && PartialTranscript!=null)PartialTranscript(role,current);}return current;
         }
-        void Commit(string user,string reply){if(!disposed && TurnCompleted!=null && (user.Length>0 || reply.Length>0))TurnCompleted(user,reply);}
+        void Commit(string user,string reply,string status)
+        {
+            if(disposed || (user.Length==0 && reply.Length==0))return;
+            if(TurnCommitted!=null)TurnCommitted(user,reply,status);
+            // Existing consumers receive only successful turns; incomplete subtitles use the status event.
+            if(status=="complete" && TurnCompleted!=null)TurnCompleted(user,reply);
+        }
         public void SetVolume(int value){lock(gate){volume=Math.Max(0,Math.Min(100,value));if(speaker!=null)speaker.SetVolume(volume);}}
         public async Task StopAsync()
         {

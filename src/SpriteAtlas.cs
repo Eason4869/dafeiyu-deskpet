@@ -16,9 +16,8 @@ namespace Dafeiyu
         public bool HasGaze { get; private set; }
         public int FrameMultiplier { get; private set; }
         public SpriteAtlas() : this("Dafeiyu.Atlas", true) { }
-        public SpriteAtlas(string source, bool embedded, bool motion=false)
+        public SpriteAtlas(string source, bool embedded)
         {
-            if(motion && !embedded) throw new ArgumentException("Motion atlases must be embedded resources.");
             if (!embedded) SkinCatalog.ValidatePng(source);
             BitmapSource image;
             using (Stream stream = embedded ? Assembly.GetExecutingAssembly().GetManifestResourceStream(source) : File.OpenRead(source))
@@ -26,10 +25,8 @@ namespace Dafeiyu
                 if (stream == null) throw new InvalidOperationException("找不到内嵌桌宠素材。");
                 image = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0];
             }
-            if(motion) {
-                if(image.PixelWidth!=12288 || image.PixelHeight!=2288) throw new InvalidOperationException("内嵌动画图尺寸不正确。");
-            } else ValidateDimensions(image.PixelWidth, image.PixelHeight);
-            FrameMultiplier=motion ? 8 : 1;
+            ValidateDimensions(image.PixelWidth, image.PixelHeight);
+            FrameMultiplier=1;
             CellWidth = image.PixelWidth / (8*FrameMultiplier); CellHeight = image.PixelHeight / 11; HasGaze = true;
             image.Freeze();
             for (int row = 0; row < 11; row++)
@@ -43,7 +40,7 @@ namespace Dafeiyu
                     var bgra = new FormatConvertedBitmap(cropped, PixelFormats.Bgra32, null, 0); bgra.Freeze();
                     byte[] pixels = new byte[CellWidth * CellHeight * 4]; bgra.CopyPixels(pixels, CellWidth * 4, 0);
                     // Detach each small frame so WPF does not retain/upload the
-                    // full 12k-wide atlas for every animated Image.Source.
+                    // full HD atlas for every animated Image.Source.
                     frames[row][col]=BitmapSource.Create(CellWidth,CellHeight,96,96,PixelFormats.Bgra32,null,pixels,CellWidth*4);
                     frames[row][col].Freeze();
                     alpha[row][col] = new byte[CellWidth * CellHeight];

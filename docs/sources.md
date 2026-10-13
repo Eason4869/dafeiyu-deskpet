@@ -1,4 +1,4 @@
-# 素材与平台说明
+﻿# 素材与平台说明
 
 「大肥鱼」为本会话根据 DeepSeek 同人形象制作的生成式角色及动作图；参考形象项目：[YunYueSama/codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet)。应用代码独立实现。
 
@@ -22,4 +22,4 @@ Gemini Live：[WebSocket 入门](https://ai.google.dev/gemini-api/docs/live-api/
 
 自动更新安装参数：[Inno Setup 命令行](https://jrsoftware.org/ishelp/topic_setupcmdline.htm)，使用静默安装、原目录、禁止系统重启和自动关闭其他程序的选项。
 
-0.3.3 新增「马尔芙」：根据用户提供的金发绿眼人物与黑绿魔法袍 Q 版参考图生成角色、九组动作及十六个基础视线方向。原始高清帧保存在 `assets/marfu-spritesheet.png`。三位角色的平滑图由 `PrepareMotion.py` 进行脚底定位、双向光流插值与预乘透明度处理后生成；不依赖运行时图像服务。
+0.3.3 新增「马尔芙」：根据用户提供的金发绿眼人物与黑绿魔法袍 Q 版参考图生成角色、九组动作及十六个基础视线方向。原始高清帧保存在 `assets/marfu-spritesheet.png`。0.4.0 删除造成重影的光流与混合补帧，直接播放原始帧。音色预设依据见[厂商官方音色说明](voice-presets.md)。

@@ -15,10 +15,10 @@ namespace Dafeiyu.Tests
                     var cfg=Configured(); cfg.SystemPrompt="你是{pet_name}"; await s.SendTextAsync("你好",cfg,"E包");
                     Check(s.History.Messages.Count==2 && api.Messages[0].Content=="你是E包" && speech.Calls==1 && !s.IsBusy,"bad successful flow"); }
             });
-            Run("cancelled model does not commit or leave active operation",async delegate {
+            Run("cancelled model retains incomplete display without successful context",async delegate {
                 var api=new FakeApi {Delay=1000}; var speech=new FakeSpeech(); using(var s=Create(api,speech)) {
                     var task=s.SendTextAsync("stop",Configured(),"大肥鱼"); await Task.Delay(30); await s.StopAsync();
-                    try{await task;}catch(OperationCanceledException){} Check(s.History.Messages.Count==0 && speech.Calls==0 && !s.IsBusy,"cancel leaked"); }
+                    try{await task;}catch(OperationCanceledException){} Check(s.History.Messages.Count==2 && s.History.Messages.Last().Status=="cancelled" && s.History.ForRequest("","next").Count==1 && speech.Calls==0 && !s.IsBusy,"cancel leaked into model context"); }
             });
             Run("recording is explicit and follows recognition-chat-speech",async delegate {
                 var api=new FakeApi();var speech=new FakeSpeech();var mic=new FakeRecorder(); using(var s=new ConversationSession(api,speech,delegate{return mic;})) {
@@ -46,7 +46,7 @@ namespace Dafeiyu.Tests
             });
             Run("late provider result cannot escape disposed session",async delegate {
                 var s=Create(new FakeApi {Delay=100,IgnoreCancel=true},new FakeSpeech());var t=s.SendTextAsync("late",Configured(),"E包");int events=0;s.MessageAdded+=delegate{events++;};s.Dispose();
-                try{await t;}catch(OperationCanceledException){}Check(events==0 && s.History.Messages.Count==0,"late result committed");
+                try{await t;}catch(OperationCanceledException){}Check(events==0 && s.History.Messages.Count==2 && s.History.Messages.Last().Status=="interrupted" && s.History.ForRequest("","next").Count==1,"late result committed");
             });
             Run("voice samples use the independently configured service",async delegate {
                 var api=new FakeApi();using(var s=Create(api,new FakeSpeech())) {var cfg=Configured();cfg.Transcription.BaseUrl="http://127.0.0.1:9002/voice";await s.SendVoiceAsync(WaveData.EncodePcm(new byte[16000]),cfg,"E包");Check(api.RecognitionUrl.EndsWith("/voice"),"wrong speech service");}

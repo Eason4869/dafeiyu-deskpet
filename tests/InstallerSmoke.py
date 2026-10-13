@@ -1,5 +1,6 @@
 """Install, upgrade, launch and uninstall the built installer in an owned test folder."""
 from pathlib import Path
+import argparse
 import ctypes
 from ctypes import wintypes
 import hashlib
@@ -13,7 +14,11 @@ import winreg
 
 PROJECT=Path(__file__).resolve().parents[1]
 VERSION=re.search(r'DisplayVersion="([^"]+)"',(PROJECT/'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
-SETUP=PROJECT.parent/'outputs'/('DeskPet-Setup-'+VERSION+'.exe')
+parser=argparse.ArgumentParser()
+parser.add_argument('--output-directory',type=Path,default=PROJECT.parent/'outputs')
+options=parser.parse_args()
+OUTPUT=options.output_directory.resolve()
+SETUP=OUTPUT/('DeskPet-Setup-'+VERSION+'.exe')
 APP_KEY=r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{3B63C162-076E-4B2F-BDCC-2572664875A9}_is1'
 RUN_KEY=r'Software\Microsoft\Windows\CurrentVersion\Run'
 ENTRY='DafeiyuDeskPet'
@@ -76,7 +81,7 @@ try:
     args=['/DIR='+str(install),'/GROUP=DeskPet installer test '+root.name,'/TASKS=']
     check(execute(SETUP,args,root/'install.log')==0,'current-user installer succeeds without elevation')
     registration=install/'unins000.exe';exe=install/'桌面伙伴.exe'
-    expected=PROJECT.parent/'outputs/DafeiyuDeskPet/桌面伙伴.exe'
+    expected=OUTPUT/'DafeiyuDeskPet/桌面伙伴.exe'
     check(hashlib.sha256(exe.read_bytes()).digest()==hashlib.sha256(expected.read_bytes()).digest(),'installed executable matches the release binary')
     check((install/'templates/pet.json').exists() and (install/'docs/skin-format.md').exists(),'installation includes templates and documentation')
     check(not (install/'data/settings.json').exists(),'installer contains no personal settings')

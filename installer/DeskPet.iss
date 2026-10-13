@@ -1,4 +1,4 @@
-#ifndef RuntimeDir
+﻿#ifndef RuntimeDir
   #error Build with BuildInstaller.ps1
 #endif
 #ifndef ProductVersion
@@ -33,6 +33,9 @@ SetupIconFile=..\assets\pet.ico
 UninstallDisplayIcon={app}\桌面伙伴.exe
 UninstallDisplayName=桌面伙伴
 VersionInfoVersion={#AssemblyVersion}
+VersionInfoProductName=桌面伙伴
+VersionInfoDescription=桌面伙伴安装程序
+VersionInfoCompany=彧晟Eason
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes

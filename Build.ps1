@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke')][string]$Target = 'App', [string]$OutputDirectory = '')
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests')][string]$Target = 'App', [string]$OutputDirectory = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -19,9 +19,9 @@ if ($Target -eq 'App') {
     $options = @('/target:winexe','/main:Dafeiyu.Program',('/win32manifest:' + (Join-Path $projectRoot 'app.manifest')),('/win32icon:' + (Join-Path $projectRoot 'assets\pet.ico')))
 } else {
     $destination = Join-Path $workRoot ($Target + '.exe')
-    if ($Target -eq 'CoreTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ProxyConfiguration.cs') }
-    elseif ($Target -eq 'ApiTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ProxyConfiguration.cs','ApiClient.cs','AudioRecorder.cs') }
-    elseif ($Target -eq 'ConversationTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ProxyConfiguration.cs','ApiClient.cs','AudioRecorder.cs','SpeechOutput.cs','ConversationSession.cs') }
+    if ($Target -eq 'CoreTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ProxyConfiguration.cs','HistoryStore.cs') }
+    elseif ($Target -eq 'ApiTests' -or $Target -eq 'StreamingTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ProxyConfiguration.cs','HistoryStore.cs','ApiClient.cs','ChatStream.cs','AudioRecorder.cs') }
+    elseif ($Target -eq 'ConversationTests' -or $Target -eq 'HistoryTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ProxyConfiguration.cs','ApiClient.cs','ChatStream.cs','AudioRecorder.cs','SpeechOutput.cs','ConversationSession.cs','HistoryStore.cs') }
     else { $sourceNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.cs' | Select-Object -ExpandProperty Name) }
     $sources = @($sourceNames | ForEach-Object { Join-Path $projectRoot ('src\' + $_) } | Where-Object { Test-Path -LiteralPath $_ }) + @((Join-Path $projectRoot ('tests\' + $Target + '.cs')))
     if ($Target -eq 'UiSmoke' -or $Target -eq 'ChatSmoke' -or $Target -eq 'AudioSmoke' -or $Target -eq 'LiveTests' -or $Target -eq 'UpdateTests' -or $Target -eq 'ProxyTests') { $sources += Join-Path $projectRoot 'tests\ApiTests.cs' }
@@ -33,7 +33,7 @@ if ($Target -eq 'App') {
     $options = @('/target:exe',('/main:Dafeiyu.Tests.' + $Target))
 }
 $assets = @()
-foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.Icon'),@('pet-preview-hd.png','Dafeiyu.Preview'),@('e-bao-spritesheet.png','Dafeiyu.EbaoAtlas'),@('e-bao-pet-preview-hd.png','Dafeiyu.EbaoPreview'),@('marfu-spritesheet.png','Dafeiyu.MarfuAtlas'),@('marfu-pet-preview-hd.png','Dafeiyu.MarfuPreview'),@('e-bao-motion.png','Dafeiyu.EbaoAtlas.Motion'),@('dafeiyu-motion.png','Dafeiyu.Atlas.Motion'),@('marfu-motion.png','Dafeiyu.MarfuAtlas.Motion'))) {
+foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.Icon'),@('pet-preview-hd.png','Dafeiyu.Preview'),@('e-bao-spritesheet.png','Dafeiyu.EbaoAtlas'),@('e-bao-pet-preview-hd.png','Dafeiyu.EbaoPreview'),@('marfu-spritesheet.png','Dafeiyu.MarfuAtlas'),@('marfu-pet-preview-hd.png','Dafeiyu.MarfuPreview'))) {
     $assetPath = Join-Path $projectRoot ('assets\' + $asset[0])
     if (!(Test-Path -LiteralPath $assetPath)) { throw "Required artwork is missing: $assetPath" }
     $assets += '/resource:' + $assetPath + ',' + $asset[1]

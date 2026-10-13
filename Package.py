@@ -26,7 +26,14 @@ for name in ['README.md','CHANGELOG.md']:
     shutil.copy2(PROJECT/name,APP/name)
 for name in ['skin-format.md','dialogue-setup.md','verification.md','sources.md','installation.md','daily-use.md','voice-presets.md']:
     shutil.copy2(PROJECT/'docs'/name,APP/'docs'/name)
-shutil.copytree(PROJECT/'previews',PREVIEWS,dirs_exist_ok=True)
+# Existing 0.3.2/0.3.3/0.4.0 update helpers reject GIF entries. Keep animated
+# previews in the repository/source archive; installed documentation uses PNGs.
+shutil.copytree(PROJECT/'previews',PREVIEWS,dirs_exist_ok=True,ignore=shutil.ignore_patterns('*.gif'))
+runtime_readme=(APP/'README.md').read_text(encoding='utf-8-sig')
+for pet,still in [('ebao','e-bao'),('dafeiyu','dafeiyu'),('marfu','marfu')]:
+    runtime_readme=runtime_readme.replace('previews/'+pet+'-running.gif','previews/'+still+'.png')
+runtime_readme=runtime_readme.replace('跑动预览来自真实 WPF 窗口。','本地文档显示静态预览；真实 WPF 跑动预览请查看 GitHub README。')
+(APP/'README.md').write_text(runtime_readme,encoding='utf-8')
 
 counts=[6,8,8,4,5,8,6,6,6,8,8]
 for prefix in ['', 'e-bao-', 'marfu-']:
@@ -45,7 +52,7 @@ for prefix in ['', 'e-bao-', 'marfu-']:
 runtime_files=[APP/name for name in ['桌面伙伴.exe','桌面伙伴.exe.config','DeskPet.Update.exe','DeskPet.Update.exe.config','README.md','CHANGELOG.md']]
 runtime_files += [APP/'docs'/name for name in ['skin-format.md','dialogue-setup.md','verification.md','sources.md','installation.md','daily-use.md','voice-presets.md']]
 for folder in ['templates','previews']:
-    runtime_files += [APP/file.relative_to(PROJECT) for file in (PROJECT/folder).rglob('*') if file.is_file()]
+    runtime_files += [APP/file.relative_to(PROJECT) for file in (PROJECT/folder).rglob('*') if file.is_file() and not (folder=='previews' and file.suffix.lower()=='.gif')]
 runtime_zip=OUTPUT/('DeskPet-Windows-'+version+'.zip')
 with ZipFile(runtime_zip,'w',ZIP_DEFLATED,compresslevel=6) as bundle:
     for file in sorted(runtime_files): bundle.write(file,'DafeiyuDeskPet/'+file.relative_to(APP).as_posix())

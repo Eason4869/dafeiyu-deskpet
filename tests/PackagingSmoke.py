@@ -14,6 +14,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 version = re.search(r'DisplayVersion="([^"]+)"', (PROJECT / 'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
 arguments = argparse.ArgumentParser()
 arguments.add_argument('--compiler', help='Optional Inno ISCC.exe for full fresh installer verification')
+arguments.add_argument('--legacy-worker', type=Path, help='Existing older DeskPet.Update.exe to verify backward compatible packages')
 options = arguments.parse_args()
 root = PROJECT / 'work' / ('source-smoke-' + uuid.uuid4().hex)
 checkout = root / 'DafeiyuDeskPet'
@@ -44,6 +45,10 @@ with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
         assert bundle.read('DafeiyuDeskPet/' + name) == (runtime / name).read_bytes()
 print('PASS portable archive excludes legacy binaries and private loose files')
 print('PASS portable archive includes the exact application and independent update helper')
+for worker in [runtime / 'DeskPet.Update.exe'] + ([options.legacy_worker.resolve()] if options.legacy_worker else []):
+    subprocess.run([sys.executable, str(checkout / 'tests/LegacyUpdateSmoke.py'), '--worker', str(worker),
+                    '--package', str(output / ('DeskPet-Windows-' + version + '.zip'))], check=True, timeout=120)
+print('PASS real update engine accepts the complete release archive and preserves personal data')
 with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
     for document in ['skin-format.md', 'dialogue-setup.md', 'verification.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md']:
         assert bundle.read('DafeiyuDeskPet/docs/' + document) == (checkout / 'docs' / document).read_bytes()
@@ -73,6 +78,8 @@ for alternatives in images:
     target = next(value for value in alternatives if value)
     assert (runtime / target).is_file(), 'installed README image missing: ' + target
     assert (checkout / target).is_file(), 'repository README image missing: ' + target
+    with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
+        assert 'DafeiyuDeskPet/' + target in bundle.namelist(), 'portable README image missing: ' + target
 print('PASS README images resolve in the repository and installed runtime')
 with ZipFile(output / ('DeskPet-Source-' + version + '.zip')) as bundle:
     assert not any(part in {'work', 'data', '.git', '.superpowers', 'superpowers', 'public-artifacts', 'outputs'}
@@ -97,4 +104,4 @@ if options.compiler:
         digest, name = line.split('  ', 1)
         assert digest == hashlib.sha256((output / name).read_bytes()).hexdigest(), 'stale digest: ' + name
     print('PASS installer build leaves a complete matching SHA256 manifest')
-print('Packaging smoke:', 12 if options.compiler else 10, 'passed')
+print('Packaging smoke:', 13 if options.compiler else 11, 'passed')

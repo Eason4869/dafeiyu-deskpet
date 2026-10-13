@@ -57,7 +57,7 @@ Source: "{#RuntimeDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RuntimeDir}\templates\*"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#RuntimeDir}\previews\*"; DestDir: "{app}\previews"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#RuntimeDir}\previews\*"; DestDir: "{app}\previews"; Excludes: "*.gif"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 Type: files; Name: "{app}\大肥鱼桌宠.exe"

@@ -10,7 +10,7 @@
 
 ## 先把伙伴放到桌面
 
-从 [Releases](https://github.com/Eason4869/dafeiyu-deskpet/releases/latest) 下载 **DafeiyuDeskPet-Setup-1.3.0.exe**，按中文向导安装。默认安装到当前用户的 `%LOCALAPPDATA%\Programs\DafeiyuDeskPet`，无需管理员权限；开始菜单可启动和卸载，也可选择桌面快捷方式。
+从 [Releases](https://github.com/Eason4869/dafeiyu-deskpet/releases/latest) 下载 **DafeiyuDeskPet-Setup-1.3.1.exe**，按中文向导安装。默认安装到当前用户的 `%LOCALAPPDATA%\Programs\DafeiyuDeskPet`，无需管理员权限；开始菜单可启动和卸载，也可选择桌面快捷方式。
 
 喜欢免安装版，可下载 **大肥鱼桌宠-Windows.zip**，完整解压后运行 **大肥鱼桌宠.exe**。程序旁的 `data` 保存个人配置和导入外观；不要把程序放在无法写入的文件夹。
 
@@ -81,7 +81,7 @@ ASR 与 TTS 可分别配置，或复用文字服务的地址、密钥和代理�
 
 下载后先从托盘退出桌宠，再运行安装包，选择原安装目录。**覆盖升级保留 data；卸载保留个人数据，并清理指向本安装位置的自启项。** 当前通过用户手动运行安装包完成更新。
 
-首次从免安装版迁移，可在首次启动前把原 `data` 复制到新安装目录。换 Windows 用户或机器后，重新填写密钥。安装包目前未做应用代码签名，发布页提供 [SHA256 校验文件](https://github.com/Eason4869/dafeiyu-deskpet/releases/download/v1.3.0/SHA256.txt)。详情见 [安装、升级与自启](docs/installation.md)。
+首次从免安装版迁移，可在首次启动前把原 `data` 复制到新安装目录。换 Windows 用户或机器后，重新填写密钥。安装包目前未做应用代码签名，发布页提供 [SHA256 校验文件](https://github.com/Eason4869/dafeiyu-deskpet/releases/download/v1.3.1/SHA256.txt)。详情见 [安装、升级与自启](docs/installation.md)。
 
 ## 从源码构建
 

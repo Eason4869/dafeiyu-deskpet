@@ -10,6 +10,9 @@ namespace Dafeiyu.Tests
         public static int Main(){try{Run().GetAwaiter().GetResult();Console.WriteLine("Update tests: "+passed+" passed");return 0;}catch(Exception e){Console.WriteLine("FAIL Update: "+e.Message);return 1;}}
         static async Task Run()
         {
+            var previousTls=System.Net.ServicePointManager.SecurityProtocol;
+            try{System.Net.ServicePointManager.SecurityProtocol=System.Net.SecurityProtocolType.Tls;using(var standalone=new GitHubUpdates()){Check((System.Net.ServicePointManager.SecurityProtocol & System.Net.SecurityProtocolType.Tls12)!=0,"updates enable TLS 1.2 before any chat client is created");}}
+            finally{System.Net.ServicePointManager.SecurityProtocol=previousTls;}
             Check(GitHubUpdates.Repository("https://github.com/Eason4869/deskpet")=="Eason4869/deskpet","repository URL resolves owner and repo");
             Check(!new UpdateRelease{VersionTag="v1.2.0.0"}.IsNewerThan(new Version(1,2,0,0)) && !new UpdateRelease{VersionTag="v1.2.0"}.IsNewerThan(new Version(1,2,0,0)) && new UpdateRelease{VersionTag="v1.2.0.1"}.IsNewerThan(new Version(1,2,0,0)),"three- and four-part release versions compare consistently");
             foreach(string url in new[]{"https://github.com/OWNER/REPO","https://example.com/o/r","https://user:pass@github.com/o/r","https://github.com/o/r/releases","https://github.com/o/r?key=secret"}){try{GitHubUpdates.Repository(url);throw new Exception("invalid repo accepted");}catch(ApiException){passed++;}}

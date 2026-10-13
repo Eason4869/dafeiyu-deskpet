@@ -21,7 +21,7 @@ namespace Dafeiyu
     {
         readonly Uri apiRoot;readonly HttpClient direct;
         public GitHubUpdates() : this(new Uri("https://api.github.com/")){}
-        public GitHubUpdates(Uri root){if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");apiRoot=root;direct=Create(false,null);}
+        public GitHubUpdates(Uri root){if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;apiRoot=root;direct=Create(false,null);}
         static HttpClient Create(bool useProxy,string address){var client=useProxy?ProxyConfiguration.CreateHttpClient(address,true):new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=true}){Timeout=Timeout.InfiniteTimeSpan};client.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/"+ReleaseInfo.DisplayVersion);return client;}
         public static string Repository(string address)
         {

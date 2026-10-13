@@ -1,5 +1,11 @@
 # 更新日志
 
+## [1.3.1](https://github.com/Eason4869/dafeiyu-deskpet/releases/tag/v1.3.1) — 2026-10-13
+
+- 修复启动后直接进入“关于与更新”、尚未打开聊天时，更新下载可能没有启用 TLS 1.2 的问题。更新客户端现在自行初始化 HTTPS 协议，不依赖聊天连接。
+- 补充独立 TLS 初始化回归。安装、代理编辑、桌宠外观与个人 data 兼容 1.3.0。
+- GitHub 附件采用唯一英文文件名并提供中文标签，避免平台过滤中文文件名造成重名；发布校验清单对应实际附件名。
+
 ## [1.3.0](https://github.com/Eason4869/dafeiyu-deskpet/releases/tag/v1.3.0) — 2026-10-13
 
 首次 GitHub 公开发布。

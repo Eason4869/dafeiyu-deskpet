@@ -4,13 +4,15 @@ import ctypes
 from ctypes import wintypes
 import hashlib
 import json
+import re
 import subprocess
 import time
 import uuid
 import winreg
 
 PROJECT=Path(__file__).resolve().parents[1]
-SETUP=PROJECT.parent/'outputs/DafeiyuDeskPet-Setup-1.3.0.exe'
+VERSION=re.search(r'DisplayVersion="([^"]+)"',(PROJECT/'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
+SETUP=PROJECT.parent/'outputs'/('DafeiyuDeskPet-Setup-'+VERSION+'.exe')
 APP_KEY=r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{3B63C162-076E-4B2F-BDCC-2572664875A9}_is1'
 RUN_KEY=r'Software\Microsoft\Windows\CurrentVersion\Run'
 ENTRY='DafeiyuDeskPet'

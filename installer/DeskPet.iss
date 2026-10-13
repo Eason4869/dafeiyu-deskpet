@@ -1,4 +1,4 @@
-#ifndef RuntimeDir
+﻿#ifndef RuntimeDir
   #error Build with BuildInstaller.ps1
 #endif
 #ifndef ProductVersion
@@ -33,6 +33,9 @@ SetupIconFile=..\assets\pet.ico
 UninstallDisplayIcon={app}\桌面伙伴.exe
 UninstallDisplayName=桌面伙伴
 VersionInfoVersion={#AssemblyVersion}
+VersionInfoProductName=桌面伙伴
+VersionInfoDescription=桌面伙伴安装程序
+VersionInfoCompany=彧晟Eason
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes
@@ -48,6 +51,8 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 [Files]
 Source: "{#RuntimeDir}\桌面伙伴.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\桌面伙伴.exe.config"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RuntimeDir}\DeskPet.Update.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RuntimeDir}\DeskPet.Update.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs

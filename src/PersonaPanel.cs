@@ -6,6 +6,7 @@ namespace Dafeiyu
     public sealed class PersonaPanel : Grid
     {
         readonly PetWindow pet;readonly TextBox prompt;readonly TextBlock title,description,notice;
+        public bool HasUnsavedChanges {get{return !String.Equals(prompt.Text,pet.Settings.SystemPrompt,StringComparison.Ordinal);}}
         public PersonaPanel(PetWindow companion)
         {
             pet=companion;Margin=new Thickness(24,22,24,20);RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});RowDefinitions.Add(new RowDefinition());RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});

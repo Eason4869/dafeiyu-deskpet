@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 import time
+import sys
 
 PROJECT=Path(__file__).resolve().parents[1]
 WORK=PROJECT/'work/native-smoke'
@@ -15,6 +16,20 @@ SHIPPED=PROJECT.parent/'outputs/DafeiyuDeskPet/桌面伙伴.exe'
 shutil.copy2(SHIPPED,EXE)
 shutil.copy2(Path(str(SHIPPED)+'.config'),Path(str(EXE)+'.config'))
 user=ctypes.WinDLL('user32',use_last_error=True)
+kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+kernel.OpenMutexW.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.LPCWSTR]
+kernel.OpenMutexW.restype=wintypes.HANDLE
+kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+ctypes.set_last_error(0)
+existing=kernel.OpenMutexW(0x00100000,False,'Local\\Dafeiyu.DeskPet.Installation')
+mutex_error=ctypes.get_last_error()
+if existing or mutex_error != 2:
+    if existing:
+        kernel.CloseHandle(existing)
+    reason='an existing user instance is running; leave it untouched' if existing else 'cannot safely inspect the installation mutex; do not launch another instance'
+    (WORK/'result.json').write_text(json.dumps({'passed':0,'checks':[],'skipped':[reason]}),encoding='utf-8')
+    print('Native smoke: 0 passed, 1 skipped ('+reason+')',flush=True)
+    sys.exit(0)
 try:
     user.SetProcessDpiAwarenessContext.argtypes=[ctypes.c_void_p]
     user.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
@@ -92,6 +107,15 @@ try:
         else:
             require(abs(after.left-(r.left-70))<=3 and abs(after.top-(r.top-35))<=3,'real left-button drag moves the pet')
     for reason in skipped: print('SKIP '+reason,flush=True)
+    # Open the real WPF context menu, then click transparent space of its owner.
+    time.sleep(1.3)
+    r=bounds(hwnd);x=r.left+(r.right-r.left)//2;y=r.top+int((r.bottom-r.top)*.68)
+    user.SetCursorPos(x,y);user.mouse_event(0x0008,0,0,0,None);user.mouse_event(0x0010,0,0,0,None);time.sleep(.4)
+    menus=[w for w in windows(process.pid) if w[0]!=hwnd]
+    require(bool(menus),'right click opens the pet context menu')
+    # This is verified transparent by WM_NCHITTEST; the click goes to the desktop.
+    user.SetCursorPos(r.left+2,r.top+2);user.mouse_event(0x0002,0,0,0,None);user.mouse_event(0x0004,0,0,0,None);time.sleep(.4)
+    require(not [w for w in windows(process.pid) if w[0] in {m[0] for m in menus}],'clicking blank space outside the menu closes it')
     second=launch(); second.wait(timeout=8)
     require(second.returncode==0 and process.poll() is None,'second launch exits and preserves the first instance')
     deadline=time.monotonic()+8

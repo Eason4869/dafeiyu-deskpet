@@ -22,6 +22,7 @@ namespace Dafeiyu
     }
     public sealed class SkinDefinition
     {
+        private static readonly int[] MarfuRightStride={0,2,3,2,4,2,6,2};
         public string Id { get; private set; }
         public string Name { get; private set; }
         public string Source { get; private set; }
@@ -36,7 +37,24 @@ namespace Dafeiyu
             Description=description ?? (id=="e-bao" ? "傲娇毒舌 · 白发正太" : id=="dafeiyu" ? "温和俏皮 · 蓝白鲸鱼娘" : "你的专属桌面伙伴");
         }
         public override string ToString() { return Name; }
-        public SpriteAtlas Load() { return new SpriteAtlas(Source,Embedded); }
+        public SpriteAtlas Load()
+        {
+            return new SpriteAtlas(Source,Embedded);
+        }
+        public int ActionFrame(int row,int phase)
+        {
+            // Emphasize Marfu's planted/tucked/extended poses instead of holding
+            // several near-identical planted frames; every selection is real artwork.
+            if(!Embedded || Id!="marfu" || phase<0 || phase>=8) return phase;
+            return row==1 || row==2 ? MarfuRightStride[phase] : phase;
+        }
+        public int ActionRow(int row) { return MirrorsAction(row) ? 1 : row; }
+        public bool MirrorsAction(int row) { return Embedded && (Id=="marfu" || Id=="dafeiyu") && row==2; }
+        public AnimationPlayer CreateAnimation(int frameMultiplier=1)
+        {
+            double period=Embedded && (Id=="marfu" || Id=="e-bao" || Id=="dafeiyu") ? .22 : .11;
+            return new AnimationPlayer(frameMultiplier,period);
+        }
     }
     public sealed class SkinCatalog
     {
@@ -48,6 +66,9 @@ namespace Dafeiyu
             directory=Path.Combine(dataDirectory,"skins");
             skins.Add(new SkinDefinition("e-bao","E包","Dafeiyu.EbaoAtlas","Dafeiyu.EbaoPreview",true));
             skins.Add(new SkinDefinition("dafeiyu","大肥鱼","Dafeiyu.Atlas","Dafeiyu.Preview",true));
+            skins.Add(new SkinDefinition("marfu","马尔芙","Dafeiyu.MarfuAtlas","Dafeiyu.MarfuPreview",true,
+                PersonaProfiles.Marfu,
+                "聪明俏皮 · 金发绿眼魔法少女"));
             if(!Directory.Exists(directory)) return;
             foreach(string folder in Directory.GetDirectories(directory))
             {

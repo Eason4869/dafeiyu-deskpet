@@ -61,7 +61,7 @@ namespace Dafeiyu.Tests
                 Save(preferences,Path.Combine(folder,"settings-window.png"));
                 var picker=Find<ComboBox>(preferences,"SkinPicker"); picker.SelectedItem=pet.Catalog.Find("e-bao"); Pump(.3);
                 Require(pet.Skin.Id=="e-bao" && store.Load().SkinId=="e-bao","E包 switches through the settings control and persists");
-                Require(pet.Catalog.Find("e-bao").Load().CellWidth==480,"E包 uses original HD artwork");
+                Require(pet.Catalog.Find("e-bao").Load().FrameMultiplier==1,"E包 uses original real-frame artwork");
                 Save(pet,Path.Combine(folder,"pet-e-bao.png")); Save(preferences,Path.Combine(folder,"settings-e-bao.png"));
                 string project=Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).FullName;
                 var imported=pet.Catalog.Import(Path.Combine(project,"assets","spritesheet.png"));

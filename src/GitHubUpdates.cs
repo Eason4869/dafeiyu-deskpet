@@ -17,7 +17,12 @@ namespace Dafeiyu
         public bool IsNewerThan(Version installed){Version next;string tag=(VersionTag??"").TrimStart('v','V');return Version.TryParse(tag,out next) && NormalizeVersion(next)>NormalizeVersion(installed);}
         static Version NormalizeVersion(Version value){return new Version(value.Major,value.Minor,Math.Max(0,value.Build),Math.Max(0,value.Revision));}
     }
-    public sealed class GitHubUpdates : IDisposable
+    public interface IUpdateFeed : IDisposable
+    {
+        Task<UpdateRelease> CheckAsync(string repository,bool useProxy,string proxyAddress,bool preferPortable,CancellationToken cancel);
+        Task<string> DownloadAsync(UpdateRelease release,string folder,bool useProxy,string proxyAddress,IProgress<double> progress,CancellationToken cancel);
+    }
+    public sealed class GitHubUpdates : IUpdateFeed
     {
         readonly Uri apiRoot;readonly HttpClient direct;
         public GitHubUpdates() : this(new Uri("https://api.github.com/")){}
@@ -30,7 +35,8 @@ namespace Dafeiyu
             if(!Regex.IsMatch(path,@"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$") || path.Equals("OWNER/REPO",StringComparison.OrdinalIgnoreCase))throw new ApiException("仓库地址目前是占位符。建立 GitHub 仓库并发布 Release 后，在这里填写实际地址。");return path;
         }
         public Task<UpdateRelease> CheckAsync(string repository,bool useProxy,CancellationToken cancel){return CheckAsync(repository,useProxy,ProxyConfiguration.DefaultAddress,cancel);}
-        public async Task<UpdateRelease> CheckAsync(string repository,bool useProxy,string proxyAddress,CancellationToken cancel)
+        public Task<UpdateRelease> CheckAsync(string repository,bool useProxy,string proxyAddress,CancellationToken cancel){return CheckAsync(repository,useProxy,proxyAddress,false,cancel);}
+        public async Task<UpdateRelease> CheckAsync(string repository,bool useProxy,string proxyAddress,bool preferPortable,CancellationToken cancel)
         {
             string repo=Repository(repository);
             using(var proxy=useProxy?Create(true,proxyAddress):null)
@@ -51,7 +57,7 @@ namespace Dafeiyu
                             var release=new UpdateRelease{VersionTag=(string)json["tag_name"],PageUrl=(string)json["html_url"]};Uri page;if(!Uri.TryCreate(release.PageUrl,UriKind.Absolute,out page) || page.Host!="github.com" || page.Scheme!="https")throw new FormatException();int best=-1;
                             foreach(object raw in (object[])json["assets"])
                             {
-                                var asset=(Dictionary<string,object>)raw;string name=(string)asset["name"];int score=Score(name);if(score<0 || score<=best)continue;string url=(string)asset["browser_download_url"];if(!SafeAsset(url))continue;long size=Convert.ToInt64(asset["size"]);if(size<=0 || size>300L*1024*1024)continue;
+                                var asset=(Dictionary<string,object>)raw;string name=(string)asset["name"];int score=Score(name);if(score<0)continue;if(preferPortable && Path.GetExtension(name).Equals(".zip",StringComparison.OrdinalIgnoreCase))score+=100;if(score<=best)continue;string url=(string)asset["browser_download_url"];if(!SafeAsset(url))continue;long size=Convert.ToInt64(asset["size"]);if(size<=0 || size>300L*1024*1024)continue;
                                 best=score;release.AssetName=name;release.AssetUrl=url;release.Size=size;object digest;if(asset.TryGetValue("digest",out digest))release.Digest=digest as string;
                             }
                             if(String.IsNullOrWhiteSpace(release.VersionTag))throw new FormatException();return release;

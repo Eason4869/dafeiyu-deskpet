@@ -14,6 +14,7 @@ namespace Dafeiyu
         public int CellWidth { get; private set; }
         public int CellHeight { get; private set; }
         public bool HasGaze { get; private set; }
+        public int FrameMultiplier { get; private set; }
         public SpriteAtlas() : this("Dafeiyu.Atlas", true) { }
         public SpriteAtlas(string source, bool embedded)
         {
@@ -25,18 +26,23 @@ namespace Dafeiyu
                 image = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0];
             }
             ValidateDimensions(image.PixelWidth, image.PixelHeight);
-            CellWidth = image.PixelWidth / 8; CellHeight = image.PixelHeight / 11; HasGaze = true;
+            FrameMultiplier=1;
+            CellWidth = image.PixelWidth / (8*FrameMultiplier); CellHeight = image.PixelHeight / 11; HasGaze = true;
             image.Freeze();
             for (int row = 0; row < 11; row++)
             {
-                int count = row < 9 ? AnimationPlayer.Counts[row] : 8;
+                int count = (row < 9 ? AnimationPlayer.Counts[row] : 8)*FrameMultiplier;
                 frames[row] = new BitmapSource[count]; alpha[row] = new byte[count][];
                 for (int col = 0; col < count; col++)
                 {
                     var cropped = new CroppedBitmap(image, new Int32Rect(col * CellWidth, row * CellHeight, CellWidth, CellHeight));
-                    cropped.Freeze(); frames[row][col] = cropped;
+                    cropped.Freeze();
                     var bgra = new FormatConvertedBitmap(cropped, PixelFormats.Bgra32, null, 0); bgra.Freeze();
                     byte[] pixels = new byte[CellWidth * CellHeight * 4]; bgra.CopyPixels(pixels, CellWidth * 4, 0);
+                    // Detach each small frame so WPF does not retain/upload the
+                    // full HD atlas for every animated Image.Source.
+                    frames[row][col]=BitmapSource.Create(CellWidth,CellHeight,96,96,PixelFormats.Bgra32,null,pixels,CellWidth*4);
+                    frames[row][col].Freeze();
                     alpha[row][col] = new byte[CellWidth * CellHeight];
                     for (int i = 0; i < alpha[row][col].Length; i++) alpha[row][col][i] = pixels[i * 4 + 3];
                     bool visible=false,transparent=false;

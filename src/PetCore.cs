@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.Serialization;
+using System.Text;
 using System.Windows;
 
 namespace Dafeiyu
@@ -19,6 +22,21 @@ namespace Dafeiyu
         }
     }
 
+    public sealed class GazeController
+    {
+        // Continuous clockwise direction, in sixteenths of a full turn.
+        public double Direction { get; private set; }
+        public void Reset(double direction) { Direction=(direction%16+16)%16; }
+        public void Advance(double dx,double dy,double seconds)
+        {
+            if(Double.IsNaN(seconds) || Double.IsInfinity(seconds) || seconds<=0 || dx*dx+dy*dy<256) return;
+            double target=(Math.Atan2(dx,-dy)*8/Math.PI+16)%16;
+            double distance=(target-Direction+24)%16-8;
+            Reset(Direction+distance*(1-Math.Exp(-12*seconds)));
+        }
+        public int Frame(int multiplier) { return (int)Math.Round(Direction*multiplier)%(16*multiplier); }
+    }
+
     public sealed class AnimationPlayer
     {
         public static readonly string[] States = { "idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review" };
@@ -27,10 +45,18 @@ namespace Dafeiyu
         private static readonly double[] Periods = { .17, .11, .11, .16, .13, .16, .19, .18, .18 };
         private double elapsed;
         private double duration;
+        private readonly double runningFramePeriod;
+        public int FrameMultiplier { get; private set; }
         public string State { get; private set; }
         public int Frame { get; private set; }
         public int Row { get { return Array.IndexOf(States, State); } }
-        public AnimationPlayer() { Play("idle", 0); }
+        public AnimationPlayer(int frameMultiplier=1,double runningFramePeriod=.11)
+        {
+            if(frameMultiplier!=1 && frameMultiplier!=8) throw new ArgumentOutOfRangeException("frameMultiplier");
+            if(runningFramePeriod<=0 || Double.IsNaN(runningFramePeriod) || Double.IsInfinity(runningFramePeriod)) throw new ArgumentOutOfRangeException("runningFramePeriod");
+            this.runningFramePeriod=runningFramePeriod;
+            FrameMultiplier=frameMultiplier; Play("idle", 0);
+        }
         public void Play(string state, double seconds)
         {
             if (Array.IndexOf(States, state) < 0) throw new ArgumentException("Unknown animation state.");
@@ -38,34 +64,79 @@ namespace Dafeiyu
         }
         public void Advance(double seconds)
         {
-            if (seconds < 0 || Double.IsNaN(seconds)) return;
+            if (seconds < 0 || Double.IsNaN(seconds) || Double.IsInfinity(seconds)) return;
             elapsed += seconds;
             if (duration > 0 && elapsed >= duration) { Play("idle", 0); return; }
-            Frame = (int)(elapsed / Periods[Row]) % Counts[Row];
+            double period=Row==1 || Row==2 ? runningFramePeriod : Periods[Row];
+            Frame = (int)((elapsed / period * FrameMultiplier) % (Counts[Row]*FrameMultiplier));
         }
     }
 
+    [DataContract]
     public sealed class ChatMessage
     {
-        public string Role { get; private set; }
-        public string Content { get; private set; }
-        public ChatMessage(string role, string content) { Role = role; Content = content; }
+        [DataMember] public string Id { get; private set; }
+        [DataMember] public string TurnId { get; private set; }
+        [DataMember] public string Role { get; private set; }
+        [DataMember] public string Content { get; private set; }
+        [DataMember] public string Status { get; private set; }
+        [DataMember] public string Source { get; private set; }
+        [DataMember] public DateTime Timestamp { get; private set; }
+        public ChatMessage(string role, string content) : this(role,content,Guid.NewGuid().ToString("N"),"complete","text") { }
+        public ChatMessage(string role,string content,string turnId,string status,string source)
+        { Id=Guid.NewGuid().ToString("N");TurnId=turnId;Role=role;Content=content??"";Status=status;Source=source;Timestamp=DateTime.UtcNow; }
+        public ChatMessage Copy() { return (ChatMessage)MemberwiseClone(); }
+        internal void Update(string content,string status) { Content=content??"";Status=status; }
+        internal void Normalize()
+        {
+            Id=String.IsNullOrEmpty(Id)?Guid.NewGuid().ToString("N"):Id;
+            TurnId=String.IsNullOrEmpty(TurnId)?Id:TurnId;Content=Content??"";Source=Source??"text";
+            if(Status=="pending")Status="interrupted";
+            if(Status!="complete" && Status!="interrupted" && Status!="cancelled" && Status!="error")Status="interrupted";
+        }
     }
     public sealed class ConversationLog
     {
         private readonly List<ChatMessage> messages = new List<ChatMessage>();
-        public IList<ChatMessage> Messages { get { return messages.AsReadOnly(); } }
+        private readonly object gate=new object();
+        public IList<ChatMessage> Messages { get { lock(gate)return messages.Select(m=>m.Copy()).ToList().AsReadOnly(); } }
         public void Commit(string user, string assistant)
         {
-            messages.Add(new ChatMessage("user", user)); messages.Add(new ChatMessage("assistant", assistant));
-            while (messages.Count > 20) messages.RemoveRange(0, 2);
+            Commit(user,assistant,"text");
+        }
+        public void Commit(string user,string assistant,string source)
+        {
+            lock(gate) { string turn=Guid.NewGuid().ToString("N");messages.Add(new ChatMessage("user",user,turn,"complete",source));messages.Add(new ChatMessage("assistant",assistant,turn,"complete",source));Trim(); }
+        }
+        public ChatMessage BeginTurn(string text,string source,out ChatMessage user)
+        {
+            lock(gate) { string turn=Guid.NewGuid().ToString("N");var u=new ChatMessage("user",text,turn,"complete",source);var a=new ChatMessage("assistant","",turn,"pending",source);messages.Add(u);messages.Add(a);Trim();user=u.Copy();return a.Copy(); }
+        }
+        public ChatMessage Update(string id,string content,string status)
+        {
+            lock(gate) { var message=messages.Find(m=>m.Id==id);if(message==null)return null;message.Update(content,status);Trim();return message.Copy(); }
+        }
+        public void Replace(IList<ChatMessage> restored)
+        { lock(gate) { messages.Clear();if(restored!=null)foreach(var m in restored){if(m==null || (m.Role!="user" && m.Role!="assistant"))continue;var copy=m.Copy();copy.Normalize();messages.Add(copy);}Trim(); } }
+        private void Trim()
+        {
+            while(messages.Count>0 && (messages.Select(m=>m.TurnId).Distinct().Count()>200 || messages.Sum(m=>(long)Encoding.UTF8.GetByteCount(m.Content)+512)>8*1024*1024))
+            { string turn=messages[0].TurnId;messages.RemoveAll(m=>m.TurnId==turn); }
         }
         public List<ChatMessage> ForRequest(string persona, string user)
         {
             var result = new List<ChatMessage>();
             if (!String.IsNullOrWhiteSpace(persona)) result.Add(new ChatMessage("system", persona));
-            result.AddRange(messages); result.Add(new ChatMessage("user", user)); return result;
+            lock(gate) {
+                var pairs=new List<ChatMessage>();
+                for(int i=0;i+1<messages.Count;i++) { var u=messages[i];var a=messages[i+1];if(u.Role=="user" && a.Role=="assistant" && u.TurnId==a.TurnId && u.Status=="complete" && a.Status=="complete") { pairs.Add(u.Copy());pairs.Add(a.Copy());i++; } }
+                if(pairs.Count>20)pairs.RemoveRange(0,pairs.Count-20);
+                long characters=pairs.Sum(m=>(long)m.Content.Length);
+                while(pairs.Count>0 && characters>100000){characters-=pairs[0].Content.Length+pairs[1].Content.Length;pairs.RemoveRange(0,2);}
+                result.AddRange(pairs);
+            }
+            result.Add(new ChatMessage("user", user)); return result;
         }
-        public void Clear() { messages.Clear(); }
+        public void Clear() { lock(gate)messages.Clear(); }
     }
 }

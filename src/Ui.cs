@@ -10,7 +10,7 @@ namespace Dafeiyu
     {
         public static readonly SolidColorBrush Ink = Brush("#203754"), Muted = Brush("#72839B"), Blue = Brush("#456DE6"), Pale = Brush("#EDF3FF"), Line = Brush("#DCE5F4");
         private static Style buttonStyle;
-        private static Style comboStyle,navigationStyle;
+        private static Style comboStyle,navigationStyle,fieldStyle,toggleStyle;
         private static System.Windows.Media.Imaging.BitmapSource applicationIcon;
         public static System.Windows.Media.Imaging.BitmapSource ApplicationIcon()
         {
@@ -30,7 +30,8 @@ namespace Dafeiyu
             window.MinWidth = width - 40; window.MinHeight = Math.Min(430, height);
             window.MaxHeight = Math.Max(430, SystemParameters.WorkArea.Height - 36);
             window.FontFamily = new FontFamily("Microsoft YaHei UI"); window.FontSize = 13;
-            window.Foreground = Ink; window.Background = Brush("#F6F8FD"); window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.Foreground = Ink; window.Background = Brush("#F5F8FE"); window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.UseLayoutRounding=true;window.SnapsToDevicePixels=true;
             if(comboStyle==null)
             {
                 comboStyle=(Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ComboBox'><Setter Property='Background' Value='White'/><Setter Property='BorderBrush' Value='#DCE5F4'/><Setter Property='Foreground' Value='#203754'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ComboBox'><Grid><ToggleButton Focusable='False' ClickMode='Press' IsChecked='{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}'><ToggleButton.Template><ControlTemplate TargetType='ToggleButton'><Border Background='White' BorderBrush='#DCE5F4' BorderThickness='1' CornerRadius='9'><Path Data='M0,0 L4,4 L8,0' Stroke='#72839B' StrokeThickness='1.3' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,14,0'/></Border></ControlTemplate></ToggleButton.Template></ToggleButton><ContentPresenter Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}' Margin='12,7,36,7' VerticalAlignment='Center' IsHitTestVisible='False'/><Popup x:Name='PART_Popup' Placement='Bottom' IsOpen='{TemplateBinding IsDropDownOpen}' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'><Border Background='White' BorderBrush='#DCE5F4' BorderThickness='1' CornerRadius='9' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}' Padding='4'><ScrollViewer MaxHeight='290' CanContentScroll='True'><ItemsPresenter KeyboardNavigation.DirectionalNavigation='Contained'/></ScrollViewer></Border></Popup></Grid><ControlTemplate.Triggers><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.5'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");
@@ -49,7 +50,9 @@ namespace Dafeiyu
         public static TextBlock Text(string text, double size = 13, Brush color = null)
         { return new TextBlock { Text = text, FontSize = size, Foreground = color ?? Ink, TextWrapping = TextWrapping.Wrap, LineHeight = size * 1.65 }; }
         public static TextBox Field(string value = "", bool multiline = false)
-        { return new TextBox { Text = value ?? "", MinHeight = 37, Padding = new Thickness(10, 7, 10, 7), BorderBrush = Line, BorderThickness = new Thickness(1), Background = Brushes.White,
+        {
+            if(fieldStyle==null)fieldStyle=(Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='TextBox'><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='TextBox'><Border x:Name='surface' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='9'><ScrollViewer x:Name='PART_ContentHost' Margin='{TemplateBinding Padding}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocusWithin' Value='True'><Setter TargetName='surface' Property='BorderBrush' Value='#456DE6'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.5'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");
+            return new TextBox { Style=fieldStyle,Text = value ?? "", MinHeight = 37, Padding = new Thickness(10, 7, 10, 7), BorderBrush = Line, BorderThickness = new Thickness(1), Background = Brushes.White,
             TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap, AcceptsReturn = multiline, VerticalScrollBarVisibility = multiline ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden }; }
         public static Border Card(UIElement child)
         { return new Border { Child = child, Background = Brushes.White, CornerRadius = new CornerRadius(14), BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(17), Margin = new Thickness(0, 0, 0, 14) }; }
@@ -59,7 +62,8 @@ namespace Dafeiyu
         }
         public static CheckBox Toggle(string label, bool value, Action<bool> changed)
         {
-            var toggle = new CheckBox { Content = label, IsChecked = value, Margin = new Thickness(0, 6, 0, 9), VerticalContentAlignment = VerticalAlignment.Center };
+            if(toggleStyle==null)toggleStyle=(Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='CheckBox'><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'><StackPanel Orientation='Horizontal' Background='Transparent'><Border x:Name='track' Width='30' Height='18' CornerRadius='9' Background='#CBD5E7' VerticalAlignment='Center' Margin='0,0,9,0'><Ellipse x:Name='thumb' Width='12' Height='12' Fill='White' HorizontalAlignment='Left' Margin='3,0,0,0'/></Border><ContentPresenter RecognizesAccessKey='True' VerticalAlignment='Center'/></StackPanel><ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'><Setter TargetName='track' Property='Background' Value='#456DE6'/><Setter TargetName='thumb' Property='HorizontalAlignment' Value='Right'/><Setter TargetName='thumb' Property='Margin' Value='0,0,3,0'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");
+            var toggle = new CheckBox { Style=toggleStyle,Content = label, IsChecked = value, MinHeight=24,Margin = new Thickness(0, 6, 0, 9), VerticalContentAlignment = VerticalAlignment.Center };
             toggle.Checked += delegate { changed(true); }; toggle.Unchecked += delegate { changed(false); }; return toggle;
         }
         public static CheckBox ReplySpeechToggle(PetWindow pet)

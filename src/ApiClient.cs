@@ -21,7 +21,11 @@ namespace Dafeiyu
         Task<string> TranscribeAsync(ConnectionSettings settings, byte[] wav, CancellationToken cancel);
         Task<byte[]> SpeechAsync(ConnectionSettings settings, string voice, string text, CancellationToken cancel);
     }
-    public sealed class ApiClient : IConversationApi
+    public interface IStreamingConversationApi
+    {
+        Task<string> ChatStreamAsync(ConnectionSettings settings, IList<ChatMessage> messages, Action<string> onDelta, CancellationToken cancel);
+    }
+    public sealed class ApiClient : IConversationApi, IStreamingConversationApi
     {
         private readonly HttpClient http;
         private readonly TimeSpan requestTimeout;
@@ -86,27 +90,75 @@ namespace Dafeiyu
             using (var request = Request(settings, ChatPath(settings), Json(body)))
             {
                 byte[] bytes = await SendAsync(settings,request, MaxJsonBytes, cancel).ConfigureAwait(false);
+                return ParseChatReply(bytes, anthropic);
+            }
+        }
+        internal static string ParseChatReply(byte[] bytes, bool anthropic)
+        {
+            try
+            {
+                var json = ObjectJson(bytes); string content;
+                if(anthropic)
+                {
+                    var text = new StringBuilder();
+                    foreach(object block in (object[])json["content"])
+                    { var item = (Dictionary<string,object>)block; if((item["type"] as string) == "text") text.Append(item["text"] as string); }
+                    content = text.ToString();
+                }
+                else content = ChoiceMessage(json)["content"] as string;
+                if(String.IsNullOrWhiteSpace(content) || content.Length > 50000) throw new FormatException();
+                return content.Trim();
+            }
+            catch(Exception e)
+            {
+                if(!Malformed(e)) throw;
+                throw new ApiException("模型没有返回可显示的文字，请检查模型名称与接口兼容性。");
+            }
+        }
+        public async Task<string> ChatStreamAsync(ConnectionSettings settings, IList<ChatMessage> messages, Action<string> onDelta, CancellationToken cancel)
+        {
+            var serialized = new List<object>(); string system = ""; bool anthropic = settings.Protocol == "anthropic";
+            foreach(ChatMessage message in messages)
+            { if(anthropic && message.Role == "system") system += message.Content + "\n"; else serialized.Add(new { role = message.Role, content = message.Content }); }
+            object body = anthropic ? (object)new { model = settings.Model, messages = serialized, system = system.Trim(), max_tokens = 4096, stream = true } : new { model = settings.Model, messages = serialized, stream = true };
+            using(var request = Request(settings, ChatPath(settings), Json(body)))
+            using(var proxyHttp = settings.UseProxy ? ProxyConfiguration.CreateHttpClient(settings.ProxyAddress, false) : null)
+            using(var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancel))
+            {
+                request.Headers.Accept.Clear(); request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+                bounded.CancelAfter(requestTimeout); CancellationToken token = bounded.Token;
                 try
                 {
-                    var json = ObjectJson(bytes);
-                    string content;
-                    if(anthropic)
+                    using(var response = await (settings.UseProxy ? proxyHttp : http).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false))
+                    using(token.Register(response.Dispose))
                     {
-                        var text=new StringBuilder();
-                        foreach(object block in (object[])json["content"])
-                        { var item=(Dictionary<string,object>)block; if((item["type"] as string)=="text") text.Append(item["text"] as string); }
-                        content=text.ToString();
+                        CheckResponse(response, true);
+                        if(response.Content.Headers.ContentLength > MaxJsonBytes) throw new ApiException("服务返回的内容过大，请缩短本次请求。");
+                        using(Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                            return await ChatStream.ReadAsync(stream, anthropic, onDelta, token, MaxJsonBytes).ConfigureAwait(false);
                     }
-                    else content=ChoiceMessage(json)["content"] as string;
-                    if (String.IsNullOrWhiteSpace(content) || content.Length > 50000) throw new FormatException();
-                    return content.Trim();
                 }
-                catch (Exception e)
+                catch(OperationCanceledException)
+                { if(cancel.IsCancellationRequested) throw; throw new ApiException("请求超时，可以重试或缩短本次提问。"); }
+                catch(Exception e)
                 {
-                    if (!(e is ArgumentException || e is InvalidCastException || e is KeyNotFoundException || e is IndexOutOfRangeException || e is FormatException || e is NullReferenceException)) throw;
-                    throw new ApiException("模型没有返回可显示的文字，请检查模型名称与接口兼容性。");
+                    if(!(e is HttpRequestException || e is IOException || e is ObjectDisposedException)) throw;
+                    if(cancel.IsCancellationRequested) throw new OperationCanceledException(cancel);
+                    if(token.IsCancellationRequested) throw new ApiException("请求超时，可以重试或缩短本次提问。");
+                    throw new ApiException(e is HttpRequestException ? (settings.UseProxy ? "无法通过已配置的代理连接服务，请检查代理地址及代理是否运行。" : "无法连接此服务，请检查地址及网络；需要代理时请在服务设置中开启。") : "连接中断，请稍后重试。");
                 }
             }
+        }
+        private static void CheckResponse(HttpResponseMessage response, bool streaming)
+        {
+            if(response.IsSuccessStatusCode) return;
+            int code = (int)response.StatusCode;
+            string detail = code == 401 || code == 403 ? "请检查密钥与服务权限。" :
+                code == 429 ? "请求太频繁或额度不足，请稍后重试。" :
+                code >= 300 && code < 400 ? "服务发生重定向，请填写最终接口地址。" :
+                code == 404 ? "请检查服务地址及模型名称。" :
+                streaming ? "服务可能不支持流式回复，请在文字服务设置中关闭流式回复后重试。" : "服务暂时无法完成请求，请检查配置后重试。";
+            throw new ApiException("服务返回 HTTP " + code + "。" + detail);
         }
         public async Task<string> TranscribeAsync(ConnectionSettings settings, byte[] wav, CancellationToken cancel)
         {
@@ -187,15 +239,7 @@ namespace Dafeiyu
                 using (HttpResponseMessage response = await (settings.UseProxy ? proxyHttp : http).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false))
                 using(token.Register(response.Dispose))
                 {
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        int code = (int)response.StatusCode;
-                        string detail = code == 401 || code == 403 ? "请检查密钥与服务权限。" :
-                            code == 429 ? "请求太频繁或额度不足，请稍后重试。" :
-                            code >= 300 && code < 400 ? "服务发生重定向，请填写最终接口地址。" :
-                            code == 404 ? "请检查服务地址及模型名称。" : "服务暂时无法完成请求，请检查配置后重试。";
-                        throw new ApiException("服务返回 HTTP " + code + "。" + detail);
-                    }
+                    CheckResponse(response, false);
                     if (response.Content.Headers.ContentLength > maximum) throw new ApiException("服务返回的内容过大，请缩短本次请求。");
                     using (Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
                     using (var buffer = new MemoryStream())

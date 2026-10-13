@@ -1,39 +1,69 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+
 namespace Dafeiyu
 {
     public sealed class AboutPanel : Grid,IDisposable
     {
-        readonly PetWindow pet;readonly CheckBox proxy;readonly TextBox proxyAddress;readonly TextBlock status;readonly Button check,download,openFolder,cancel;readonly ProgressBar progress;readonly GitHubUpdates updates=new GitHubUpdates();
-        CancellationTokenSource cancellation;UpdateRelease release;bool disposed;string downloaded;
+        readonly PetWindow pet;
+        readonly UpdateCoordinator updates;
+        readonly CheckBox proxy,automatic;
+        readonly TextBox proxyAddress;
+        readonly TextBlock status,progressLabel;
+        readonly Button check,cancel,openFolder;
+        readonly ProgressBar progress;
+        bool disposed;
+        public bool HasUnsavedChanges {get{return ProxyConfiguration.Normalize(proxyAddress.Text)!=ProxyConfiguration.Normalize(pet.Settings.UpdateProxyAddress);}}
         public AboutPanel(PetWindow companion)
         {
-            pet=companion;Margin=new Thickness(24,22,24,20);var panel=new StackPanel();Children.Add(Ui.Scroll(panel));var heading=Ui.Text("关于桌面伙伴",25);heading.FontWeight=FontWeights.SemiBold;panel.Children.Add(heading);
-            var logo=new Image{Source=Ui.ApplicationIcon(),Width=88,Height=88,Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,14,0,8)};RenderOptions.SetBitmapScalingMode(logo,BitmapScalingMode.HighQuality);panel.Children.Add(logo);
-            panel.Children.Add(Ui.Text("版本 "+ReleaseInfo.DisplayVersion,13,Ui.Blue));panel.Children.Add(Ui.Text("作者 · "+ReleaseInfo.Author,16));panel.Children.Add(Ui.Text("E包与大肥鱼 · 高清桌面伙伴\n陪你写代码、做设计，也陪你整理思路。",12,Ui.Muted));
-            var repository=Ui.Text("",13,Ui.Blue);repository.Name="RepositoryUrl";repository.Margin=new Thickness(0,7,0,8);
-            var link=new Hyperlink(new Run(ReleaseInfo.RepositoryUrl)){NavigateUri=new Uri(ReleaseInfo.RepositoryUrl)};link.RequestNavigate+=delegate(object sender,System.Windows.Navigation.RequestNavigateEventArgs args){args.Handled=true;Open(ReleaseInfo.RepositoryUrl);};repository.Inlines.Add(link);Ui.Label(panel,"GitHub 仓库",repository);
-            panel.Children.Add(Ui.Text("点击地址在默认浏览器打开。更新始终来自这个仓库的正式 Release。",11,Ui.Muted));
-            var copy=Ui.Button("复制仓库地址");copy.Name="CopyRepository";copy.HorizontalAlignment=HorizontalAlignment.Left;copy.Margin=new Thickness(0,10,0,8);copy.Click+=delegate{try{Clipboard.SetText(ReleaseInfo.RepositoryUrl);status.Text="仓库地址已复制。";}catch(System.Runtime.InteropServices.COMException){status.Text="剪贴板正忙，请稍后重试。";}};panel.Children.Add(copy);
-            proxy=Ui.Toggle("更新使用代理",pet.Settings.UpdateUseProxy,v=>{pet.Settings.UpdateUseProxy=v;pet.SaveSettings();});proxy.Name="UpdateProxy";panel.Children.Add(proxy);
-            proxyAddress=Ui.Field(ProxyConfiguration.Normalize(pet.Settings.UpdateProxyAddress));proxyAddress.Name="UpdateProxyAddress";proxyAddress.LostFocus+=delegate{SaveProxy();};Ui.Label(panel,"代理地址",proxyAddress);panel.Children.Add(Ui.Text("默认 127.0.0.1:7890，可修改；移开焦点后保存。",11,Ui.Muted));
-            var buttons=new WrapPanel{Margin=new Thickness(0,16,0,0)};check=Ui.Button("检查更新",true);check.Name="CheckUpdates";check.Click+=async delegate {if(!SaveProxy())return;Begin();try{release=await updates.CheckAsync(ReleaseInfo.RepositoryUrl,pet.Settings.UpdateUseProxy,pet.Settings.UpdateProxyAddress,cancellation.Token);var current=Assembly.GetExecutingAssembly().GetName().Version;status.Text=release.IsNewerThan(current)?"发现新版本 "+release.VersionTag+(release.AssetName==null?"，尚无 Windows 下载附件。":" · "+release.AssetName):"当前版本已是最新。GitHub："+release.VersionTag;}catch(Exception e){status.Text=e is OperationCanceledException?"检查已取消。":e.Message;release=null;}finally{End();}};buttons.Children.Add(check);
-            download=Ui.Button("下载更新包");download.Name="DownloadUpdate";download.IsEnabled=false;download.Click+=async delegate {if(!SaveProxy())return;Begin();try{var reporter=new Progress<double>(v=>{if(!disposed)progress.Value=v;});downloaded=await updates.DownloadAsync(release,Path.Combine(pet.Store.DirectoryPath,"downloads"),pet.Settings.UpdateUseProxy,pet.Settings.UpdateProxyAddress,reporter,cancellation.Token);status.Text="下载完成。打开下载文件夹，退出旧版桌宠后运行安装包；ZIP 请先解压。";}catch(Exception e){status.Text=e is OperationCanceledException?"下载已取消。":e.Message;}finally{End();}};buttons.Children.Add(download);
-            cancel=Ui.Button("取消");cancel.Name="CancelUpdate";cancel.IsEnabled=false;cancel.Click+=delegate {if(cancellation!=null)cancellation.Cancel();};buttons.Children.Add(cancel);panel.Children.Add(buttons);
-            progress=new ProgressBar{Name="UpdateProgress",Minimum=0,Maximum=100,Height=5,Margin=new Thickness(0,15,0,0),Visibility=Visibility.Collapsed};panel.Children.Add(progress);status=Ui.Text("更新来源：GitHub Releases。支持 EXE、MSI 和 ZIP；优先选择安装包。",12,Ui.Muted);status.Name="UpdateStatus";status.Margin=new Thickness(0,12,0,0);panel.Children.Add(status);
-            openFolder=Ui.Button("打开下载文件夹");openFolder.Name="OpenDownloads";openFolder.IsEnabled=false;openFolder.Margin=new Thickness(0,14,0,0);openFolder.HorizontalAlignment=HorizontalAlignment.Left;openFolder.Click+=delegate {Open(Path.GetDirectoryName(downloaded));};panel.Children.Add(openFolder);
+            pet=companion;updates=pet.Updates;Margin=new Thickness(26,24,26,20);
+            var panel=new StackPanel();Children.Add(Ui.Scroll(panel));
+            var hero=new DockPanel{Margin=new Thickness(0,0,0,22)};
+            var logo=new Image{Source=Ui.ApplicationIcon(),Width=72,Height=72,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,18,0)};RenderOptions.SetBitmapScalingMode(logo,BitmapScalingMode.HighQuality);DockPanel.SetDock(logo,Dock.Left);hero.Children.Add(logo);
+            var brand=new StackPanel{VerticalAlignment=VerticalAlignment.Center};var title=Ui.Text("桌面伙伴",27);title.FontWeight=FontWeights.SemiBold;brand.Children.Add(title);brand.Children.Add(Ui.Text("版本 "+ReleaseInfo.DisplayVersion+"   ·   "+ReleaseInfo.Author,12,Ui.Muted));hero.Children.Add(brand);panel.Children.Add(hero);
+            panel.Children.Add(Ui.Text("写代码、做设计，或聊聊今天的小想法。",13,Ui.Muted));
+            var update=new StackPanel();var heading=Ui.Text("版本更新",17);heading.FontWeight=FontWeights.SemiBold;update.Children.Add(heading);
+            automatic=Ui.Toggle("启动时自动检查并更新",pet.Settings.AutoUpdate,v=>{pet.Settings.AutoUpdate=v;updates.AutomaticChanged();});automatic.Name="AutoUpdate";update.Children.Add(automatic);
+            update.Children.Add(Ui.Text("启动 30 秒后检查，每 24 小时最多自动检查一次。新版下载并校验后，空闲时自动安装和重启；聊天与 Live 期间会等待。",12,Ui.Muted));
+            var actions=new WrapPanel{Margin=new Thickness(0,16,0,0)};
+            check=Ui.Button("检查并更新",true);check.Name="CheckUpdates";check.Click+=async delegate {if(SaveProxy())await updates.CheckAndUpdateAsync(true);};actions.Children.Add(check);
+            cancel=Ui.Button("取消更新");cancel.Name="CancelUpdate";cancel.Click+=delegate {updates.Cancel();};actions.Children.Add(cancel);update.Children.Add(actions);
+            progress=new ProgressBar{Name="UpdateProgress",Minimum=0,Maximum=100,Height=6,Margin=new Thickness(0,16,0,0),Visibility=Visibility.Collapsed};update.Children.Add(progress);
+            progressLabel=Ui.Text("",11,Ui.Blue);progressLabel.Margin=new Thickness(0,5,0,0);update.Children.Add(progressLabel);
+            status=Ui.Text("",12);status.Name="UpdateStatus";status.Margin=new Thickness(0,12,0,0);update.Children.Add(status);
+            var updateCard=Ui.Card(update);updateCard.Margin=new Thickness(0,20,0,18);panel.Children.Add(updateCard);
+
+            var network=new Expander{Header="更新网络与下载文件",IsExpanded=true,Margin=new Thickness(0,0,0,20)};
+            var networkBody=new StackPanel{Margin=new Thickness(0,8,0,0)};
+            proxy=Ui.Toggle("更新使用代理",pet.Settings.UpdateUseProxy,v=>{pet.Settings.UpdateUseProxy=v;pet.SaveSettings();});proxy.Name="UpdateProxy";networkBody.Children.Add(proxy);
+            proxyAddress=Ui.Field(ProxyConfiguration.Normalize(pet.Settings.UpdateProxyAddress));proxyAddress.Name="UpdateProxyAddress";proxyAddress.LostFocus+=delegate {SaveProxy();};Ui.Label(networkBody,"代理地址",proxyAddress);networkBody.Children.Add(Ui.Text("默认 127.0.0.1:7890；修改后移开焦点即可保存。",11,Ui.Muted));
+            openFolder=Ui.Button("打开更新文件夹");openFolder.Name="OpenDownloads";openFolder.Margin=new Thickness(0,12,0,0);openFolder.HorizontalAlignment=HorizontalAlignment.Left;openFolder.Click+=delegate {Open(Path.Combine(pet.Store.DirectoryPath,"updates"));};networkBody.Children.Add(openFolder);network.Content=networkBody;panel.Children.Add(network);
+
+            var repository=Ui.Text("",12,Ui.Blue);repository.Name="RepositoryUrl";
+            var link=new Hyperlink(new Run(ReleaseInfo.RepositoryUrl)){NavigateUri=new Uri(ReleaseInfo.RepositoryUrl)};link.RequestNavigate+=delegate(object sender,System.Windows.Navigation.RequestNavigateEventArgs args){args.Handled=true;Open(ReleaseInfo.RepositoryUrl);};repository.Inlines.Add(link);
+            panel.Children.Add(Ui.Text("项目仓库",12,Ui.Muted));panel.Children.Add(repository);
+            var links=new WrapPanel{Margin=new Thickness(0,12,0,0)};var copy=Ui.Button("复制地址");copy.Name="CopyRepository";copy.Click+=delegate {try{Clipboard.SetText(ReleaseInfo.RepositoryUrl);updates.ReportValidation("仓库地址已复制。");}catch(System.Runtime.InteropServices.COMException){updates.ReportValidation("剪贴板正忙，请稍后重试。");}};links.Children.Add(copy);
+            var releases=Ui.Button("查看版本记录");releases.Click+=delegate {Open(ReleaseInfo.RepositoryUrl+"/releases");};links.Children.Add(releases);panel.Children.Add(links);
+            panel.Children.Add(Ui.Text("更新仅来自上述仓库的正式 Release。安装版原目录升级；便携版替换运行文件，data 始终保留。",11,Ui.Muted));
+            updates.Changed+=Refresh;Refresh();
         }
-        bool SaveProxy(){try{string value=ProxyConfiguration.Normalize(proxyAddress.Text);ProxyConfiguration.Endpoint(value);proxyAddress.Text=value;pet.Settings.UpdateProxyAddress=value;pet.SaveSettings();return true;}catch(InvalidOperationException e){status.Text=e.Message;return false;}}
-        void Begin(){cancellation=new CancellationTokenSource();check.IsEnabled=download.IsEnabled=proxy.IsEnabled=proxyAddress.IsEnabled=false;cancel.IsEnabled=true;progress.Value=0;progress.Visibility=Visibility.Visible;status.Text="正在访问 GitHub…";}
-        void End(){if(cancellation!=null){cancellation.Dispose();cancellation=null;}if(disposed)return;check.IsEnabled=proxy.IsEnabled=proxyAddress.IsEnabled=true;download.IsEnabled=release!=null && release.AssetName!=null && release.IsNewerThan(Assembly.GetExecutingAssembly().GetName().Version);openFolder.IsEnabled=downloaded!=null;cancel.IsEnabled=false;progress.Visibility=Visibility.Collapsed;}
-        void Open(string path){try{Process.Start(new ProcessStartInfo(path){UseShellExecute=true});}catch(System.ComponentModel.Win32Exception){status.Text="Windows 暂时无法打开此地址或文件夹。";}}
-        public void Dispose(){if(disposed)return;disposed=true;if(cancellation!=null)cancellation.Cancel();updates.Dispose();}
+        bool SaveProxy()
+        {
+            try{string value=ProxyConfiguration.Normalize(proxyAddress.Text);ProxyConfiguration.Endpoint(value);proxyAddress.Text=value;pet.Settings.UpdateProxyAddress=value;pet.SaveSettings();return true;}
+            catch(InvalidOperationException e){updates.ReportValidation(e.Message);return false;}
+        }
+        void Refresh()
+        {
+            if(disposed)return;check.IsEnabled=!updates.IsBusy;proxy.IsEnabled=proxyAddress.IsEnabled=!updates.IsBusy;cancel.IsEnabled=updates.CanCancel;
+            progress.Visibility=updates.IsBusy?Visibility.Visible:Visibility.Collapsed;progress.IsIndeterminate=updates.IsBusy && !updates.IsDownloading && updates.Progress<100;progress.Value=updates.Progress;
+            progressLabel.Text=updates.IsDownloading?"下载进度 "+Math.Round(updates.Progress)+"%":"";status.Text=updates.Status;openFolder.IsEnabled=Directory.Exists(Path.Combine(pet.Store.DirectoryPath,"updates"));
+        }
+        void Open(string address){try{Process.Start(new ProcessStartInfo(address){UseShellExecute=true});}catch(System.ComponentModel.Win32Exception){updates.ReportValidation("Windows 暂时无法打开此地址或文件夹。");}}
+        public void Dispose(){if(disposed)return;disposed=true;updates.Changed-=Refresh;}
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -19,8 +19,8 @@ namespace Dafeiyu.Tests
             PetWindow pet=null;
             try
             {
-                var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};string folder=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"chat-smoke");Directory.CreateDirectory(folder);
-                pet=new PetWindow(new SpriteAtlas(),new PetSettings {SkinId="dafeiyu",ReadReplies=false,FollowCursor=false},new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump(.2);pet.ShowChat();Pump(.2);
+                var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};string folder=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"chat-smoke",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
+                pet=new PetWindow(new SpriteAtlas(),new PetSettings {SkinId="dafeiyu",ReadReplies=false,FollowCursor=false,SaveChatHistory=false,GreetingEnabled=false,HideOnFullscreen=false},new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump(.2);pet.ShowChat();Pump(.2);
                 var chat=app.Windows.OfType<ChatWindow>().Single();var input=Find<TextBox>(chat,"MessageInput");var send=Find<Button>(chat,"SendMessage");
                 Check(input!=null && send!=null && Find<Button>(chat,"VoiceRecord")!=null && Find<Button>(chat,"StopConversation")!=null,"chat exposes text, microphone and stop controls");
                 input.Text="你好";send.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.1);Check(Find<TextBlock>(chat,"ChatStatus").Text.Contains("设置"),"missing configuration points to settings");
@@ -36,7 +36,7 @@ namespace Dafeiyu.Tests
                 {
                     server.DelayBodyMilliseconds=1000;pet.Settings.Text.BaseUrl=server.Url;input.Text="停止";send.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.08);
                     Find<Button>(chat,"StopConversation").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(delegate{return !pet.Conversation.IsBusy;},3);
-                    Check(pet.Conversation.History.Messages.Count==2,"stop does not add an unfinished turn");
+                    Check(pet.Conversation.History.Messages.Count==4 && pet.Conversation.History.Messages.Last().Status=="cancelled","stop retains unfinished display with cancelled status");
                 }
                 using(var recognition=new ApiTests.Fixture("{\"text\":\"用语音聊设计\"}"))
                 using(var model=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"语音回复测试。\"}}]}"))
@@ -46,11 +46,11 @@ namespace Dafeiyu.Tests
                     pet.Settings.Speech=new ConnectionSettings {BaseUrl=synthesis.Url,Model="tts",ApiKey="speech-key"};pet.Settings.VoiceName="test";pet.Settings.UseCloudVoice=true;pet.Settings.ReadReplies=true;
                     var voice=pet.Conversation.SendVoiceAsync(WaveData.EncodePcm(new byte[16000]),pet.Settings,pet.Skin.Name);Wait(delegate{return voice.IsCompleted;},10);voice.GetAwaiter().GetResult();
                     Check(recognition.Path=="/audio/transcriptions" && model.Path=="/chat/completions" && synthesis.Path=="/audio/speech","three separate configured services execute voice pipeline");
-                    Check(pet.Conversation.History.Messages.Count==4 && All<TextBox>(chat).Any(t=>t.Text=="语音回复测试。"),"voice reply is retained and displayed");
+                    Check(pet.Conversation.History.Messages.Count==6 && All<TextBox>(chat).Any(t=>t.Text=="语音回复测试。"),"voice reply is retained and displayed");
                     Check(!Directory.GetFiles(Path.Combine(folder,"audio-cache"),"*.wav").Any(),"temporary spoken WAV is deleted");
                 }
                 chat.Close();Pump(.2);pet.ShowChat();Pump(.2);chat=app.Windows.OfType<ChatWindow>().Single();
-                Check(pet.Conversation.History.Messages.Count==4 && All<TextBox>(chat).Any(t=>t.Text=="语音回复测试。"),"reopened chat preserves in-memory successful history");
+                Check(pet.Conversation.History.Messages.Count==6 && All<TextBox>(chat).Any(t=>t.Text=="语音回复测试。"),"reopened chat preserves in-memory successful history");
                 Find<Button>(chat,"ClearChat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(pet.Conversation.History.Messages.Count==0,"clear button resets model context");
                 pet.ShowSettings(true);Pump(.3);var settings=app.Windows.OfType<SettingsWindow>().Single();
                 var url=Find<TextBox>(settings,"TextServiceUrl");var modelField=Find<TextBox>(settings,"TextServiceModel");var key=Find<PasswordBox>(settings,"TextServiceKey");
@@ -63,13 +63,13 @@ namespace Dafeiyu.Tests
                 url.Text="https://example.com/v2";Regression("same-origin path edits retain the saved key",()=>Check(key.Password=="private-test-key","same-origin path edits retain the saved key"));
                 url.Text="https://second-service.invalid/v1";Regression("manual provider domain edits clear the old key",()=>Check(key.Password.Length==0,"manual provider domain edits clear the old key"));
                 Save(settings,Path.Combine(folder,"connection-settings.png"));
-                settings.SelectPage(3);Pump(.1);Check(Find<TextBox>(settings,"TranscriptionModel")!=null,"ASR has a separate editable service page");settings.SelectPage(4);Pump(.1);Check(Find<TextBox>(settings,"SpeechVoice")!=null,"TTS has a separate editable voice page");
+                settings.SelectPage(3);Pump(.1);Check(Find<TextBox>(settings,"TranscriptionModel")!=null,"ASR has a separate editable service page");settings.SelectPage(4);Pump(.1);Check(Find<ComboBox>(settings,"SpeechVoice")!=null,"TTS has a separate editable voice page");
                 Find<Slider>(settings,"VoiceVolume").Value=35;Pump(.1);Check(pet.Settings.Volume==35 && pet.Store.Load().Volume==35,"voice volume applies and persists immediately");Save(settings,Path.Combine(folder,"speech-settings.png"));
                 settings.SelectPage(5);Pump(.1);Check(Find<TextBox>(settings,"LiveServiceUrl")!=null && Find<PasswordBox>(settings,"LiveServiceKey")!=null,"Live has its own endpoint, key and voice");Save(settings,Path.Combine(folder,"live-settings.png"));
                 Find<TextBox>(settings,"LiveServiceProxyAddress").Text="localhost:17893";settings.SelectPage(3);Pump(.1);Find<TextBox>(settings,"TranscriptionProxyAddress").Text="localhost:17891";settings.SelectPage(4);Pump(.1);Find<TextBox>(settings,"SpeechProxyAddress").Text="localhost:17892";Find<Button>(settings,"SaveConnections").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));var proxySaved=pet.Store.Load();Check(proxySaved.Transcription.ProxyAddress=="localhost:17891" && proxySaved.Speech.ProxyAddress=="localhost:17892" && proxySaved.Live.ProxyAddress=="localhost:17893","ASR TTS and Live proxy addresses save independently across pages");
                 settings.SelectPage(2);Pump(.1);Find<TextBox>(settings,"TextServiceModel").Text="unsaved-draft";settings.SelectPage(3);Pump(.1);settings.SelectPage(2);Pump(.1);Check(Find<TextBox>(settings,"TextServiceModel").Text=="unsaved-draft","navigation preserves unsaved service drafts");
                 var preset=Find<ComboBox>(settings,"TextServicePreset");preset.SelectedIndex=1;Pump(.1);Check(Find<PasswordBox>(settings,"TextServiceKey").Password.Length==0,"switching provider origin clears the previous API key");
-                settings.SelectPage(6);Pump(.1);Check(All<TextBlock>(settings).Any(t=>t.Text.Contains("彧晟Eason")) && Find<TextBlock>(settings,"RepositoryUrl").Inlines.OfType<System.Windows.Documents.Hyperlink>().Any(link=>link.NavigateUri.AbsoluteUri==ReleaseInfo.RepositoryUrl),"about page contains author and fixed repository link");Check(Find<TextBox>(settings,"RepositoryUrl")==null && Find<Button>(settings,"SaveRepository")==null && !Find<Button>(settings,"DownloadUpdate").IsEnabled,"official repository is read-only and downloads require a version check");Save(settings,Path.Combine(folder,"about.png"));
+                settings.SelectPage(6);Pump(.1);Check(All<TextBlock>(settings).Any(t=>t.Text.Contains("彧晟Eason")) && Find<TextBlock>(settings,"RepositoryUrl").Inlines.OfType<System.Windows.Documents.Hyperlink>().Any(link=>link.NavigateUri.AbsoluteUri==ReleaseInfo.RepositoryUrl),"about page contains author and fixed repository link");Check(Find<TextBox>(settings,"RepositoryUrl")==null && Find<Button>(settings,"SaveRepository")==null && Find<Button>(settings,"CheckUpdates").IsEnabled && Find<Button>(settings,"DownloadUpdate")==null,"official repository is read-only and the update check includes automatic download");Save(settings,Path.Combine(folder,"about.png"));
                 pet.SetReplySpeech(false);pet.ShowQuickChat();Pump(.2);var quick=app.Windows.OfType<QuickChatWindow>().Single();
                 var chatTts=Find<CheckBox>(chat,"TtsOutput");var quickTts=Find<CheckBox>(quick,"TtsOutput");
                 Check(chatTts!=null && quickTts!=null && chatTts.IsChecked==false && quickTts.IsChecked==false,"full chat and bubble expose the saved TTS output switch");
@@ -142,7 +142,7 @@ namespace Dafeiyu.Tests
         static void Regression(string name,Action test){try{test();}catch(Exception){regressions.Add(name);Console.WriteLine("REGRESSION FAIL "+name);}}
         static T Find<T>(DependencyObject root,string name) where T:FrameworkElement{return All<T>(root).FirstOrDefault(t=>t.Name==name);}
         static System.Collections.Generic.IEnumerable<T> All<T>(DependencyObject root) where T:DependencyObject{if(root is T)yield return (T)root;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(T item in All<T>(VisualTreeHelper.GetChild(root,i)))yield return item;}
-        static void Wait(Func<bool> done,double timeout){var end=DateTime.UtcNow.AddSeconds(timeout);while(!done() && DateTime.UtcNow<end)Pump(.03);if(!done())throw new Exception("UI operation timed out");}
+        static void Wait(Func<bool> done,double timeout){var end=DateTime.UtcNow.AddSeconds(timeout);while(!done() && DateTime.UtcNow<end)Pump(.03);if(!done())throw new Exception("UI operation timed out");Pump(.08);}
         static void Pump(double seconds){var frame=new DispatcherFrame();var timer=new DispatcherTimer {Interval=TimeSpan.FromSeconds(seconds)};timer.Tick+=delegate{timer.Stop();frame.Continue=false;};timer.Start();Dispatcher.PushFrame(frame);}
         static void Save(FrameworkElement element,string file){var bitmap=new RenderTargetBitmap((int)element.ActualWidth,(int)element.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(element);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using(var stream=File.Create(file))png.Save(stream);}
     }

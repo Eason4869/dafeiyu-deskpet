@@ -1,0 +1,25 @@
+name: Windows checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run protocol tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($target in @('CoreTests','ProfileTests','ApiTests','ConversationTests','LiveTests','UpdateTests','StartupTests')) {
+            & .\Build.ps1 -Target $target
+            if ($LASTEXITCODE -ne 0) { throw "Failed: $target" }
+          }
+      - name: Compile application
+        shell: powershell
+        run: .\Build.ps1 -Target App

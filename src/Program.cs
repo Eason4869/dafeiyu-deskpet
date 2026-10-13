@@ -7,7 +7,8 @@ using System.Windows;
 
 [assembly: AssemblyTitle("大肥鱼桌面伙伴")]
 [assembly: AssemblyDescription("高清 Windows 桌面伙伴，外观导入与文字、语音对话")]
-[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyVersion(Dafeiyu.ReleaseInfo.AssemblyVersion)]
+[assembly: AssemblyFileVersion(Dafeiyu.ReleaseInfo.AssemblyVersion)]
 
 namespace Dafeiyu
 {
@@ -25,6 +26,7 @@ namespace Dafeiyu
                     catch (WaitHandleCannotBeOpenedException) { }
                     return;
                 }
+                using (var installation = new Mutex(false, ReleaseInfo.InstallationMutex))
                 using (var wake = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\Dafeiyu.DeskPet.Wake." + suffix))
                 {
                     try

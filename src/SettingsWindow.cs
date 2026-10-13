@@ -15,7 +15,8 @@ namespace Dafeiyu
         private readonly TextBlock name,notice,sizeLabel;
         private readonly Image avatar;
         private readonly ComboBox skins;
-        private readonly CheckBox follow,wander,top,pause;
+        private readonly CheckBox follow,wander,top,pause,autoStart;
+        private readonly StartupRegistration startup=new StartupRegistration(Process.GetCurrentProcess().MainModule.FileName);
         private readonly Slider size;
         private readonly ListBox navigation;
         private readonly ContentControl content;
@@ -63,6 +64,8 @@ namespace Dafeiyu
             follow=Ui.Toggle("视线跟随鼠标",pet.Settings.FollowCursor,delegate(bool value) { if(!refreshing) { pet.Settings.FollowCursor=value; pet.ApplySettings(); } }); follow.Name="FollowCursor"; behavior.Children.Add(follow);
             wander=Ui.Toggle("偶尔在桌面上散步",pet.Settings.Wander,delegate(bool value) { if(!refreshing) { pet.Settings.Wander=value; pet.ApplySettings(); } }); wander.Name="Wander"; behavior.Children.Add(wander);
             top=Ui.Toggle("保持在其他窗口上方",pet.Settings.Topmost,delegate(bool value) { if(!refreshing) { pet.Settings.Topmost=value; pet.ApplySettings(); } }); top.Name="Topmost"; behavior.Children.Add(top);
+            autoStart=Ui.Toggle("开启自启",false,SetAutoStart);autoStart.Name="AutoStart";behavior.Children.Add(autoStart);
+            behavior.Children.Add(Ui.Text("登录 Windows 时启动桌宠；关闭后立即撤销。",11,Ui.Muted));
             pause=Ui.Toggle("暂停动画",pet.Paused,delegate(bool value) { if(!refreshing) pet.SetPaused(value); }); pause.Name="Pause"; behavior.Children.Add(pause);
             var sizeRow=new DockPanel { Margin=new Thickness(0,10,0,8) };
             sizeLabel=Ui.Text("",12,Ui.Blue); DockPanel.SetDock(sizeLabel,Dock.Right); sizeRow.Children.Add(sizeLabel); sizeRow.Children.Add(Ui.Text("伙伴大小",12)); behavior.Children.Add(sizeRow);
@@ -118,6 +121,21 @@ namespace Dafeiyu
             refreshing=true; follow.IsChecked=pet.Settings.FollowCursor; wander.IsChecked=pet.Settings.Wander;
             top.IsChecked=pet.Settings.Topmost; pause.IsChecked=pet.Paused; size.Value=pet.Settings.Scale;
             sizeLabel.Text=Math.Round(pet.Settings.Scale*100)+"%"; skins.SelectedItem=pet.Skin; refreshing=false;
+            RefreshAutoStart();
+        }
+        private void SetAutoStart(bool enabled)
+        {
+            if(refreshing)return;
+            try{startup.SetEnabled(enabled);ShowNotice(enabled?"已开启自启，登录 Windows 时启动。":"已关闭自启。");}
+            catch(Exception e){if(!(e is UnauthorizedAccessException || e is System.Security.SecurityException || e is IOException))throw;ShowNotice("无法修改当前用户的自启设置，请检查 Windows 权限。");}
+            RefreshAutoStart();
+        }
+        private void RefreshAutoStart()
+        {
+            refreshing=true;
+            try{autoStart.IsChecked=startup.IsEnabled;}
+            catch(Exception e){if(!(e is UnauthorizedAccessException || e is System.Security.SecurityException || e is IOException))throw;autoStart.IsEnabled=false;ShowNotice("无法读取当前用户的自启设置。");}
+            finally{refreshing=false;}
         }
         public void ShowNotice(string text) { if(notice!=null) notice.Text=text ?? ""; }
         public void SelectConnections() { navigation.SelectedIndex=2; }

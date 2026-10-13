@@ -76,7 +76,7 @@ namespace Dafeiyu
             Text = new ConnectionSettings(); Transcription = new ConnectionSettings(); Speech = new ConnectionSettings();
             Live = new ConnectionSettings { BaseUrl="wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", Model="gemini-3.8-live", Protocol="gemini-live" };
             VoiceMode="pipeline"; LiveVoice="Kore"; PersonaOverrides=new Dictionary<string,string>();
-            RepositoryUrl="https://github.com/OWNER/REPO";
+            RepositoryUrl=ReleaseInfo.RepositoryUrl;
             SystemPrompt = "你是{pet_name}，一位温和、俏皮的桌面伙伴。用自然的中文与用户对话，帮助写代码、做设计和整理思路。回答清楚简洁，如实表达不确定性。你不能直接看见用户桌面，也不会自动读取文件。";
         }
         public void Normalize()
@@ -89,7 +89,7 @@ namespace Dafeiyu
             Text.Normalize(); Transcription.Normalize(); Speech.Normalize();
             Live=Live ?? new ConnectionSettings(); Live.Normalize(); PersonaOverrides=PersonaOverrides ?? new Dictionary<string,string>();
             VoiceMode=VoiceMode=="live" ? "live" : "pipeline"; LiveVoice=String.IsNullOrWhiteSpace(LiveVoice) ? "Kore" : LiveVoice.Trim();
-            RepositoryUrl=String.IsNullOrWhiteSpace(RepositoryUrl)?"https://github.com/OWNER/REPO":RepositoryUrl.Trim();
+            RepositoryUrl=ReleaseInfo.RepositoryUrl;
             // Older MiMo configurations reused the text endpoint only for ASR.
             if(PersonaProfileVersion==0 && Speech.Model.StartsWith("mimo-",StringComparison.OrdinalIgnoreCase) && String.IsNullOrWhiteSpace(Speech.BaseUrl) && String.IsNullOrEmpty(Speech.EncryptedKey)) SpeechUsesTextService=true;
             VoiceName = (VoiceName ?? "").Trim(); SystemPrompt = SystemPrompt ?? "";

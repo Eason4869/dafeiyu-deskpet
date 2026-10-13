@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','LiveTests','UpdateTests')][string]$Target = 'App')
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke')][string]$Target = 'App')
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -18,9 +18,9 @@ if ($Target -eq 'App') {
     $options = @('/target:winexe','/main:Dafeiyu.Program',('/win32manifest:' + (Join-Path $projectRoot 'app.manifest')),('/win32icon:' + (Join-Path $projectRoot 'assets\pet.ico')))
 } else {
     $destination = Join-Path $workRoot ($Target + '.exe')
-    if ($Target -eq 'CoreTests') { $sourceNames = @('PetCore.cs','Settings.cs') }
-    elseif ($Target -eq 'ApiTests') { $sourceNames = @('PetCore.cs','Settings.cs','ApiClient.cs','AudioRecorder.cs') }
-    elseif ($Target -eq 'ConversationTests') { $sourceNames = @('PetCore.cs','Settings.cs','ApiClient.cs','AudioRecorder.cs','SpeechOutput.cs','ConversationSession.cs') }
+    if ($Target -eq 'CoreTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs') }
+    elseif ($Target -eq 'ApiTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ApiClient.cs','AudioRecorder.cs') }
+    elseif ($Target -eq 'ConversationTests') { $sourceNames = @('PetCore.cs','Settings.cs','ReleaseInfo.cs','ApiClient.cs','AudioRecorder.cs','SpeechOutput.cs','ConversationSession.cs') }
     else { $sourceNames = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.cs' | Select-Object -ExpandProperty Name) }
     $sources = @($sourceNames | ForEach-Object { Join-Path $projectRoot ('src\' + $_) } | Where-Object { Test-Path -LiteralPath $_ }) + @((Join-Path $projectRoot ('tests\' + $Target + '.cs')))
     if ($Target -eq 'UiSmoke' -or $Target -eq 'ChatSmoke' -or $Target -eq 'AudioSmoke' -or $Target -eq 'LiveTests' -or $Target -eq 'UpdateTests') { $sources += Join-Path $projectRoot 'tests\ApiTests.cs' }

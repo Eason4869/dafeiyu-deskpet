@@ -22,7 +22,7 @@ namespace Dafeiyu
         readonly Uri apiRoot;readonly HttpClient direct,proxy;
         public GitHubUpdates() : this(new Uri("https://api.github.com/")){}
         public GitHubUpdates(Uri root){if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");apiRoot=root;direct=Create(false);proxy=Create(true);}
-        static HttpClient Create(bool useProxy){var client=new HttpClient(new HttpClientHandler{UseProxy=useProxy,Proxy=useProxy?new WebProxy("http://127.0.0.1:7890",false):null,AllowAutoRedirect=true});client.Timeout=Timeout.InfiniteTimeSpan;client.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/1.2");return client;}
+        static HttpClient Create(bool useProxy){var client=new HttpClient(new HttpClientHandler{UseProxy=useProxy,Proxy=useProxy?new WebProxy("http://127.0.0.1:7890",false):null,AllowAutoRedirect=true});client.Timeout=Timeout.InfiniteTimeSpan;client.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/"+ReleaseInfo.DisplayVersion);return client;}
         public static string Repository(string address)
         {
             Uri uri;if(!Uri.TryCreate((address??"").Trim(),UriKind.Absolute,out uri) || uri.Scheme!="https" || uri.Host!="github.com" || !uri.IsDefaultPort || uri.UserInfo.Length>0 || uri.Query.Length>0 || uri.Fragment.Length>0)throw new ApiException("请填写 https://github.com/作者/仓库 格式的地址。");

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
@@ -62,6 +62,35 @@ namespace Dafeiyu
     }
 
     [DataContract]
+    public sealed class TextProviderSettings
+    {
+        [DataMember] public string Id { get; set; }
+        [DataMember] public string Name { get; set; }
+        [DataMember] public ConnectionSettings Connection { get; set; }
+        [DataMember] public List<string> Models { get; set; }
+        [DataMember] public Dictionary<string,string> ModelDisplayNames { get; set; }
+        public TextProviderSettings() { Id=Guid.NewGuid().ToString("N");Name="自定义服务";Connection=new ConnectionSettings();Models=new List<string>();ModelDisplayNames=new Dictionary<string,string>(); }
+        public void Normalize()
+        {
+            if(String.IsNullOrWhiteSpace(Id) || Id.Length>128)Id=Guid.NewGuid().ToString("N");
+            Name=String.IsNullOrWhiteSpace(Name)?"自定义服务":Name.Trim();if(Name.Length>80)Name=Name.Substring(0,80);
+            Connection=Connection ?? new ConnectionSettings();Connection.Normalize();
+            var clean=new List<string>();
+            if(Models!=null)foreach(string model in Models) { string value=(model ?? "").Trim();if(value.Length>0 && value.Length<=256 && !clean.Contains(value) && clean.Count<100)clean.Add(value); }
+            string selected=Connection.Model;
+            if(selected.Length>0 && selected.Length<=256 && !clean.Contains(selected)) { if(clean.Count>=100)clean.RemoveAt(clean.Count-1);clean.Add(selected); }
+            if(!clean.Contains(selected))Connection.Model=clean.Count>0?clean[0]:"";
+            Models=clean;
+            var labels=new Dictionary<string,string>(StringComparer.Ordinal);
+            if(ModelDisplayNames!=null)foreach(var pair in ModelDisplayNames){string label=(pair.Value ?? "").Trim();if(clean.Contains(pair.Key) && label.Length>0){if(label.Length>80)label=label.Substring(0,80);labels[pair.Key]=label;}}
+            ModelDisplayNames=labels;
+        }
+        public string DisplayName(string model) {string label;return ModelDisplayNames!=null && model!=null && ModelDisplayNames.TryGetValue(model,out label) && !String.IsNullOrWhiteSpace(label)?label:model ?? "";}
+        public TextProviderSettings Copy() { return new TextProviderSettings {Id=Id,Name=Name,ModelDisplayNames=ModelDisplayNames==null?new Dictionary<string,string>():new Dictionary<string,string>(ModelDisplayNames),Connection=(Connection ?? new ConnectionSettings()).Copy(),Models=Models==null?new List<string>():new List<string>(Models)}; }
+        public override string ToString() {return Name;}
+    }
+
+    [DataContract]
     public sealed class PetSettings
     {
         public const int OnboardingLastStep=15;
@@ -80,6 +109,7 @@ namespace Dafeiyu
         [DataMember] public bool FollowCursor { get; set; }
         [DataMember] public bool Wander { get; set; }
         [DataMember] public bool GreetingEnabled { get; set; }
+        [DataMember] public bool AiGreetingEnabled { get; set; }
         [DataMember] public int GreetingMinMinutes { get; set; }
         [DataMember] public int GreetingMaxMinutes { get; set; }
         [DataMember] public string SkinId { get; set; }
@@ -107,6 +137,8 @@ namespace Dafeiyu
         [DataMember] public string VoiceName { get; set; }
         [DataMember] public string SystemPrompt { get; set; }
         [DataMember] public ConnectionSettings Text { get; set; }
+        [DataMember] public List<TextProviderSettings> TextProviders { get; set; }
+        [DataMember] public string ActiveTextProviderId { get; set; }
         [DataMember] public ConnectionSettings Transcription { get; set; }
         [DataMember] public ConnectionSettings Speech { get; set; }
         public PetSettings() { Defaults(); }
@@ -117,9 +149,10 @@ namespace Dafeiyu
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
             Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false;
-            GreetingEnabled=true; GreetingMinMinutes=30; GreetingMaxMinutes=60;
+            GreetingEnabled=true; AiGreetingEnabled=false; GreetingMinMinutes=30; GreetingMaxMinutes=60;
             SkinId = "e-bao";
             ReadReplies = true; UseCloudVoice = false; VoiceUsesTextService = false; VoiceName = "";
+            TextProviders=new List<TextProviderSettings>();ActiveTextProviderId="";
             Text = new ConnectionSettings(); Transcription = new ConnectionSettings(); Speech = new ConnectionSettings();
             Live = new ConnectionSettings { BaseUrl="wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", Model="gemini-3.8-live", Protocol="gemini-live" };
             VoiceMode="pipeline"; LiveVoice="Puck"; PersonaOverrides=new Dictionary<string,string>();
@@ -146,7 +179,7 @@ namespace Dafeiyu
             if (X.HasValue && (Double.IsNaN(X.Value) || Double.IsInfinity(X.Value))) X = null;
             if (Y.HasValue && (Double.IsNaN(Y.Value) || Double.IsInfinity(Y.Value))) Y = null;
             Text = Text ?? new ConnectionSettings(); Transcription = Transcription ?? new ConnectionSettings(); Speech = Speech ?? new ConnectionSettings();
-            Text.Normalize(); Transcription.Normalize(); Speech.Normalize();
+            Text.Normalize(); Transcription.Normalize(); Speech.Normalize();EnsureTextProviders();
             Live=Live ?? new ConnectionSettings(); Live.Normalize(); PersonaOverrides=PersonaOverrides ?? new Dictionary<string,string>();
             VoiceMode=VoiceMode=="live" ? "live" : "pipeline"; LiveVoice=String.IsNullOrWhiteSpace(LiveVoice) ? "Kore" : LiveVoice.Trim();
             RepositoryUrl=ReleaseInfo.RepositoryUrl;
@@ -166,6 +199,25 @@ namespace Dafeiyu
             }
             VoiceProfiles=profiles;VoiceProfileVersion=Math.Max(0,VoiceProfileVersion);
         }
+        public void EnsureTextProviders()
+        {
+            Text=Text ?? new ConnectionSettings();Text.Normalize();
+            var clean=new List<TextProviderSettings>();var ids=new HashSet<string>(StringComparer.Ordinal);
+            if(TextProviders!=null)foreach(var provider in TextProviders) {
+                if(provider==null || clean.Count>=32)continue;
+                provider.Normalize();if(!ids.Add(provider.Id)){provider.Id=Guid.NewGuid().ToString("N");ids.Add(provider.Id);}clean.Add(provider);
+            }
+            if(clean.Count==0) {var initial=new TextProviderSettings{Name="默认服务",Connection=Text.Copy()};initial.Normalize();clean.Add(initial);}
+            TextProviders=clean;
+            if(!clean.Exists(p=>p.Id==ActiveTextProviderId))ActiveTextProviderId=clean[0].Id;
+        }
+        public bool SelectTextModel(string providerId,string model)
+        {
+            EnsureTextProviders();
+            var provider=TextProviders.Find(p=>p.Id==providerId);
+            if(provider==null || !provider.Models.Contains(model ?? ""))return false;
+            provider.Connection.Model=model;Text=provider.Connection.Copy();ActiveTextProviderId=provider.Id;return true;
+        }
         public ConnectionSettings TranscriptionConnection()
         {
             var copy = Transcription.Copy();
@@ -182,8 +234,9 @@ namespace Dafeiyu
         {
             var voiceProfiles=new Dictionary<string,PersonaVoiceProfile>();
             if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles)if(pair.Value!=null)voiceProfiles[pair.Key]=pair.Value.Copy();
-            return new PetSettings { OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
-                GreetingEnabled=GreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
+            var providers=new List<TextProviderSettings>();if(TextProviders!=null)foreach(var provider in TextProviders)if(provider!=null)providers.Add(provider.Copy());
+            return new PetSettings { TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
+                GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,
                 PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,UpdateUseMirror=UpdateUseMirror,UpdateMirrorAddress=UpdateMirrorAddress,AutoUpdate=AutoUpdate,LastUpdateCheckUtcTicks=LastUpdateCheckUtcTicks,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
@@ -213,6 +266,7 @@ namespace Dafeiyu
                         (!String.IsNullOrEmpty(settings.Speech.EncryptedKey) && settings.Speech.ApiKey.Length == 0) ||
                         (!String.IsNullOrEmpty(settings.Live.EncryptedKey) && settings.Live.ApiKey.Length == 0))
                         Warning = "已保存的密钥无法在当前 Windows 用户下解密，请重新填写。";
+                    foreach(var provider in settings.TextProviders)if(!String.IsNullOrEmpty(provider.Connection.EncryptedKey) && provider.Connection.ApiKey.Length==0)Warning="已保存的密钥无法在当前 Windows 用户下解密，请重新填写。";
                     return settings;
                 }
             }

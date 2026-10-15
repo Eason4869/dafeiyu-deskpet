@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace Dafeiyu.Tests
 {
@@ -10,6 +10,7 @@ namespace Dafeiyu.Tests
         {
             try
             {
+                EmbeddedLegacyTiming();
                 LoopsAndInterruption();
                 CompletionAndReplay();
                 FeedingSequence();
@@ -26,6 +27,28 @@ namespace Dafeiyu.Tests
             }
         }
 
+        private static void EmbeddedLegacyTiming()
+        {
+            foreach(string id in new[]{"e-bao","dafeiyu","marfu"})
+            {
+                var skin=new SkinDefinition(id,id,"","",true);
+                var ordinary=skin.CreateAnimation();ordinary.Play("jumping",.7);ordinary.Advance(.699);
+                Check(ordinary.State=="jumping",id+" legacy jump remains active before 0.7 seconds");
+                ordinary.Advance(.002);Check(ordinary.State=="idle",id+" legacy jump ends at requested 0.7 seconds");
+                ordinary.Play("running-right",0);ordinary.Advance(.219);Check(ordinary.Frame==0,id+" legacy running holds each phase for 0.22 seconds");
+                ordinary.Advance(.002);Check(ordinary.Frame==1,id+" legacy running advances at original boundary");
+                var animation=new InteractionAnimation();animation.Configure(skin);
+                string[] names={"lifted","landing","petting","poked","feeding","happy","sleeping","special"};
+                double[] seconds={1,.64,1.6,.8,1.6,1.2,3.2,2};
+                for(int i=0;i<names.Length;i++)
+                {
+                    animation.Start(names[i]);animation.Advance(seconds[i]/4-.001);Check(animation.Frame==0,id+" "+names[i]+" holds first original pose");
+                    animation.Advance(.002);Check(animation.Frame==1,id+" "+names[i]+" advances to second original pose");
+                    animation.Advance(seconds[i]*.75-.001);
+                    Check(i==0 || i==6 ? animation.Active&&animation.Name==names[i]&&animation.Frame==0 : i==4 ? animation.Active&&animation.Name=="happy" : !animation.Active,id+" "+names[i]+" original duration and completion behavior");
+                }
+            }
+        }
         private static void HoverEntry()
         {
             var hover=new HoverInteraction();

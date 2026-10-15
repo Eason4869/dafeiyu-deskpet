@@ -1,0 +1,138 @@
+{
+  "version": 2,
+  "name": "我的新桌宠",
+  "format": "illustrated-atlases-v1",
+  "cell_width": 480,
+  "cell_height": 520,
+  "preview": "preview.png",
+  "system_prompt": "请在此填写桌宠的人格设定。",
+  "description": "请填写一句角色介绍。",
+  "animations": {
+    "idle": {
+      "file": "animations/idle.png",
+      "columns": 8,
+      "frames": 32,
+      "fps": 24,
+      "loop": true
+    },
+    "running-right": {
+      "file": "animations/running-right.png",
+      "columns": 8,
+      "frames": 48,
+      "fps": 30,
+      "loop": true
+    },
+    "running-left": {
+      "file": "animations/running-left.png",
+      "columns": 8,
+      "frames": 48,
+      "fps": 30,
+      "loop": true
+    },
+    "waving": {
+      "file": "animations/waving.png",
+      "columns": 8,
+      "frames": 24,
+      "fps": 24,
+      "loop": true
+    },
+    "jumping": {
+      "file": "animations/jumping.png",
+      "columns": 8,
+      "frames": 24,
+      "fps": 30,
+      "loop": false
+    },
+    "failed": {
+      "file": "animations/failed.png",
+      "columns": 8,
+      "frames": 32,
+      "fps": 24,
+      "loop": true
+    },
+    "waiting": {
+      "file": "animations/waiting.png",
+      "columns": 8,
+      "frames": 32,
+      "fps": 24,
+      "loop": true
+    },
+    "running": {
+      "file": "animations/running.png",
+      "columns": 8,
+      "frames": 32,
+      "fps": 24,
+      "loop": true
+    },
+    "review": {
+      "file": "animations/review.png",
+      "columns": 8,
+      "frames": 32,
+      "fps": 24,
+      "loop": true
+    },
+    "lifted": {
+      "file": "animations/lifted.png",
+      "columns": 8,
+      "frames": 24,
+      "fps": 24,
+      "loop": true
+    },
+    "landing": {
+      "file": "animations/landing.png",
+      "columns": 8,
+      "frames": 24,
+      "fps": 30,
+      "loop": false
+    },
+    "petting": {
+      "file": "animations/petting.png",
+      "columns": 8,
+      "frames": 40,
+      "fps": 24,
+      "loop": false
+    },
+    "poked": {
+      "file": "animations/poked.png",
+      "columns": 8,
+      "frames": 24,
+      "fps": 30,
+      "loop": false
+    },
+    "feeding": {
+      "file": "animations/feeding.png",
+      "columns": 8,
+      "frames": 40,
+      "fps": 24,
+      "loop": false
+    },
+    "happy": {
+      "file": "animations/happy.png",
+      "columns": 8,
+      "frames": 32,
+      "fps": 24,
+      "loop": false
+    },
+    "sleeping": {
+      "file": "animations/sleeping.png",
+      "columns": 8,
+      "frames": 64,
+      "fps": 24,
+      "loop": true
+    },
+    "special": {
+      "file": "animations/special.png",
+      "columns": 8,
+      "frames": 48,
+      "fps": 24,
+      "loop": false
+    }
+  },
+  "gaze": {
+    "file": "gaze.png",
+    "columns": 4,
+    "frames": 16,
+    "interpolation": "none",
+    "order": "clockwise-from-up"
+  }
+}

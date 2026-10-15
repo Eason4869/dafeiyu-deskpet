@@ -26,6 +26,11 @@ namespace Dafeiyu.Tests
                 minimum.SetValue(settings,-20,null);maximum.SetValue(settings,0,null);settings.Normalize();
                 Check((int)minimum.GetValue(settings,null)>=1 && (int)maximum.GetValue(settings,null)>=(int)minimum.GetValue(settings,null),"非法时间范围被规范化");
                 var type=typeof(PetSettings).Assembly.GetType("Dafeiyu.GreetingSchedule");Check(type!=null,"提供独立的问候计时");
+                var walkingStart=new DateTime(2026,10,14,7,0,0,DateTimeKind.Utc);
+                var walkingSchedule=new GreetingSchedule(walkingStart,1,1,()=>0);
+                int walkingGreetings=0;
+                for(int second=1;second<=125;second++)if(walkingSchedule.TryTake(walkingStart.AddSeconds(second),second%20>=5))walkingGreetings++;
+                Check(walkingGreetings>=1,"每隔 20 秒短暂散步不会让问候计时无限重置");
                 var now=new DateTime(2026,10,14,8,0,0,DateTimeKind.Utc);
                 Func<double> sample=()=>0;var schedule=Activator.CreateInstance(type,new object[]{now,30,60,sample});
                 var take=type.GetMethod("TryTake");Func<DateTime,bool,bool> tick=(time,allowed)=>(bool)take.Invoke(schedule,new object[]{time,allowed});
@@ -39,7 +44,11 @@ namespace Dafeiyu.Tests
                 var interrupted=Activator.CreateInstance(type,new object[]{now,30,60,new Func<double>(()=>0)});
                 for(int i=1;i<20;i++)take.Invoke(interrupted,new object[]{now.AddMinutes(i),true});
                 take.Invoke(interrupted,new object[]{now.AddMinutes(20),false});take.Invoke(interrupted,new object[]{now.AddMinutes(21),true});
-                Check((DateTime)type.GetProperty("NextAt").GetValue(interrupted,null)==now.AddMinutes(51),"对话或全屏在到期前结束，也重新等待完整间隔");
+                Check((DateTime)type.GetProperty("NextAt").GetValue(interrupted,null)==now.AddMinutes(30),"到期前结束短暂忙碌，保留原定问候时间");
+                for(int i=22;i<=29;i++)take.Invoke(interrupted,new object[]{now.AddMinutes(i),true});
+                Check(!(bool)take.Invoke(interrupted,new object[]{now.AddMinutes(30),false}),"到期仍忙碌时不弹出问候");
+                Check(!(bool)take.Invoke(interrupted,new object[]{now.AddMinutes(30).AddSeconds(1),true}),"忙碌结束后保留几秒缓冲");
+                Check((bool)take.Invoke(interrupted,new object[]{now.AddMinutes(30).AddSeconds(5),true}),"忙碌结束后仅延后一次到期问候，不重等完整间隔");
                 sample=()=>1;var late=Activator.CreateInstance(type,new object[]{now,30,60,sample});
                 var next=(DateTime)type.GetProperty("NextAt").GetValue(late,null);Check(next==now.AddMinutes(60),"最长等待范围正确");
                 var greetings=typeof(PetSettings).Assembly.GetType("Dafeiyu.GreetingPhrases");

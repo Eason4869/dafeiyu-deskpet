@@ -69,6 +69,19 @@ namespace Dafeiyu.Tests
                 Equal("jumping", player.State); Assert(player.Frame >= 1 && player.Frame < 5, "jump must animate");
                 player.Advance(0.6); Equal("idle", player.State); Equal(0, player.Frame);
             });
+            Test("timed jump holds landing instead of wrapping before idle", delegate {
+                foreach(int multiplier in new[]{1,8}) {
+                    var player=new AnimationPlayer(multiplier);
+                    foreach(double at in new[]{.65,.675,.699}) {
+                        player.Play("jumping",.7);player.Advance(at);
+                        Equal("jumping",player.State);Equal(5*multiplier-1,player.Frame);
+                    }
+                    player.Play("jumping",.7);player.Advance(.7);Equal("idle",player.State);Equal(0,player.Frame);
+                    player.Play("jumping",0);player.Advance(.65);Equal(0,player.Frame);
+                    player.Play("waving",2);player.Advance(.65);Equal("waving",player.State);
+                    Assert(player.Frame<multiplier,"timed waving must still loop");
+                }
+            });
             Test("looped action advances within its row", delegate {
                 AnimationPlayer player = new AnimationPlayer();
                 player.Play("running-right", 0); player.Advance(0.36);

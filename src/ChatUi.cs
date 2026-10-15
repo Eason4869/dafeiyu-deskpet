@@ -12,21 +12,36 @@ namespace Dafeiyu
         public static FrameworkElement Composer(TextBox input,UIElement leading,UIElement trailing,TextBlock status,bool compact)
         {
             input.BorderThickness=new Thickness(0);input.Background=Brushes.Transparent;
-            input.Padding=new Thickness(2,6,2,6);input.FontSize=14;input.VerticalContentAlignment=VerticalAlignment.Center;
+            input.Padding=new Thickness(4,6,4,6);input.FontSize=14;input.VerticalContentAlignment=VerticalAlignment.Top;
             input.MinHeight=compact?48:62;input.MaxHeight=compact?92:140;
             input.VerticalScrollBarVisibility=ScrollBarVisibility.Auto;
             System.Windows.Automation.AutomationProperties.SetName(input,"消息输入框");
             var field=new Grid();field.Children.Add(input);
-            var placeholder=Ui.Text("想聊些什么？",14,Ui.Muted);
-            placeholder.Margin=new Thickness(3,0,0,0);placeholder.VerticalAlignment=VerticalAlignment.Center;placeholder.IsHitTestVisible=false;
+            // Match the native editor's line metrics rather than Ui.Text's
+            // paragraph spacing. The content host also contributes its own inset.
+            var placeholder=new TextBlock{Name="ComposerPlaceholder",Text="想聊些什么？",FontSize=14,Foreground=Ui.Muted,VerticalAlignment=VerticalAlignment.Top,IsHitTestVisible=false};
             field.Children.Add(placeholder);
-            input.TextChanged+=delegate{placeholder.Visibility=input.Text.Length==0?Visibility.Visible:Visibility.Collapsed;};
-            var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-            var left=new Border{Child=leading,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)};
-            if(leading==null)left.Visibility=Visibility.Collapsed;
-            var right=new Border{Child=trailing,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,0,0)};
-            body.Children.Add(left);Grid.SetColumn(field,1);body.Children.Add(field);Grid.SetColumn(right,2);body.Children.Add(right);
-            var surface=new Border{Child=body,Background=Brushes.White,BorderBrush=Ui.Brush("#E3E7ED"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(22),Padding=new Thickness(8)};
+            Action syncPlaceholder=delegate {
+                bool show=input.Text.Length==0 && !input.IsKeyboardFocusWithin;
+                placeholder.Visibility=show?Visibility.Visible:Visibility.Collapsed;
+                if(!show || !input.IsLoaded)return;
+                Rect firstLine=input.GetRectFromCharacterIndex(0);
+                if(firstLine.IsEmpty)return;
+                Point origin=input.TranslatePoint(firstLine.TopLeft,field);
+                var margin=new Thickness(origin.X,origin.Y,0,0);
+                if(placeholder.Margin!=margin)placeholder.Margin=margin;
+            };
+            input.TextChanged+=delegate{syncPlaceholder();};
+            input.GotKeyboardFocus+=delegate{syncPlaceholder();};
+            input.LostKeyboardFocus+=delegate{syncPlaceholder();};
+            input.LayoutUpdated+=delegate{syncPlaceholder();};
+            syncPlaceholder();
+            var body=new Grid();body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});body.Children.Add(field);
+            var toolbar=new Grid{Margin=new Thickness(0,8,0,0)};toolbar.ColumnDefinitions.Add(new ColumnDefinition());toolbar.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+            if(leading!=null)toolbar.Children.Add(leading);
+            if(trailing!=null){Grid.SetColumn(trailing,1);toolbar.Children.Add(trailing);}
+            Grid.SetRow(toolbar,1);body.Children.Add(toolbar);
+            var surface=new Border{Name="ComposerSurface",Child=body,Background=Brushes.White,BorderBrush=Ui.Brush("#E3E7ED"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(22),Padding=new Thickness(8)};
             input.GotKeyboardFocus+=delegate{surface.BorderBrush=Ui.Blue;};
             input.LostKeyboardFocus+=delegate{surface.BorderBrush=Ui.Brush("#E3E7ED");};
             var result=new StackPanel();result.Children.Add(surface);

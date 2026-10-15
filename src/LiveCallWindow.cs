@@ -91,15 +91,15 @@ namespace Dafeiyu
     {
         static readonly Pen outline=new Pen(Ui.Line,1),blue=new Pen(Ui.Blue,2.5),mint=new Pen(Ui.Brush("#6AAFA4"),2.5);
         double level;
-        public double Level {get{return level;}set{level=level*.55+Math.Max(0,Math.Min(1,value))*.45;InvalidateVisual();}}
+        public double Level {get{return level;}set{double target=Double.IsNaN(value) || Double.IsInfinity(value)?0:Math.Max(0,Math.Min(1,value));double weight=target>level?.82:.30;level+=(target-level)*weight;InvalidateVisual();}}
         protected override void OnRender(DrawingContext drawing)
         {
-            Point center=new Point(ActualWidth/2,ActualHeight/2);double size=Math.Min(ActualWidth,ActualHeight),radius=size*.30,gap=size*.07;
+            Point center=new Point(ActualWidth/2,ActualHeight/2);double size=Math.Min(ActualWidth,ActualHeight),radius=size*.27,gap=size*.045;
             drawing.DrawEllipse(Ui.Pale,null,center,radius,radius);drawing.DrawEllipse(null,outline,center,radius+gap*.45,radius+gap*.45);
             // Make ordinary speech visibly expressive without increasing audio gain.
             // Reserve space for the stroke even at full volume in the compact view.
-            double response=Math.Pow(level,.6),maxLength=Math.Max(0,size/2-2.5-radius-gap);
-            for(int i=0;i<64;i++){double angle=i*Math.PI/32;double envelope=.35+.65*Math.Abs(Math.Sin(angle*3+level*5));double length=Math.Min(maxLength,size*(.02+response*.10*envelope));
+            double response=VoiceVisual.Response(level),maxLength=Math.Max(0,size/2-2.5-radius-gap);
+            for(int i=0;i<64;i++){double angle=i*Math.PI/32;double envelope=.32+.68*Math.Abs(Math.Sin(angle*3+response*7));double length=Math.Min(maxLength,size*.012+response*maxLength*1.35*envelope);
                 drawing.DrawLine(i<32?blue:mint,new Point(center.X+Math.Cos(angle)*(radius+gap),center.Y+Math.Sin(angle)*(radius+gap)),new Point(center.X+Math.Cos(angle)*(radius+gap+length),center.Y+Math.Sin(angle)*(radius+gap+length)));}
         }
     }

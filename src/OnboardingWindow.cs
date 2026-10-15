@@ -180,7 +180,7 @@ namespace Dafeiyu
                 }
                 else if(Step==12)
                 {
-                    title.Text="13 · 设置主动问候";instruction.Text="选择是否主动打招呼，并设置随机间隔。最长间隔不能小于最短间隔；问候为本地台词，不消耗 AI 额度。";
+                    title.Text="13 · 设置主动问候";instruction.Text="选择是否主动打招呼，并设置随机间隔。默认使用本地台词；开启 AI 问候后会使用当前模型和最近聊天，可能消耗额度。";
                     settings.SelectCompanionSection(2);TargetName="GreetingEnabled";scopeName="GuideGreetingSection";
                 }
                 else if(Step==13)

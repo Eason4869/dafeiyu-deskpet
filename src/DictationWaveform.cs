@@ -16,8 +16,8 @@ namespace Dafeiyu
             for(int i=0;i<count;i++)
             {
                 int index=values.Length-count+i;double value=index>=0?values[index]:0;
-                double height=Math.Max(3,Math.Min(30,value*42));double x=ActualWidth-(count-i)*6+2;
-                var ink=Ui.Brush(index<0?"#D4D6DA":"#90949B");drawing.DrawRoundedRectangle(ink,null,new Rect(x,(ActualHeight-height)/2,3,height),1.5,1.5);
+                double height=Math.Max(3,Math.Min(ActualHeight-4,3+VoiceVisual.Response(value)*29));double x=ActualWidth-(count-i)*6+2;
+                var ink=Ui.Brush(index<0?"#D4D6DA":"#456DE6");drawing.DrawRoundedRectangle(ink,null,new Rect(x,(ActualHeight-height)/2,3,height),1.5,1.5);
             }
         }
     }

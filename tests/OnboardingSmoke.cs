@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -20,6 +20,7 @@ namespace Dafeiyu.Tests
         {
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             PetWindow pet = null;
+            Point originalCursor=DesktopInterop.Cursor();
             bool simulated=Environment.GetEnvironmentVariable("DESKPET_TEST_SIMULATED_GESTURES")=="1";if(simulated)Console.WriteLine("INFO gesture completion uses explicit fixtures; native mouse input is NOT verified by this run.");
             string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "onboarding-smoke-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
@@ -34,6 +35,9 @@ namespace Dafeiyu.Tests
                 var settings = new PetSettings { AutoUpdate = false, FollowCursor = false, Wander = false, GreetingEnabled = false, HideOnFullscreen = false };
                 foreach (string key in settings.Hotkeys.Keys.ToArray()) settings.Hotkeys[key] = "";
                 pet = new PetWindow(null, settings, new SettingsStore(Path.Combine(folder, "settings.json")), null);
+                pet.ContextMenu.Opened+=delegate{Console.WriteLine("NATIVE menu OPEN "+DateTime.UtcNow.ToString("HH:mm:ss.fff"));};pet.ContextMenu.Closed+=delegate{Console.WriteLine("NATIVE menu CLOSED "+DateTime.UtcNow.ToString("HH:mm:ss.fff"));};
+                pet.AddHandler(UIElement.PreviewMouseRightButtonDownEvent,new System.Windows.Input.MouseButtonEventHandler((s,e)=>Console.WriteLine("NATIVE right DOWN "+DateTime.UtcNow.ToString("HH:mm:ss.fff")+" hit="+e.OriginalSource)),true);
+                pet.AddHandler(UIElement.PreviewMouseRightButtonUpEvent,new System.Windows.Input.MouseButtonEventHandler((s,e)=>Console.WriteLine("NATIVE right UP "+DateTime.UtcNow.ToString("HH:mm:ss.fff")+" hit="+e.OriginalSource)),true);
                 pet.Show(); Pump(.15);
                 Check(Field(pet, "guide") == null, "constructing a pet does not auto-popup outside Program startup");
                 pet.ShowOnboarding(); Pump(.25);
@@ -51,21 +55,22 @@ namespace Dafeiyu.Tests
                 Check(guide.Step==2,"behavior has its own step");((Slider)preferences.FindControl("SizeSlider")).Value=1.1;Press(guide,"GuideNext");
                 Check(guide.Step==3 && !Find<Button>(guide,"GuideNext").IsEnabled && ((UIElement)pet.Content).IsEnabled,"drag step unlocks pet but requires actual movement");
                 Point point=new Point();
-                if(simulated)pet.NotifyGuideInteraction("drag");else{pet.ReturnHome();Pump(.2);point=OpaquePoint(pet);SetCursorPos((int)point.X,(int)point.Y);Pump(.08);mouse_event(2,0,0,0,UIntPtr.Zero);Pump(.06);SetCursorPos((int)point.X-70,(int)point.Y-40);Pump(.15);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(.2);}
+                if(simulated)pet.NotifyGuideInteraction("drag");else{PlacePetUncovered(pet);point=MoveToPet(pet);mouse_event(2,0,0,0,UIntPtr.Zero);Pump(.06);MoveCursor(new Point(point.X-70,point.Y-40));Pump(.15);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(.2);}
                 Check(Find<Button>(guide,"GuideNext").IsEnabled,"drag completion unlocks drag lesson");Press(guide,"GuideNext");
-                Check(guide.Step==4 && !Find<Button>(guide,"GuideNext").IsEnabled,"right menu lesson starts incomplete");if(simulated){pet.ContextMenu.IsOpen=true;Pump(.2);}else{Pump(.6);point=OpaquePoint(pet);SetCursorPos((int)point.X,(int)point.Y);Pump(.08);mouse_event(8,0,0,0,UIntPtr.Zero);Pump(.25);mouse_event(16,0,0,0,UIntPtr.Zero);Pump(.25);}
+                Check(guide.Step==4 && !Find<Button>(guide,"GuideNext").IsEnabled,"right menu lesson starts incomplete");if(simulated){pet.ContextMenu.IsOpen=true;Pump(.2);}else{WaitForInteraction(pet);point=MoveToPet(pet);mouse_event(8,0,0,0,UIntPtr.Zero);Pump(.25);mouse_event(16,0,0,0,UIntPtr.Zero);Pump(.25);}
                 Pump(.6);
                 Check(pet.ContextMenu.IsOpen && pet.ContextMenu.IsEnabled,"guide menu stays open long enough to inspect");
                 Check(Find<Button>(guide,"GuideNext").IsEnabled,"opening real menu completes menu lesson");pet.ContextMenu.IsOpen=false;Press(guide,"GuideNext");
-                Check(guide.Step==5 && !Find<Button>(guide,"GuideNext").IsEnabled,"wheel lesson requires selecting an action");if(simulated){pet.ShowActionPalette();Pump(.2);}else{point=OpaquePoint(pet);SetCursorPos((int)point.X,(int)point.Y);Pump(.08);mouse_event(32,0,0,0,UIntPtr.Zero);mouse_event(64,0,0,0,UIntPtr.Zero);Pump(.2);}
+                Check(guide.Step==5 && !Find<Button>(guide,"GuideNext").IsEnabled,"wheel lesson requires selecting an action");if(simulated){pet.ShowActionPalette();Pump(.2);}else{point=MoveToPet(pet);mouse_event(32,0,0,0,UIntPtr.Zero);mouse_event(64,0,0,0,UIntPtr.Zero);Pump(.2);}
                 var wheel=app.Windows.OfType<ActionPaletteWindow>().Single();Check(wheel.IsVisible && !Find<Button>(guide,"GuideNext").IsEnabled,"opening wheel alone cannot complete lesson");Find<Button>(wheel,"PaletteInteraction_feeding").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.2);Check(Find<Button>(guide,"GuideNext").IsEnabled,"choosing wheel action completes lesson");Press(guide,"GuideNext");
-                Check(guide.Step==6 && !Find<Button>(guide,"GuideNext").IsEnabled,"click lesson starts incomplete");if(simulated)pet.NotifyGuideInteraction("click");else{Pump(.7);point=OpaquePoint(pet);SetCursorPos((int)point.X,(int)point.Y);Pump(.08);mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(System.Windows.Forms.SystemInformation.DoubleClickTime/1000d+.3);}Check(Find<Button>(guide,"GuideNext").IsEnabled,"click completion unlocks interaction lesson");Press(guide,"GuideNext");
+                Check(guide.Step==6 && !Find<Button>(guide,"GuideNext").IsEnabled,"click lesson starts incomplete");if(simulated)pet.NotifyGuideInteraction("click");else{WaitForInteraction(pet);point=MoveToPet(pet);mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(System.Windows.Forms.SystemInformation.DoubleClickTime/1000d+.3);}Check(Find<Button>(guide,"GuideNext").IsEnabled,"click completion unlocks interaction lesson");Press(guide,"GuideNext");
                 Check(guide.Step==7 && guide.TargetName=="GuidePet" && !Find<Button>(guide,"GuideNext").IsEnabled,"double click lesson follows single click and requires practice");
                 if(simulated)pet.ShowQuickChat();else
                 {
-                    Pump(.7);point=OpaquePoint(pet);SetCursorPos((int)point.X,(int)point.Y);Pump(.08);
+                    WaitForInteraction(pet);point=MoveToPet(pet);
                     mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(System.Windows.Forms.SystemInformation.DoubleClickTime/1000d+.2);
                     Check(!Find<Button>(guide,"GuideNext").IsEnabled,"single click cannot complete double click lesson");
+                    point=MoveToPet(pet);
                     mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(.07);mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);
                 }
                 Pump(.3);var quick=(QuickChatWindow)Field(pet,"quick");
@@ -83,6 +88,7 @@ namespace Dafeiyu.Tests
                 ((CheckBox)preferences.FindControl("UseCloudVoice")).IsChecked=false;Press(guide,"GuideNext");Check(guide.Step==11 && !pet.Settings.UseCloudVoice,"system TTS saves independently of skipped invalid text draft");
                 Check(!Find<Button>(guide,"GuideNext").IsEnabled,"Live requires complete setup");((TextBox)preferences.FindControl("LiveServiceUrl")).Text="ws://127.0.0.1/live";((TextBox)preferences.FindControl("LiveServiceModel")).Text="guide-model";((ComboBox)preferences.FindControl("LiveVoice")).Text="Kore";Press(guide,"GuideNext");
                 Check(guide.Step==12 && pet.Settings.Live.Model=="guide-model","valid Live saves only its section without connecting");
+                ((Button)preferences.FindControl("PreviewGreeting")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.2);var greeting=app.Windows.OfType<GreetingBubbleWindow>().SingleOrDefault();Check(greeting!=null && greeting.IsVisible,"greeting lesson preview button shows actual greeting bubble");if(greeting!=null)greeting.Hide();
                 ((TextBox)preferences.FindControl("GreetingMinMinutes")).Text="100";((TextBox)preferences.FindControl("GreetingMaxMinutes")).Text="10";Pump(.2);Check(!Find<Button>(guide,"GuideNext").IsEnabled,"invalid greeting interval disables next");((TextBox)preferences.FindControl("GreetingMaxMinutes")).Text="120";Press(guide,"GuideNext");
                 Check(guide.Step==13,"shortcut is final step");((TextBox)preferences.FindControl("Hotkeyquick")).Text="not-a-shortcut";Pump(.2);Check(!Find<Button>(guide,"GuideNext").IsEnabled,"invalid shortcut disables finish");((TextBox)preferences.FindControl("Hotkeyquick")).Clear();Capture(guide,Path.Combine(folder,"guide-final-step.png"));Press(guide,"GuideNext");
                 Check(guide.Step==14 && guide.IsVisible,"shortcut continues to current conversation guidance");
@@ -101,18 +107,52 @@ namespace Dafeiyu.Tests
                 return 0;
             }
             catch (Exception error) { Console.WriteLine("FAIL onboarding: " + error); return 1; }
-            finally { mouse_event(4,0,0,0,UIntPtr.Zero);if (pet != null) pet.Close(); Pump(.2); app.Shutdown(); }
+            finally { mouse_event(4|16|64,0,0,0,UIntPtr.Zero);if(!simulated)SetCursorPos((int)originalCursor.X,(int)originalCursor.Y);if (pet != null) pet.Close(); Pump(.2); app.Shutdown(); }
         }
-        [System.Runtime.InteropServices.DllImport("user32.dll")]static extern bool SetCursorPos(int x,int y);
+        [System.Runtime.InteropServices.DllImport("user32.dll",SetLastError=true)]static extern bool SetCursorPos(int x,int y);
         [System.Runtime.InteropServices.DllImport("user32.dll")]static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]struct NativePoint{public int X,Y;}
+        [System.Runtime.InteropServices.DllImport("user32.dll")]static extern IntPtr WindowFromPoint(NativePoint point);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]static extern IntPtr SendMessage(IntPtr hwnd,int message,IntPtr w,IntPtr l);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint process);
+        static void MoveCursor(Point point){if(!SetCursorPos((int)Math.Round(point.X),(int)Math.Round(point.Y)))throw new InvalidOperationException("SetCursorPos failed; Win32 "+System.Runtime.InteropServices.Marshal.GetLastWin32Error());}
+        static void WaitForInteraction(PetWindow pet)
+        {var deadline=DateTime.UtcNow.AddSeconds(5);while(((InteractionAnimation)Field(pet,"interaction")).Active && DateTime.UtcNow<deadline)Pump(.04);if(((InteractionAnimation)Field(pet,"interaction")).Active)throw new Exception("Previous interaction did not finish before native gesture");}
+        static Point MoveToPet(PetWindow pet)
+        {
+            PlacePetUncovered(pet);
+
+            Point point=OpaquePoint(pet);MoveCursor(point);Pump(.03);
+            if(!HitsPet(pet,point))throw new Exception("Native gesture aborted: opaque hit target is not the fixture");
+            Console.WriteLine("NATIVE verified current frame hit at "+point);return point;
+        }
+        static void PlacePetUncovered(PetWindow pet)
+        {
+            IntPtr hwnd=new WindowInteropHelper(pet).Handle;Rect area=DesktopInterop.WorkArea(hwnd),bounds=DesktopInterop.Bounds(hwnd);
+            var blockers=Application.Current.Windows.OfType<Window>().Where(w=>w!=pet && w.IsVisible && w.WindowState!=WindowState.Minimized).Select(w=>DesktopInterop.Bounds(new WindowInteropHelper(w).Handle)).ToArray();
+            for(double y=area.Top+100;y+bounds.Height<area.Bottom-50;y+=bounds.Height+35)for(double x=area.Left+100;x+bounds.Width<area.Right-50;x+=bounds.Width+35)
+            {
+                var candidate=new Rect(x,y,bounds.Width,bounds.Height);var safe=candidate;safe.Inflate(45,45);if(blockers.Any(b=>b.IntersectsWith(safe)))continue;
+                DesktopInterop.Move(hwnd,candidate.TopLeft);Pump(.12);Console.WriteLine("NATIVE unobstructed pet bounds "+DesktopInterop.Bounds(hwnd));return;
+            }
+            throw new Exception("No unobstructed native pet fixture position outside settings and guide");
+        }
+        static bool HitsPet(PetWindow pet,Point point)
+        {
+            int x=(int)Math.Round(point.X),y=(int)Math.Round(point.Y);IntPtr hwnd=new WindowInteropHelper(pet).Handle;
+            return WindowFromPoint(new NativePoint{X=x,Y=y})==hwnd && SendMessage(hwnd,0x84,IntPtr.Zero,new IntPtr((y<<16)|(x&0xffff))).ToInt32()!=-1;
+        }
         static Point OpaquePoint(PetWindow pet)
         {
-            var atlas=(SpriteAtlas)Field(pet,"atlas");int row=(int)Field(pet,"shownRow"),col=(int)Field(pet,"shownCol");bool supplemental=(bool)Field(pet,"shownSupplemental");var interaction=(InteractionAtlas)Field(pet,"interactionAtlas");var image=(Image)pet.Content;
-            int width=supplemental?interaction.FrameWidth:atlas.CellWidth,height=supplemental?interaction.FrameHeight:atlas.CellHeight;
+            // Sample the bitmap actually displayed, including new illustrated
+            // MotionClip frames; legacy atlas coordinates may now be transparent.
+            var image=(Image)pet.Content;var bitmap=(BitmapSource)image.Source;int width=bitmap.PixelWidth,height=bitmap.PixelHeight;
+            var converted=new FormatConvertedBitmap(bitmap,PixelFormats.Pbgra32,null,0);var pixels=new byte[width*height*4];converted.CopyPixels(pixels,width*4,0);
             for(int y=height/3;y<height*2/3;y+=3)for(int x=width/3;x<width*2/3;x+=3)
             {
-                bool solid=true;for(int dy=-12;dy<=12 && solid;dy+=3)for(int dx=-12;dx<=12;dx+=3)if((supplemental?interaction.AlphaAt(row,col,x+dx,y+dy):atlas.AlphaAt(row,col,x+dx,y+dy))<240){solid=false;break;}
-                if(solid)return image.PointToScreen(new Point((x+.5)/width*image.ActualWidth,(y+.5)/height*image.ActualHeight));
+                bool solid=true;for(int dy=-12;dy<=12 && solid;dy+=3)for(int dx=-12;dx<=12;dx+=3)if(pixels[((y+dy)*width+x+dx)*4+3]<240){solid=false;break;}
+                if(solid){Point point=image.PointToScreen(new Point((x+.5)/width*image.ActualWidth,(y+.5)/height*image.ActualHeight));if(HitsPet(pet,point))return point;}
             }
             throw new Exception("No opaque target");
         }

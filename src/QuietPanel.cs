@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,11 +25,11 @@ namespace Dafeiyu
             clickthrough=Ui.Toggle("鼠标穿透伙伴",pet.Settings.ClickThrough,delegate(bool enabled){if(!refreshing)pet.SetClickThrough(enabled);});clickthrough.Name="ClickThrough";behavior.Children.Add(clickthrough);
             behavior.Children.Add(Ui.Text("开启后用托盘菜单或快捷键恢复鼠标交互。",12,Ui.Muted));
             locked=Ui.Toggle("锁定伙伴位置",pet.Settings.LockPosition,delegate(bool enabled){if(!refreshing){pet.Settings.LockPosition=enabled;pet.ApplySettings();}});locked.Name="LockPosition";behavior.Children.Add(locked);
-            root.Children.Add(Ui.Card(behavior));
+            root.Children.Add(GlassSurface.Card(behavior));
             var shortcuts=new StackPanel();shortcuts.Children.Add(Ui.Text("全局快捷键",16));shortcuts.Children.Add(Ui.Text("可编辑组合键；留空并保存可停用。冲突时保留原快捷键。",12,Ui.Muted));
-            AddShortcut(shortcuts,"quick","快速对话");AddShortcut(shortcuts,"hide","显示 / 隐藏伙伴");AddShortcut(shortcuts,"quiet","切换免打扰");AddShortcut(shortcuts,"passthrough","切换鼠标穿透");root.Children.Add(Ui.Card(shortcuts));
+            AddShortcut(shortcuts,"quick","快速对话");AddShortcut(shortcuts,"hide","显示 / 隐藏伙伴");AddShortcut(shortcuts,"quiet","切换免打扰");AddShortcut(shortcuts,"passthrough","切换鼠标穿透");root.Children.Add(GlassSurface.Card(shortcuts));
             var storage=new StackPanel();storage.Children.Add(Ui.Text("聊天记录",16));history=Ui.Toggle("保存聊天记录",pet.Settings.SaveChatHistory,delegate(bool enabled){if(!refreshing){pet.Settings.SaveChatHistory=enabled;pet.SaveSettings();}});history.Name="SaveChatHistory";storage.Children.Add(history);
-            storage.Children.Add(Ui.Text("按伙伴保存到本机，使用当前 Windows 用户加密。关闭后停止保存，已有记录保留；在完整对话窗口导出或清空当前伙伴记录。",12,Ui.Muted));root.Children.Add(Ui.Card(storage));
+            storage.Children.Add(Ui.Text("按伙伴保存到本机，使用当前 Windows 用户加密。关闭后停止保存，已有记录保留；在完整对话窗口导出或清空当前伙伴记录。",12,Ui.Muted));root.Children.Add(GlassSurface.Card(storage));
             notice=Ui.Text(pet.HotkeyWarning ?? "",12,Ui.Muted);root.Children.Add(notice);Content=root;
         }
         void AddShortcut(Panel panel,string action,string label)

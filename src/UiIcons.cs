@@ -18,6 +18,7 @@ namespace Dafeiyu
                 name=="back"?"M19,12 L5,12 M11,6 L5,12 11,18":
                 name=="edit"?"M4,20 L5,15 16,4 C18,2 22,6 20,8 L9,19 Z M14,6 L18,10":
                 name=="down"?"M6,9 L12,15 18,9":
+                name=="queue"?"M4,4 L4,16 Q4,19 7,19 L20,19 M17,16 L20,19 17,22 M9,5 L20,5 M9,10 L17,10 M9,14 L14,14":
                 name=="steer"?"M4,5 L4,10 Q4,13 8,13 L20,13 M15,8 L20,13 15,18":
                 name=="mic"?"M9,6 C9,2 15,2 15,6 L15,12 C15,16 9,16 9,12 Z M5,11 L5,12 C5,21 19,21 19,12 L19,11 M12,19 L12,22":
                 name=="trash"?"M4,6 L20,6 M9,6 L9,3 15,3 15,6 M6,6 L7,21 17,21 18,6 M10,10 L10,17 M14,10 L14,17":
@@ -46,7 +47,7 @@ namespace Dafeiyu
                 var group=new GeometryGroup();group.Children.Add(gear);group.Children.Add(new EllipseGeometry(new Point(12,12),3,3));geometry=group;
             }
             geometry.Freeze();
-            canvas.Children.Add(new Path {Data=geometry,Stroke=ink,Fill=name=="phone" || name=="stop-solid"?ink:null,StrokeThickness=1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,StrokeLineJoin=PenLineJoin.Round});
+            canvas.Children.Add(new Path {Data=geometry,Stroke=ink,Fill=name=="phone" || name=="stop-solid"?ink:null,StrokeThickness=name=="queue"?1.5:1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,StrokeLineJoin=PenLineJoin.Round});
             return new Viewbox {Width=18,Height=18,Child=canvas};
         }
         public static Button Button(string icon,string label,bool primary=false)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -15,7 +15,7 @@ namespace Dafeiyu
         private readonly TextBlock name,notice,sizeLabel;
         private readonly Image avatar;
         private readonly ComboBox skins;
-        private readonly CheckBox follow,wander,top,pause,autoStart,greetings;
+        private readonly CheckBox follow,wander,top,pause,autoStart,greetings,aiGreetings;
         private readonly TextBox greetingMin,greetingMax;
         private readonly StartupRegistration startup=new StartupRegistration(Process.GetCurrentProcess().MainModule.FileName);
         private readonly Slider size;
@@ -33,7 +33,9 @@ namespace Dafeiyu
         public bool HasUnsavedEdits {get{return persona.HasUnsavedChanges || connections.HasUnsavedChanges || about.HasUnsavedChanges || quiet.HasUnsavedChanges || greetingMin.Text!=pet.Settings.GreetingMinMinutes.ToString() || greetingMax.Text!=pet.Settings.GreetingMaxMinutes.ToString();}}
         public SettingsWindow(PetWindow companion)
         {
-            pet=companion; Ui.Window(this,"桌面伙伴 · 设置",850,790);MinWidth=700;
+            pet=companion; Ui.Window(this,"桌面伙伴 · 设置",960,790);
+            MinWidth=Math.Min(820,Math.Max(320,SystemParameters.WorkArea.Width-36));MaxWidth=Math.Max(MinWidth,SystemParameters.WorkArea.Width-36);MinHeight=Math.Min(600,MaxHeight);
+            Background=GlassSurface.Background();
             Icon=Ui.ApplicationIcon();
             var root=new StackPanel();var behaviorPage=new StackPanel();var greetingPage=new StackPanel();
             var header=new Grid { Margin=new Thickness(0,0,0,12) };
@@ -63,10 +65,10 @@ namespace Dafeiyu
             appearanceRow.Children.Add(skins);
             var import=Ui.Button("导入外观"); import.Name="ImportSkin"; import.Margin=new Thickness(0); import.Click+=ImportSkin;
             Grid.SetColumn(import,1); appearanceRow.Children.Add(import); appearance.Children.Add(appearanceRow);
-            appearance.Children.Add(Ui.Text("导入 8 列 × 11 行透明 PNG，或带人格预设的 pet.json。",11,Ui.Muted));
+            appearance.Children.Add(Ui.Text("支持原版 PNG / v1 外观，以及逐帧绘制的 v2 动作包。",11,Ui.Muted));
             var guide=new Expander{Name="ImportGuide",Header="如何制作和导入桌宠？",Margin=new Thickness(0,12,0,0)};var tutorial=new StackPanel{Margin=new Thickness(0,8,0,0)};
-            tutorial.Children.Add(Ui.Text("1. 打开模板文件夹，复制 pet.json 和精灵图参考。\n2. 制作 8 列 × 11 行透明 PNG，推荐单格 480 × 520。\n3. 在 pet.json 填写名称、atlas 文件名与 system_prompt 人格。\n4. 将两个文件放在一起；外观包 ZIP 请先解压，再点“导入外观”选择 pet.json。\n直接导入 PNG 也可，之后在“伙伴与人格”中编辑预设。",12,Ui.Muted));
-            var guideButtons=new WrapPanel{Margin=new Thickness(0,10,0,0)};var templates=Ui.Button("打开模板文件夹");templates.Name="OpenTemplates";templates.Click+=delegate {OpenGuide("templates");};guideButtons.Children.Add(templates);var fullGuide=Ui.Button("查看完整教程");fullGuide.Name="OpenImportGuide";fullGuide.Click+=delegate {OpenGuide(Path.Combine("docs","skin-format.md"));};guideButtons.Children.Add(fullGuide);tutorial.Children.Add(guideButtons);guide.Content=tutorial;appearance.Children.Add(guide);var appearanceCard=Ui.Card(appearance);appearanceCard.Padding=new Thickness(12);appearanceCard.Margin=new Thickness(0,0,0,12);root.Children.Add(appearanceCard);
+            tutorial.Children.Add(Ui.Text("1. 打开模板文件夹，选择 v1 原版或 v2 逐帧动作模板。\n2. v1：8 列 × 11 行透明 PNG，可直接导入。\n3. v2：每个动作独立 PNG，8 列、单格 480 × 520；在 pet.json 填写帧数、FPS 和循环方式。视线为 4 列 × 4 行的 16 张原画，不做插值。\n4. 填写角色名称、人格与专属动作名称；保留整个文件夹结构。ZIP 请先解压，再选择 pet.json 导入。\n导入后会复制素材，原文件保持不变。",12,Ui.Muted));
+            var guideButtons=new WrapPanel{Margin=new Thickness(0,10,0,0)};var templates=Ui.Button("打开模板文件夹");templates.Name="OpenTemplates";templates.Click+=delegate {OpenGuide("templates");};guideButtons.Children.Add(templates);var fullGuide=Ui.Button("查看完整教程");fullGuide.Name="OpenImportGuide";fullGuide.Click+=delegate {OpenGuide(Path.Combine("docs","skin-format.md"));};guideButtons.Children.Add(fullGuide);tutorial.Children.Add(guideButtons);guide.Content=tutorial;appearance.Children.Add(guide);var appearanceCard=GlassSurface.Card(appearance);appearanceCard.Padding=new Thickness(12);appearanceCard.Margin=new Thickness(0,0,0,12);root.Children.Add(appearanceCard);
 
             var behavior=new StackPanel{Name="GuideBehaviorSection"}; behavior.Children.Add(Heading("陪伴方式"));
             follow=Ui.Toggle("视线跟随鼠标",pet.Settings.FollowCursor,delegate(bool value) { if(!refreshing) { pet.Settings.FollowCursor=value; pet.ApplySettings(); } }); follow.Name="FollowCursor"; behavior.Children.Add(follow);
@@ -79,10 +81,12 @@ namespace Dafeiyu
             sizeLabel=Ui.Text("",12,Ui.Blue); DockPanel.SetDock(sizeLabel,Dock.Right); sizeRow.Children.Add(sizeLabel); sizeRow.Children.Add(Ui.Text("伙伴大小",12)); behavior.Children.Add(sizeRow);
             size=new Slider { Name="SizeSlider",Minimum=.75,Maximum=2.25,Value=pet.Settings.Scale,TickFrequency=.05,IsSnapToTickEnabled=true,SmallChange=.05,LargeChange=.25,Margin=new Thickness(0,0,0,4) };
             size.ValueChanged+=delegate { sizeLabel.Text=Math.Round(size.Value*100)+"%"; if(!refreshing) { pet.Settings.Scale=size.Value; pet.ApplySettings(); } }; behavior.Children.Add(size);
-            behavior.Children.Add(Ui.Text("高清原图素材 · 适配 Windows 显示缩放",11,Ui.Muted)); behaviorPage.Children.Add(Ui.Card(behavior));
+            behavior.Children.Add(Ui.Text("高清原图素材 · 适配 Windows 显示缩放",11,Ui.Muted)); behaviorPage.Children.Add(GlassSurface.Card(behavior));
 
             var hello=new StackPanel{Name="GuideGreetingSection"};hello.Children.Add(Heading("主动问候"));
             greetings=Ui.Toggle("偶尔主动打个招呼",pet.Settings.GreetingEnabled,delegate(bool value){if(!refreshing){pet.Settings.GreetingEnabled=value;pet.ConfigureGreetings();}});greetings.Name="GreetingEnabled";hello.Children.Add(greetings);
+            aiGreetings=Ui.Toggle("使用 AI 生成主动问候",pet.Settings.AiGreetingEnabled,delegate(bool value){if(!refreshing){pet.Settings.AiGreetingEnabled=value;pet.ConfigureGreetings();}});aiGreetings.Name="AiGreetingEnabled";hello.Children.Add(aiGreetings);
+            hello.Children.Add(Ui.Text("默认使用角色预设台词。开启 AI 后，使用当前文字模型和当前伙伴最近的聊天记录生成问候，可能消耗模型额度；失败时自动改用预设。",12,Ui.Muted));
             hello.Children.Add(Ui.Text("在伙伴头顶显示一句问候，12 秒后收起。聊天、语音、全屏和暂停时保持安静。",12,Ui.Muted));
             var interval=new WrapPanel{Margin=new Thickness(0,12,0,10),VerticalAlignment=VerticalAlignment.Center};
             var every=Ui.Text("随机间隔",12,Ui.Muted);every.VerticalAlignment=VerticalAlignment.Center;every.Margin=new Thickness(0,0,10,0);interval.Children.Add(every);
@@ -92,19 +96,8 @@ namespace Dafeiyu
             var minutes=Ui.Text("分钟",12,Ui.Muted);minutes.Margin=new Thickness(8,0,0,0);minutes.VerticalAlignment=VerticalAlignment.Center;interval.Children.Add(minutes);hello.Children.Add(interval);
             greetingMin.LostFocus+=delegate {SaveGreetingInterval();};greetingMax.LostFocus+=delegate {SaveGreetingInterval();};
             var preview=Ui.Button("预览问候气泡");preview.Name="PreviewGreeting";preview.HorizontalAlignment=HorizontalAlignment.Left;preview.Click+=delegate {pet.RestorePet();pet.PreviewGreeting();};hello.Children.Add(preview);
-            hello.Children.Add(Ui.Text("可设置 1–1440 分钟；移开焦点后保存并重新计时。问候使用本地台词，不消耗模型额度。",11,Ui.Muted));greetingPage.Children.Add(Ui.Card(hello));
+            hello.Children.Add(Ui.Text("可设置 1–1440 分钟；移开焦点后保存并重新计时。问候不会加入聊天记录，也不会自动朗读。",11,Ui.Muted));greetingPage.Children.Add(GlassSurface.Card(hello));
 
-            var actionPanel=new StackPanel(); actionPanel.Children.Add(Heading("打个招呼"));
-            var actions=new WrapPanel { Margin=new Thickness(0,9,0,0) };
-            AddAction(actions,"挥挥手","waving",1.2); AddAction(actions,"跳一下","jumping",.7); AddAction(actions,"想一想","running",2);
-            AddAction(actions,"检查成果","review",2); AddAction(actions,"委屈一下","failed",2); AddAction(actions,"歇一会儿","waiting",2);
-            actionPanel.Children.Add(actions); behaviorPage.Children.Add(Ui.Card(actionPanel));
-            behaviorPage.Children.Add(Ui.Text("左键拖动 · 单击互动 · 双击快速对话\n右键打开菜单；隐藏后可从系统托盘找回。",12,Ui.Muted));
-            var footer=new WrapPanel { Margin=new Thickness(0,15,0,0) };
-            var home=Ui.Button("回到角落",true); home.Name="ReturnHome"; home.Click+=delegate { pet.RestorePet(); pet.ReturnHome(); }; footer.Children.Add(home);
-            var chat=Ui.Button("打开对话"); chat.Click+=delegate { pet.ShowChat(); }; footer.Children.Add(chat);
-            var hide=Ui.Button("隐藏伙伴"); hide.Click+=delegate { pet.HidePet(); }; footer.Children.Add(hide);
-            var exit=Ui.Button("退出桌宠"); exit.Click+=delegate { pet.Close(); }; footer.Children.Add(exit); behaviorPage.Children.Add(footer);
             notice=Ui.Text("",11,Ui.Muted); notice.Margin=new Thickness(0,12,0,0);
             persona=new PersonaPanel(pet,true){Margin=new Thickness(0,4,0,4),Height=310};root.Children.Add(persona);companionPage=new CompanionConfigurationPanel(Ui.Scroll(root),Ui.Scroll(behaviorPage),Ui.Scroll(greetingPage),notice);connections=new ConnectionSettingsPanel(pet);aiConfiguration=new AiConfigurationPanel(connections);about=new AboutPanel(pet);quiet=new QuietPanel(pet);content=new ContentControl();
             navigation=new ListBox{Name="SettingsNavigation",BorderThickness=new Thickness(0),Background=Brushes.Transparent,Margin=new Thickness(12,0,12,0),Padding=new Thickness(0)};
@@ -119,7 +112,7 @@ namespace Dafeiyu
             var sidebarFooter=new StackPanel{Margin=new Thickness(20,14,14,20)};
             var guideButton=Ui.Button("配置引导");guideButton.Name="OpenOnboarding";guideButton.HorizontalAlignment=HorizontalAlignment.Left;guideButton.Margin=new Thickness(0,0,0,10);guideButton.Click+=delegate {if(GuideRequested!=null)GuideRequested();};sidebarFooter.Children.Add(guideButton);
             sidebarFooter.Children.Add(Ui.Text("版本 "+ReleaseInfo.DisplayVersion,11,Ui.Muted));Grid.SetRow(sidebarFooter,2);sidebar.Children.Add(sidebarFooter);
-            shell.Children.Add(new Border{Child=sidebar,Background=Ui.Pale,BorderBrush=Ui.Line,BorderThickness=new Thickness(0,0,1,0)});Grid.SetColumn(content,1);shell.Children.Add(content);Content=shell;
+            shell.Children.Add(new Border{Child=sidebar,Background=GlassSurface.Panel(),BorderBrush=Ui.Brush("#DFFFFFFF"),BorderThickness=new Thickness(0,0,1,0)});Grid.SetColumn(content,1);shell.Children.Add(content);Content=shell;
             navigation.SelectionChanged+=delegate(object sender,SelectionChangedEventArgs args) {if(args.Source!=navigation)return;int index=navigation.SelectedIndex;if(index==0)content.Content=companionPage;else if(index==1)content.Content=aiConfiguration;else if(index==2)content.Content=quiet;else if(index==3)content.Content=about;};navigation.SelectedIndex=0;Closed+=delegate {about.Dispose();};
             Loaded+=delegate { DesktopInterop.PlaceBeside(new WindowInteropHelper(this).Handle,new WindowInteropHelper(pet).Handle); };
             RefreshState(); ShowNotice(pet.Notice ?? pet.Store.Warning);
@@ -132,8 +125,6 @@ namespace Dafeiyu
             if(min==pet.Settings.GreetingMinMinutes && max==pet.Settings.GreetingMaxMinutes)return;
             pet.Settings.GreetingMinMinutes=min;pet.Settings.GreetingMaxMinutes=max;pet.ConfigureGreetings();ShowNotice("问候间隔已保存，将重新等待下一次问候。");
         }
-        private void AddAction(Panel panel,string caption,string state,double duration)
-        { var button=Ui.Button(caption); button.Margin=new Thickness(0,0,8,8); button.Click+=delegate { pet.PlayAction(state,duration); }; panel.Children.Add(button); }
         private void ImportSkin(object sender,RoutedEventArgs args)
         {
             if(HasUnsavedEdits){ShowNotice("请先保存当前修改，再导入并切换伙伴。");return;}
@@ -153,11 +144,12 @@ namespace Dafeiyu
             }
         }
         private void RefreshAvatar() { displayedSkinId=pet.Skin.Id;name.Text=pet.Skin.Name; avatar.Source=SkinCatalog.GetPreview(pet.Skin);if(persona!=null)persona.RefreshPersona();if(connections!=null)connections.RefreshPersonaVoices(); }
+        public void RefreshTextProviders(){connections.RefreshTextProviders();}
         public void RefreshState()
         {
             if(displayedSkinId!=pet.Skin.Id)RefreshAvatar();
             refreshing=true; follow.IsChecked=pet.Settings.FollowCursor; wander.IsChecked=pet.Settings.Wander;
-            top.IsChecked=pet.Settings.Topmost; pause.IsChecked=pet.Paused;greetings.IsChecked=pet.Settings.GreetingEnabled; size.Value=pet.Settings.Scale;
+            top.IsChecked=pet.Settings.Topmost; pause.IsChecked=pet.Paused;greetings.IsChecked=pet.Settings.GreetingEnabled;aiGreetings.IsChecked=pet.Settings.AiGreetingEnabled; size.Value=pet.Settings.Scale;
             sizeLabel.Text=Math.Round(pet.Settings.Scale*100)+"%"; skins.SelectedItem=pet.Skin; refreshing=false;
             RefreshAutoStart();if(quiet!=null)quiet.RefreshState();
         }

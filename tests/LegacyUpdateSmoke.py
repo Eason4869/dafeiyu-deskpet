@@ -8,8 +8,10 @@ import uuid
 parser = argparse.ArgumentParser()
 parser.add_argument('--worker', type=Path, required=True)
 parser.add_argument('--package', type=Path, required=True)
+parser.add_argument('--work-directory', type=Path, help='Isolated test root; avoids nested checkout MAX_PATH limits')
 options = parser.parse_args()
-root = Path(__file__).resolve().parents[1] / 'work' / ('legacy-update-' + uuid.uuid4().hex)
+work = options.work_directory.resolve() if options.work_directory else Path(__file__).resolve().parents[1] / 'work'
+root = work / ('update-' + uuid.uuid4().hex[:12])
 root.mkdir(parents=True)
 source = root / 'ApplyRelease.cs'
 source.write_text(r'''

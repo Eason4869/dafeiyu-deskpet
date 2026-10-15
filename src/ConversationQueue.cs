@@ -80,6 +80,22 @@ namespace Dafeiyu
         {text=Validate(text);lock(gate){Writable();var entry=Current.SingleOrDefault(m=>m.Id==id);if(entry==null)throw new InvalidOperationException("这条消息已开始发送。");string previous=entry.Text;entry.Text=text;try{Save();}catch{entry.Text=previous;throw;}}Announce();}
         public void Remove(string id)
         {lock(gate){Writable();var entry=Current.SingleOrDefault(m=>m.Id==id);if(entry==null)return;int index=Current.IndexOf(entry);Current.Remove(entry);try{Save();}catch{Current.Insert(index,entry);throw;}}Announce();}
+        // Resolve stable IDs under the same lock as dequeue. A stale drag must
+        // never reinsert a request that has started, or target a removed row.
+        public bool MoveBefore(string id,string beforeId)
+        {
+            lock(gate)
+            {
+                Writable();var list=Current;var entry=list.SingleOrDefault(m=>m.Id==id);
+                if(entry==null || (beforeId!=null && !list.Any(m=>m.Id==beforeId)))return false;
+                if(id==beforeId)return true;
+                int from=list.IndexOf(entry),to=beforeId==null?list.Count:list.FindIndex(m=>m.Id==beforeId);
+                if(from<to)to--;if(from==to)return true;
+                list.RemoveAt(from);list.Insert(to,entry);
+                try{Save();}catch{list.RemoveAt(to);list.Insert(from,entry);throw;}
+            }
+            Announce();return true;
+        }
         public void Resume(){lock(gate){Writable();paused.Remove(session.PersonaId);Notice="";}Announce();Kick();}
         public void Hold(){lock(gate)paused.Add(session.PersonaId);Announce();}
         public async Task PauseAsync()

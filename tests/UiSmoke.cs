@@ -56,7 +56,8 @@ namespace Dafeiyu.Tests
                 var follow=Find<CheckBox>(preferences,"FollowCursor"); follow.IsChecked=true; Pump(.1);
                 Require(pet.Settings.FollowCursor && store.Load().FollowCursor,"cursor setting applies and persists");
                 follow.IsChecked=false;
-                Find<Button>(preferences,"ReturnHome").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(.2);
+                Require(Find<Button>(preferences,"ReturnHome")==null,"companion settings no longer duplicate tray actions");
+                pet.ReturnHome(); Pump(.2);
                 IntPtr handle=new WindowInteropHelper(pet).Handle;
                 Require(DesktopInterop.WorkArea(handle).Contains(DesktopInterop.Bounds(handle)),"return home keeps pet inside screen work area");
                 Rect nativeBounds=DesktopInterop.Bounds(handle);

@@ -68,7 +68,7 @@ namespace Dafeiyu.Tests
                 Check(appearance.Items.Count==pet.Catalog.Skins.Count && pet.ContextMenu.Items.OfType<MenuItem>().Any(i=>(string)i.Header=="设置"),"context menu separates quick appearance from detailed settings");
                 var switchTo=appearance.Items.OfType<MenuItem>().First(i=>(string)i.Tag!=pet.Skin.Id);string expected=(string)switchTo.Tag;switchTo.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 Check(pet.Skin.Id==expected,"appearance submenu switches companion directly");
-                settings.Width=850;settings.Height=790;settings.SelectPage(0);Pump();Capture(settings,Path.Combine(folder,"companion-normal.png"));
+                settings.Width=960;settings.Height=790;settings.SelectPage(0);Pump();Capture(settings,Path.Combine(folder,"companion-normal.png"));
                 Console.WriteLine("Settings navigation smoke: "+passed+" passed; previews: "+folder);return 0;
             }
             catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}

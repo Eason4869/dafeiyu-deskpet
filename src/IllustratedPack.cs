@@ -1,0 +1,111 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.Serialization;
+using System.Text;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+
+namespace Dafeiyu
+{
+    [DataContract] public sealed class IllustratedAnimation
+    {
+        [DataMember(Name="file")] public string File {get;set;}
+        [DataMember(Name="columns")] public int Columns {get;set;}
+        [DataMember(Name="frames")] public int Frames {get;set;}
+        [DataMember(Name="fps")] public double Fps {get;set;}
+        [DataMember(Name="loop")] public bool Loop {get;set;}
+    }
+    [DataContract] public sealed class IllustratedGaze
+    {
+        [DataMember(Name="file")] public string File {get;set;}
+        [DataMember(Name="columns")] public int Columns {get;set;}
+        [DataMember(Name="frames")] public int Frames {get;set;}
+        [DataMember(Name="interpolation")] public string Interpolation {get;set;}
+        [DataMember(Name="order")] public string Order {get;set;}
+    }
+    public static class IllustratedPack
+    {
+        public static readonly string[] Actions={"idle","running-right","running-left","waving","jumping","failed","waiting","running","review","lifted","landing","petting","poked","feeding","happy","sleeping","special"};
+        public static string AssetPath(string folder,string relative)
+        {
+            if(String.IsNullOrWhiteSpace(relative) || relative.Length>200 || relative.IndexOfAny(new[]{'\\',':','\0'})>=0 || relative.StartsWith("/") || !relative.EndsWith(".png",StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("素材必须是包内的相对 PNG 路径。");
+            string[] parts=relative.Split('/');
+            if(parts.Any(p=>p.Length==0 || p=="." || p==".." || p.EndsWith(".") || p.EndsWith(" ") || p.IndexOfAny(Path.GetInvalidFileNameChars())>=0))throw new InvalidOperationException("素材路径无效。");
+            string root=Path.GetFullPath(folder),current=root;
+            if(root.StartsWith(@"\\"))throw new InvalidOperationException("请先将外观包复制到本地文件夹。");
+            if((File.GetAttributes(root)&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("素材目录不能是链接。");
+            foreach(string part in parts) {
+                current=Path.Combine(current,part);
+                if((File.GetAttributes(current)&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("素材不能通过链接读取包外文件。");
+            }
+            return current;
+        }
+        public static IList<string> Validate(string folder,SkinManifest manifest,bool inspectFrames)
+        {
+            if(manifest.Format!="illustrated-atlases-v1" || manifest.CellWidth!=480 || manifest.CellHeight!=520)throw new InvalidOperationException("v2 外观需要 illustrated-atlases-v1 格式和 480 × 520 单帧。");
+            if((manifest.SpecialAction??"").Length>32)throw new InvalidOperationException("专属动作名称最多 32 字。");
+            if(manifest.Animations==null || manifest.Animations.Count!=Actions.Length || Actions.Any(a=>!manifest.Animations.ContainsKey(a)))throw new InvalidOperationException("v2 外观需要全部 17 个动作。");
+            var files=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            long size=0;int frames=0;
+            foreach(string action in Actions) {
+                var clip=manifest.Animations[action];
+                if(clip==null || clip.Columns!=8 || clip.Frames<1 || clip.Frames>128 || Double.IsNaN(clip.Fps) || Double.IsInfinity(clip.Fps) || clip.Fps<1 || clip.Fps>60)throw new InvalidOperationException("动作需要 8 列、1–128 帧和 1–60 FPS。");
+                frames+=clip.Frames;
+                if(frames>1024)throw new InvalidOperationException("外观总帧数不能超过 1024。");
+                string path=AssetPath(folder,clip.File);if(files.Add(clip.File))size+=new FileInfo(path).Length;
+                if(size>256L*1024*1024)throw new InvalidOperationException("外观素材总大小不能超过 256 MB。");
+                ValidateImage(path,480*8,520*((clip.Frames+7)/8),inspectFrames,clip.Frames,8);
+            }
+            if(!manifest.Animations["idle"].Loop)throw new InvalidOperationException("待机 idle 必须循环播放。");
+            var gaze=manifest.Gaze;
+            if(gaze==null || gaze.Columns!=4 || gaze.Frames!=16 || gaze.Interpolation!="none" || gaze.Order!="clockwise-from-up")throw new InvalidOperationException("视线需要顺时针 16 个原画方向，4 列且不插值。");
+            string gazePath=AssetPath(folder,gaze.File),preview=AssetPath(folder,manifest.Preview);
+            if(files.Add(gaze.File))size+=new FileInfo(gazePath).Length;
+            if(files.Add(manifest.Preview))size+=new FileInfo(preview).Length;
+            if(size>256L*1024*1024)throw new InvalidOperationException("外观素材总大小不能超过 256 MB。");
+            ValidateImage(gazePath,1920,2080,inspectFrames,16,4);
+            ValidateImage(preview,480,520,inspectFrames,1,1);
+            return files.ToList();
+        }
+        static void ValidateImage(string path,int width,int height,bool inspect,int frames,int columns)
+        {
+            var image=ReadImage(path,width,height);
+            if(!inspect)return;
+            // One cell buffer bounds validation memory; unused tail cells are ignored.
+            var converted=new FormatConvertedBitmap(image,PixelFormats.Bgra32,null,0);
+            var pixels=new byte[480*520*4];
+            for(int i=0;i<frames;i++) {
+                converted.CopyPixels(new Int32Rect(i%columns*480,i/columns*520,480,520),pixels,480*4,0);
+                bool visible=false,transparent=false;
+                for(int p=3;p<pixels.Length;p+=4){visible|=pixels[p]>16;transparent|=pixels[p]==0;}
+                if(!visible || !transparent)throw new InvalidOperationException("每个动作帧应有人物和透明背景。");
+            }
+        }
+        static void ValidateHeader(string path,int width,int height)
+        {
+            using(var stream=File.OpenRead(path)) {
+                if(stream.Length<33 || stream.Length>25L*1024*1024)throw new InvalidOperationException("单个 PNG 文件应小于 25 MB。");
+                byte[] b=new byte[33];stream.Read(b,0,b.Length);
+                byte[] signature={137,80,78,71,13,10,26,10};
+                if(!b.Take(8).SequenceEqual(signature) || Encoding.ASCII.GetString(b,12,4)!="IHDR" || ReadInt(b,16)!=width || ReadInt(b,20)!=height)throw new InvalidOperationException("PNG 尺寸与外观说明不符。");
+            }
+        }
+        static int ReadInt(byte[] b,int i){return b[i]<<24|b[i+1]<<16|b[i+2]<<8|b[i+3];}
+        public static BitmapSource ReadImage(string path,int width,int height)
+        {
+            ValidateHeader(path,width,height);
+            try { using(var input=File.OpenRead(path)) {
+                var image=BitmapDecoder.Create(input,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];
+                if(image.PixelWidth!=width || image.PixelHeight!=height)throw new InvalidOperationException("PNG 解码尺寸不符。");
+                image.Freeze();return image;
+            } } catch(Exception e) {
+                if(!(e is FileFormatException || e is NotSupportedException || e is ArgumentException))throw;
+                throw new InvalidOperationException("PNG 图像无法解码，请重新导出素材。",e);
+            }
+        }
+    }
+}

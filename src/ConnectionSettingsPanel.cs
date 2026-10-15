@@ -7,20 +7,20 @@ namespace Dafeiyu
 {
     public sealed class ConnectionSettingsPanel : Grid
     {
-        readonly PetWindow pet;readonly ConnectionEditor text,recognition,synthesis,live;readonly ComboBox voice,liveVoice;
-        readonly CheckBox reuse,reuseSpeech,cloud;readonly TextBlock notice;readonly ContentControl page=new ContentControl();readonly StackPanel[] sections;
+        readonly PetWindow pet;readonly TextProviderEditor text;readonly ConnectionEditor recognition,synthesis,live;readonly ComboBox voice,liveVoice;
+        readonly CheckBox reuse,reuseSpeech,cloud;readonly TextBlock notice;readonly ContentControl page=new ContentControl();readonly UIElement[] sections;
         string speechContext,liveContext;
         readonly System.Collections.Generic.Dictionary<string,string> voiceDrafts=new System.Collections.Generic.Dictionary<string,string>();
         public bool HasUnsavedChanges
         {
-            get{return !text.Matches(pet.Settings.Text) || !recognition.Matches(pet.Settings.Transcription) || !synthesis.Matches(pet.Settings.Speech) || !live.Matches(pet.Settings.Live) ||
+            get{return !text.Matches(pet.Settings) || !recognition.Matches(pet.Settings.Transcription) || !synthesis.Matches(pet.Settings.Speech) || !live.Matches(pet.Settings.Live) ||
                 (reuse.IsChecked==true)!=pet.Settings.VoiceUsesTextService || (reuseSpeech.IsChecked==true)!=pet.Settings.SpeechUsesTextService || (cloud.IsChecked==true)!=pet.Settings.UseCloudVoice ||
                 voice.Text.Trim()!=pet.Settings.VoiceName || liveVoice.Text.Trim()!=pet.Settings.LiveVoice;}
         }
         public ConnectionSettingsPanel(PetWindow companion)
         {
             pet=companion;Margin=new Thickness(24,22,24,20);RowDefinitions.Add(new RowDefinition());RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});Children.Add(page);
-            text=new ConnectionEditor("对话模型","TextService","text",pet.Settings.Text);recognition=new ConnectionEditor("语音识别","Transcription","asr",pet.Settings.Transcription);synthesis=new ConnectionEditor("声音与朗读","Speech","speech",pet.Settings.Speech);live=new ConnectionEditor("Live 实时语音","LiveService","live",pet.Settings.Live);
+            text=new TextProviderEditor(pet.Settings);recognition=new ConnectionEditor("语音识别","Transcription","asr",pet.Settings.Transcription);synthesis=new ConnectionEditor("声音与朗读","Speech","speech",pet.Settings.Speech);live=new ConnectionEditor("Live 实时语音","LiveService","live",pet.Settings.Live);
             reuse=Ui.Toggle("复用文字服务的地址、密钥和代理",pet.Settings.VoiceUsesTextService,v=>recognition.SetAddressEnabled(!v));reuse.Name="ReuseTextForAsr";recognition.Children.Insert(2,reuse);recognition.SetAddressEnabled(!pet.Settings.VoiceUsesTextService);
             cloud=Ui.Toggle("使用云端 TTS",pet.Settings.UseCloudVoice,v=>SetCloud(v));cloud.Name="UseCloudVoice";synthesis.Children.Insert(2,cloud);
             reuseSpeech=Ui.Toggle("复用文字服务的地址、密钥和代理",pet.Settings.SpeechUsesTextService,v=>synthesis.SetAddressEnabled(!v && cloud.IsChecked==true));reuseSpeech.Name="ReuseTextForSpeech";synthesis.Children.Insert(3,reuseSpeech);
@@ -34,7 +34,7 @@ namespace Dafeiyu
             var modes=new ComboBox{Name="VoiceMode",ItemsSource=new[]{"ASR + TTS · 分步语音","Live · 实时语音"},SelectedIndex=pet.Settings.VoiceMode=="live" ? 1 : 0,MinHeight=38,Padding=new Thickness(8)};
             bool refreshingMode=false;
             modes.SelectionChanged+=delegate {if(refreshingMode)return;if(pet.DialogueBusy){refreshingMode=true;modes.SelectedIndex=pet.Settings.VoiceMode=="live"?1:0;refreshingMode=false;if(notice!=null)notice.Text="请先结束当前对话，再切换语音模式。";return;}pet.Settings.VoiceMode=modes.SelectedIndex==1 ? "live" : "pipeline";pet.SaveSettings();pet.RefreshChatAppearance();};Ui.Label(live,"聊天窗口默认语音模式",modes);
-            sections=new[]{text,recognition,synthesis,live};ShowSection(0);
+            sections=new UIElement[]{text,recognition,synthesis,live};ShowSection(0);
             RefreshVoices(true);text.Changed+=delegate {RefreshVoices(false);};synthesis.Changed+=delegate {RefreshVoices(false);};live.Changed+=delegate {RefreshVoices(false);};reuseSpeech.Checked+=delegate {RefreshVoices(false);};reuseSpeech.Unchecked+=delegate {RefreshVoices(false);};
             var footer=new StackPanel{Margin=new Thickness(0,14,0,0)};var row=new WrapPanel();var save=Ui.Button("保存服务设置",true);save.Name="SaveConnections";save.Click+=delegate {Save();};row.Children.Add(save);
             var preview=Ui.Button("试听朗读");preview.Name="PreviewSpeech";preview.Click+=async delegate {if(!Save())return;preview.IsEnabled=false;try{if(pet.LiveActive)throw new InvalidOperationException("请先结束 Live 再试听。");await pet.Conversation.PreviewSpeechAsync(pet.Settings,pet.Skin.Name);notice.Text=pet.Conversation.LastNotice;}catch(Exception e){ShowError(e);}finally{preview.IsEnabled=true;}};row.Children.Add(preview);
@@ -49,6 +49,7 @@ namespace Dafeiyu
             var speech=synthesis.Preview();if(reuseSpeech.IsChecked==true)speech.BaseUrl=text.Preview().BaseUrl;
             FillVoices(voice,"speech",speech,initial,ref speechContext);FillVoices(liveVoice,"live",live.Preview(),initial,ref liveContext);
         }
+        public void RefreshTextProviders(){text.RefreshSaved(pet.Settings);}
         public void RefreshPersonaVoices()
         {
             voiceDrafts.Clear();speechContext=null;liveContext=null;
@@ -71,12 +72,12 @@ namespace Dafeiyu
         {
             try
             {
-                var nextText=text.Read();var nextAsr=recognition.Read();var nextSpeech=synthesis.Read();var nextLive=live.Read();
+                var nextProviders=text.ReadProviders();var nextText=text.Read();var nextAsr=recognition.Read();var nextSpeech=synthesis.Read();var nextLive=live.Read();
                 if(voice.Text.Trim().Length>512 || liveVoice.Text.Trim().Length>512)throw new InvalidOperationException("音色 ID 不能超过 512 个字符。");
-                ValidateAddress(nextText,ApiClient.ChatPath(nextText));if(reuse.IsChecked!=true)ValidateAddress(nextAsr,ApiClient.AsrPath(nextAsr));if(reuseSpeech.IsChecked!=true)ValidateAddress(nextSpeech,ApiClient.SpeechPath(nextSpeech));
+                foreach(var provider in nextProviders)ValidateAddress(provider.Connection,ApiClient.ChatPath(provider.Connection));if(reuse.IsChecked!=true)ValidateAddress(nextAsr,ApiClient.AsrPath(nextAsr));if(reuseSpeech.IsChecked!=true)ValidateAddress(nextSpeech,ApiClient.SpeechPath(nextSpeech));
                 var probe=nextLive.Copy();if(!String.IsNullOrWhiteSpace(probe.BaseUrl)){if(String.IsNullOrWhiteSpace(probe.Model))probe.Model="validation";if(String.IsNullOrEmpty(probe.ApiKey))probe.ApiKey="validation";GeminiLiveSocket.Endpoint(probe);}
                 PersonaProfiles.SaveVoices(pet.Settings);
-                pet.Settings.Text=nextText;pet.Settings.Transcription=nextAsr;pet.Settings.Speech=nextSpeech;pet.Settings.Live=nextLive;pet.Settings.VoiceUsesTextService=reuse.IsChecked==true;pet.Settings.SpeechUsesTextService=reuseSpeech.IsChecked==true;pet.Settings.UseCloudVoice=cloud.IsChecked==true;pet.Settings.VoiceName=voice.Text.Trim();pet.Settings.LiveVoice=liveVoice.Text.Trim();PersonaProfiles.SaveVoices(pet.Settings);pet.SaveSettings();pet.RefreshChatAppearance();notice.Text=String.IsNullOrEmpty(pet.Notice)?"已保存。打开对话开始使用。":pet.Notice;return String.IsNullOrEmpty(pet.Notice);
+                pet.Settings.TextProviders=nextProviders;pet.Settings.ActiveTextProviderId=text.SelectedProviderId;pet.Settings.Text=nextText;pet.Settings.Transcription=nextAsr;pet.Settings.Speech=nextSpeech;pet.Settings.Live=nextLive;pet.Settings.VoiceUsesTextService=reuse.IsChecked==true;pet.Settings.SpeechUsesTextService=reuseSpeech.IsChecked==true;pet.Settings.UseCloudVoice=cloud.IsChecked==true;pet.Settings.VoiceName=voice.Text.Trim();pet.Settings.LiveVoice=liveVoice.Text.Trim();PersonaProfiles.SaveVoices(pet.Settings);pet.SaveSettings();text.RefreshSaved(pet.Settings);pet.RefreshChatAppearance();notice.Text=String.IsNullOrEmpty(pet.Notice)?"已保存。打开对话开始使用。":pet.Notice;return String.IsNullOrEmpty(pet.Notice);
             }
             catch(Exception e){ShowError(e);return false;}
         }
@@ -99,7 +100,7 @@ namespace Dafeiyu
             try
             {
                 var draft=pet.Settings.Copy();
-                if(index==0){draft.Text=text.Read();ApiClient.ValidateConnection(draft.Text,ApiClient.ChatPath(draft.Text));pet.Settings.Text=draft.Text;}
+                if(index==0){draft.Text=text.Read();ApiClient.ValidateConnection(draft.Text,ApiClient.ChatPath(draft.Text));pet.Settings.TextProviders=text.ReadProviders();pet.Settings.ActiveTextProviderId=text.SelectedProviderId;pet.Settings.Text=draft.Text;}
                 else if(index==1)
                 {
                     draft.Transcription=recognition.Read();draft.VoiceUsesTextService=reuse.IsChecked==true;var service=draft.TranscriptionConnection();ApiClient.ValidateConnection(service,ApiClient.AsrPath(service));
@@ -116,14 +117,14 @@ namespace Dafeiyu
                     draft.Live=live.Read();GeminiLiveSocket.Endpoint(draft.Live);draft.LiveVoice=liveVoice.Text.Trim();if(draft.LiveVoice.Length==0 || draft.LiveVoice.Length>512)throw new InvalidOperationException("请选择或填写 Live 音色。");
                     pet.Settings.Live=draft.Live;pet.Settings.LiveVoice=draft.LiveVoice;PersonaProfiles.SaveVoices(pet.Settings);
                 }
-                pet.SaveSettings();pet.RefreshChatAppearance();notice.Text=String.IsNullOrEmpty(pet.Notice)?"当前引导项已保存。":pet.Notice;return String.IsNullOrEmpty(pet.Notice);
+                pet.SaveSettings();text.RefreshSaved(pet.Settings);pet.RefreshChatAppearance();notice.Text=String.IsNullOrEmpty(pet.Notice)?"当前引导项已保存。":pet.Notice;return String.IsNullOrEmpty(pet.Notice);
             }
             catch(Exception e){ShowError(e);return false;}
         }
         static void ValidateAddress(ConnectionSettings settings,string path)
         {if(String.IsNullOrWhiteSpace(settings.BaseUrl))return;var probe=settings.Copy();probe.Model="validation";ApiClient.Endpoint(probe,path);if(settings.ApiKey.IndexOfAny(new[]{'\r','\n'})>=0)throw new ApiException("密钥中有换行，请重新粘贴。");}
         void ShowError(Exception e){notice.Text=e is OperationCanceledException?"朗读已停止。":e is ApiException || e is InvalidOperationException?e.Message:e is CryptographicException?"当前 Windows 用户无法加密密钥。":"设置或朗读未完成，请检查配置与输出设备。";}
-        sealed class ConnectionEditor : StackPanel
+        internal sealed class ConnectionEditor : StackPanel
         {
             readonly TextBox address,model,proxyAddress;readonly PasswordBox key;readonly ComboBox protocol;readonly CheckBox proxy,streamReplies;readonly string kind;readonly TextBlock hint;
             public event Action Changed;bool applyingPreset;
@@ -148,7 +149,9 @@ namespace Dafeiyu
                 address.TextChanged+=delegate {if(!applyingPreset && Changed!=null)Changed();};model.TextChanged+=delegate {if(!applyingPreset && Changed!=null)Changed();};protocol.SelectionChanged+=delegate {if(!applyingPreset && Changed!=null)Changed();};
             }
             public ConnectionSettings Preview(){return new ConnectionSettings{BaseUrl=address.Text.Trim(),Model=model.Text.Trim(),Protocol=kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto"};}
-            public ConnectionSettings Read(){string selectedProxy=ProxyConfiguration.Normalize(proxyAddress.Text);if(proxyAddress.IsEnabled)ProxyConfiguration.Endpoint(selectedProxy);return new ConnectionSettings{BaseUrl=address.Text.Trim(),Model=model.Text.Trim(),ApiKey=key.Password.Trim(),Protocol=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto",UseProxy=proxy.IsChecked==true,ProxyAddress=selectedProxy,StreamReplies=streamReplies.IsChecked==true};}
+            public ConnectionSettings Read(){string selectedProxy=ProxyConfiguration.Normalize(proxyAddress.Text);if(proxyAddress.IsEnabled)ProxyConfiguration.Endpoint(selectedProxy);return Draft();}
+            public void SetModel(string value){model.Text=value ?? "";}
+            public ConnectionSettings Draft(){string selectedProxy=ProxyConfiguration.Normalize(proxyAddress.Text);return new ConnectionSettings{BaseUrl=address.Text.Trim(),Model=model.Text.Trim(),ApiKey=key.Password.Trim(),Protocol=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto",UseProxy=proxy.IsChecked==true,ProxyAddress=selectedProxy,StreamReplies=streamReplies.IsChecked==true};}
             public bool Matches(ConnectionSettings saved)
             {
                 string selected=kind=="text"?(protocol.SelectedIndex==1?"anthropic":"openai"):kind=="live"?"gemini-live":protocol.SelectedIndex==2?"mimo":protocol.SelectedIndex==1?"openai":"auto";

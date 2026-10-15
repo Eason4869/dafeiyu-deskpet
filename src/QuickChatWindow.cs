@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,7 +15,7 @@ namespace Dafeiyu
         readonly Button close;GuideFocusScope guideScope;
         public QuickChatWindow(PetWindow companion)
         {
-            pet=companion;session=pet.Conversation;Icon=Ui.ApplicationIcon();Width=400;Height=390;AllowsTransparency=true;WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;ShowInTaskbar=false;Topmost=pet.Settings.Topmost;Background=Brushes.Transparent;FontFamily=new FontFamily("Microsoft YaHei UI");FontSize=12;Foreground=Ui.Ink;UseLayoutRounding=true;
+            pet=companion;session=pet.Conversation;Icon=Ui.ApplicationIcon();Width=400;Height=Math.Min(470,Math.Max(300,SystemParameters.WorkArea.Height-24));AllowsTransparency=true;WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;ShowInTaskbar=false;Topmost=pet.Settings.Topmost;Background=Brushes.Transparent;FontFamily=new FontFamily("Microsoft YaHei UI");FontSize=12;Foreground=Ui.Ink;UseLayoutRounding=true;
             var root=new Grid();root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition{Height=new GridLength(14)});
             var panel=new Grid{Margin=new Thickness(18,14,18,12)};
             panel.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});panel.RowDefinitions.Add(new RowDefinition());panel.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
@@ -40,7 +40,7 @@ namespace Dafeiyu
         }
         public void FocusInput(){if(input.IsVisible)input.Focus();}
         public void FollowPet(){if(!closed)BubblePlacement.Follow(this,pet,tail);}
-        public void RefreshPersona(){avatar.Source=SkinCatalog.GetPreview(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 快速对话";var last=session.History.Messages.LastOrDefault(m=>m.Role=="assistant");reply.Text=MessagePresentation.QuickText(last);RefreshState();}
+        public void RefreshPersona(){if(composer!=null)composer.RefreshModels();avatar.Source=SkinCatalog.GetPreview(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 快速对话";var last=session.History.Messages.LastOrDefault(m=>m.Role=="assistant");reply.Text=MessagePresentation.QuickText(last);RefreshState();}
         void Message(ChatMessage message){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Message(message)));return;}if(message.Role=="assistant" && session.History.Messages.LastOrDefault(m=>m.Role=="assistant")!=null && session.History.Messages.Last(m=>m.Role=="assistant").Id==message.Id)reply.Text=MessagePresentation.QuickText(message);}
         void HistoryChanged(){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(HistoryChanged));return;}RefreshPersona();}
         void Partial(string role,string text){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Partial(role,text)));return;}if(pet.LiveActive && role=="assistant")reply.Text=text;}

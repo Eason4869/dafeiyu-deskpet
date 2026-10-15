@@ -33,7 +33,7 @@ namespace Dafeiyu
         private readonly MessageUpdatePump messagePump;
         public ChatWindow(PetWindow companion)
         {
-            pet=companion;session=pet.Conversation;Ui.Window(this,"桌面伙伴 · 对话",700,800);MinWidth=520;MinHeight=560;
+            pet=companion;session=pet.Conversation;Ui.Window(this,"桌面伙伴 · 对话",700,860);MinWidth=520;MinHeight=560;
             var root=new Grid {Margin=new Thickness(22,18,22,18)};
             root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             var header=new DockPanel {Margin=new Thickness(0,0,0,16)};
@@ -57,7 +57,7 @@ namespace Dafeiyu
             Loaded+=delegate {input.Focus();};
         }
         public void RefreshAppearance()
-        {if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetPreview(pet.Skin);avatar.ToolTip=pet.Skin.Name;}
+        {if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetPreview(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(composer!=null)composer.RefreshModels();}
         public void ReloadHistory(bool scrollToBottom=true)
         {
             reloading=true;messages.Children.Clear();rendered.Clear();statusLabels.Clear();displayed.Clear();showingWelcome=false;

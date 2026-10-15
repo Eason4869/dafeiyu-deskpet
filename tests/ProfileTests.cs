@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -28,7 +29,7 @@ namespace Dafeiyu.Tests
                 guide.OnboardingStep=15;guideStore.Save(guide);guide=guideStore.Load();Check(guide.OnboardingStep==15,"appended network lesson progress survives restart without remapping");
                 Check(catalog.Skins[0].Id=="e-bao" && catalog.Skins[1].Id=="dafeiyu" && catalog.Find("missing").Id=="e-bao","Ebao is first and default fallback, with Dafeiyu second");
                 PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));Check(settings.SystemPrompt.Contains("鲸鱼娘"),"new dafeiyu resolves whale persona");
-                foreach(var builtin in catalog.Skins) {
+                foreach(var builtin in catalog.Skins.Where(s=>s.Embedded)) {
                     var original=builtin.Load();
                     Check(original.FrameMultiplier==1 && original.CellWidth==480 && original.CellHeight==520,"original real-frame atlas loads: "+builtin.Id);
                     CheckOriginalFrames(builtin,original);
@@ -37,7 +38,7 @@ namespace Dafeiyu.Tests
                 var cadence=CreateAnimation(marfu);cadence.Play("running-right",0);cadence.Advance(.12);Check(cadence.Frame==0,"Marfu right run holds its pose beyond the former .11-second interval");
                 int[] right={0,2,3,2,4,2,6,2},left={0,2,3,2,4,2,6,2};
                 for(int phase=0;phase<8;phase++) Check(ActionFrame(marfu,1,phase)==right[phase] && ActionFrame(marfu,2,phase)==left[phase],"Marfu alternating original running poses phase "+phase);
-                foreach(var builtin in catalog.Skins) for(int row=0;row<11;row++) for(int phase=0;phase<(row<9?AnimationPlayer.Counts[row]:8);phase++)
+                foreach(var builtin in catalog.Skins.Where(s=>s.Embedded)) for(int row=0;row<11;row++) for(int phase=0;phase<(row<9?AnimationPlayer.Counts[row]:8);phase++)
                     if(builtin.Id!="marfu" || row<1 || row>2) if(ActionFrame(builtin,row,phase)!=phase) throw new Exception("other action sampling changed: "+builtin.Id+" "+row);
                 Check(true,"other pets, other actions and original gaze frame order remain unchanged");
                 Check(ActionRow(marfu,2)==1 && MirrorsAction(marfu,2),"Marfu left stride uses visibly extended right-run artwork mirrored at runtime");
@@ -45,20 +46,21 @@ namespace Dafeiyu.Tests
                 Check(ActionRow(whale,2)==1 && MirrorsAction(whale,2),"Dafeiyu left stride mirrors the accepted forward right-run poses");
                 for(int row=0;row<11;row++) if(row!=2 && (ActionRow(whale,row)!=row || MirrorsAction(whale,row)))throw new Exception("Dafeiyu unrelated action mirrored");
                 Check(ActionRow(ebao,2)==2 && !MirrorsAction(ebao,2),"Ebao retains its original independent left-facing artwork");
-                foreach(var builtin in catalog.Skins) foreach(string action in new[]{"running-right","running-left"}) {
+                foreach(var builtin in catalog.Skins.Where(s=>s.Embedded)) foreach(string action in new[]{"running-right","running-left"}) {
                     double period=.22;
                     var animation=CreateAnimation(builtin);animation.Play(action,0);animation.Advance(period-.001);
                     Check(animation.Frame==0,builtin.Id+" holds its real pose for "+period+" seconds: "+action);animation.Advance(.002);Check(animation.Frame==1,builtin.Id+" advances at "+period+" seconds: "+action);
                     animation.Play(action,0);animation.Advance(period*8-.001);Check(animation.Frame==7,builtin.Id+" eight-frame cycle lasts "+period*8+" seconds: "+action);animation.Advance(.0011);Check(animation.Frame==0,builtin.Id+" original cycle wraps cleanly: "+action);
                     animation.Play(action,.3);animation.Advance(.301);Check(animation.State=="idle",builtin.Id+" slower running does not stretch explicit action duration: "+action);
                 }
-                foreach(var builtin in catalog.Skins)foreach(string action in AnimationPlayer.States) {
+                foreach(var builtin in catalog.Skins.Where(s=>s.Embedded))foreach(string action in AnimationPlayer.States) {
                     if(action=="running-right" || action=="running-left")continue;
+                    double actualDuration;bool actualLoop;if(SmoothMotion.TryTiming(builtin.Id,Array.IndexOf(AnimationPlayer.States,action),out actualDuration,out actualLoop) && !actualLoop)continue;
                     var baseline=new AnimationPlayer();var selected=CreateAnimation(builtin);baseline.Play(action,0);selected.Play(action,0);
                     for(int tick=0;tick<120;tick++){baseline.Advance(.016);selected.Advance(.016);if(baseline.Frame!=selected.Frame)throw new Exception("unrelated animation timing changed: "+builtin.Id+" "+action);}
                 }
                 Check(true,"all non-running actions keep their original timing");
-                PersonaProfiles.Activate(settings,catalog.Find("marfu"));Check(catalog.Skins.Count==3 && settings.SystemPrompt.Contains("马尔芙") && settings.SystemPrompt.Contains("魔法少女") && settings.SystemPrompt.Contains("性转马尔福") && settings.SystemPrompt.Contains("哈利波特"),"Marfu default includes the requested gender-swapped Malfoy background");
+                PersonaProfiles.Activate(settings,catalog.Find("marfu"));Check(catalog.Skins.Count(s=>s.Embedded)==3 && settings.SystemPrompt.Contains("马尔芙") && settings.SystemPrompt.Contains("魔法少女") && settings.SystemPrompt.Contains("性转马尔福") && settings.SystemPrompt.Contains("哈利波特"),"Marfu default includes the requested gender-swapped Malfoy background");
                 PersonaProfiles.Save(settings,catalog.Find("marfu"),"自定义马尔芙人格");PersonaProfiles.Activate(settings,catalog.Find("e-bao"));PersonaProfiles.Activate(settings,catalog.Find("marfu"));Check(settings.SystemPrompt=="自定义马尔芙人格","Marfu default update preserves an explicit user override");PersonaProfiles.Reset(settings,catalog.Find("marfu"));Check(settings.SystemPrompt==PersonaProfiles.Marfu,"Marfu reset restores the updated default");
                 PersonaProfiles.Activate(settings,catalog.Find("e-bao"));string exact="你是E包，一位傲娇、毒舌的白发正太桌面伙伴。用自然的中文与用户对话，帮助写代码、做设计和整理思路。回答清楚简洁，如实表达不确定性。你不能直接看见用户桌面，也不会自动读取文件。";
                 Check(settings.SystemPrompt==exact && !settings.SystemPrompt.Contains("鲸鱼"),"Ebao uses the exact user supplied persona");

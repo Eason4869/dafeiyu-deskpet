@@ -22,6 +22,7 @@ namespace Dafeiyu.Tests
             Check(typeof(GitHubUpdates).GetMethod("CheckAsync",new[]{typeof(string),typeof(bool),typeof(string),typeof(bool),typeof(CancellationToken)})!=null,"便携版可选择运行包，不改变其他安装记录");
             Check(!new UpdateRelease{VersionTag="v1.2.0.0"}.IsNewerThan(new Version(1,2,0,0)) && !new UpdateRelease{VersionTag="v1.2.0"}.IsNewerThan(new Version(1,2,0,0)) && new UpdateRelease{VersionTag="v1.2.0.1"}.IsNewerThan(new Version(1,2,0,0)),"three- and four-part release versions compare consistently");
             foreach(string url in new[]{"https://github.com/OWNER/REPO","https://example.com/o/r","https://user:pass@github.com/o/r","https://github.com/o/r/releases","https://github.com/o/r?key=secret"}){try{GitHubUpdates.Repository(url);throw new Exception("invalid repo accepted");}catch(ApiException){passed++;}}
+            await PlatformAssetChecks();
             string json="{\"tag_name\":\"v1.3.0\",\"html_url\":\"https://github.com/test/pet/releases/tag/v1.3.0\",\"assets\":[{\"name\":\"deskpet-source.zip\",\"size\":10,\"browser_download_url\":\"https://github.com/test/pet/releases/download/v1.3.0/deskpet-source.zip\"},{\"name\":\"DeskPet-Setup.exe\",\"size\":4,\"browser_download_url\":\"https://github.com/test/pet/releases/download/v1.3.0/DeskPet-Setup.exe\"}]}";
             using(var server=new ApiTests.Fixture(json))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
             {var release=await updater.CheckAsync("https://github.com/test/pet",false,CancellationToken.None);Check(release.AssetName=="DeskPet-Setup.exe" && release.IsNewerThan(new Version(1,2,0)),"latest release prefers installer and compares versions");Check(server.Path=="/repos/test/pet/releases/latest" && server.Authorization==null,"public release lookup sends no model key");}
@@ -38,6 +39,35 @@ namespace Dafeiyu.Tests
             {server.DelayBodyMilliseconds=1000;using(var cancel=new CancellationTokenSource()){var task=updater.DownloadAsync(new UpdateRelease{AssetName="cancel.zip",AssetUrl=server.Url+"/cancel",Size=4},root,false,null,cancel.Token);await server.HeadersSent;cancel.Cancel();try{await task;throw new Exception("cancel ignored");}catch(OperationCanceledException){}Check(!File.Exists(Path.Combine(root,"cancel.zip")) && Directory.GetFiles(root,"cancel.zip*.part").Length==0,"canceled download removes the partial file");}}
             using(var server=new ApiTests.Fixture("null"))using(var updater=new GitHubUpdates(new Uri(server.Url+"/"))){try{await updater.CheckAsync("https://github.com/test/pet",false,CancellationToken.None);throw new Exception("bad release accepted");}catch(ApiException){passed++;}}
             await MirrorChecks();
+        }
+        static async Task PlatformAssetChecks()
+        {
+            string[] excluded={"DeskPet-Mac-x64.zip","DeskPet-MACOS-Setup-x64.zip","DeskPet-darwin-x64.zip","DeskPet-osx-x64.zip","DeskPet-macOS.dmg","DeskPet-dmg.zip","DeskPet-HighFPS-Template-v2-0.5.3.zip","DeskPet-创作模板.zip","DeskPet-Four-Skins-0.5.3.zip","DeskPet-Source-0.5.3.zip"};
+            foreach(string asset in excluded)using(var handler=new AssetHandler(new[]{asset}))using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler)) {
+                foreach(bool portable in new[]{false,true}) {
+                    var release=await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,ProxyConfiguration.DefaultAddress,portable,CancellationToken.None);
+                    Check(release.AssetName==null,"non-Windows attachment is never an update (portable="+portable+"): "+asset);
+                }
+            }
+            foreach(bool reverse in new[]{false,true}) {
+                var mixed=excluded.Concat(new[]{"DeskPet-Windows-0.5.3.zip","DeskPet-Setup-0.5.3.exe"});
+                using(var handler=new AssetHandler((reverse?mixed.Reverse():mixed).ToArray()))using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler)) {
+                    Check((await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,ProxyConfiguration.DefaultAddress,false,CancellationToken.None)).AssetName=="DeskPet-Setup-0.5.3.exe","mixed release keeps Windows installer regardless of asset order "+reverse);
+                    Check((await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,ProxyConfiguration.DefaultAddress,true,CancellationToken.None)).AssetName=="DeskPet-Windows-0.5.3.zip","mixed release keeps Windows portable ZIP regardless of asset order "+reverse);
+                }
+            }
+        }
+        sealed class AssetHandler:HttpMessageHandler
+        {
+            readonly string json;
+            public AssetHandler(string[] names) {
+                json=new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new {
+                    tag_name="v0.5.3",html_url="https://github.com/Eason4869/deskpet/releases/tag/v0.5.3",
+                    assets=names.Select(name=>new {name=name,size=4,browser_download_url="https://github.com/Eason4869/deskpet/releases/download/v0.5.3/"+Uri.EscapeDataString(name)}).ToArray()
+                });
+            }
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
+            {return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(json)});}
         }
         static async Task MirrorChecks()
         {

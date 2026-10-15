@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -19,10 +19,21 @@ namespace Dafeiyu
         [DataMember(Name="atlas")] public string Atlas { get; set; }
         [DataMember(Name="system_prompt",EmitDefaultValue=false)] public string SystemPrompt { get; set; }
         [DataMember(Name="description",EmitDefaultValue=false)] public string Description { get; set; }
+        [DataMember(Name="format",EmitDefaultValue=false)] public string Format { get; set; }
+        [DataMember(Name="cell_width",EmitDefaultValue=false)] public int CellWidth { get; set; }
+        [DataMember(Name="cell_height",EmitDefaultValue=false)] public int CellHeight { get; set; }
+        [DataMember(Name="preview",EmitDefaultValue=false)] public string Preview { get; set; }
+        [DataMember(Name="special_action",EmitDefaultValue=false)] public string SpecialAction { get; set; }
+        [DataMember(Name="animations",EmitDefaultValue=false)] public Dictionary<string,IllustratedAnimation> Animations { get; set; }
+        [DataMember(Name="gaze",EmitDefaultValue=false)] public IllustratedGaze Gaze { get; set; }
     }
     public sealed class SkinDefinition
     {
         private static readonly int[] MarfuRightStride={0,2,3,2,4,2,6,2};
+        public SkinManifest Manifest { get; private set; }
+        public bool Illustrated { get { return Manifest!=null && Manifest.Version==2; } }
+        public string SpecialAction { get { return Illustrated && !String.IsNullOrWhiteSpace(Manifest.SpecialAction) ? Manifest.SpecialAction : "专属动作"; } }
+        internal SkinDefinition(string id,string folder,SkinManifest manifest) : this(id,SkinCatalog.CleanName(manifest.Name),folder,manifest.Preview,false,manifest.SystemPrompt,manifest.Description) { Manifest=manifest; }
         public string Id { get; private set; }
         public string Name { get; private set; }
         public string Source { get; private set; }
@@ -39,7 +50,7 @@ namespace Dafeiyu
         public override string ToString() { return Name; }
         public SpriteAtlas Load()
         {
-            return new SpriteAtlas(Source,Embedded);
+            return Illustrated ? new SpriteAtlas(Source,Manifest) : new SpriteAtlas(Source,Embedded);
         }
         public int ActionFrame(int row,int phase)
         {
@@ -53,7 +64,9 @@ namespace Dafeiyu
         public AnimationPlayer CreateAnimation(int frameMultiplier=1)
         {
             double period=Embedded && (Id=="marfu" || Id=="e-bao" || Id=="dafeiyu") ? .22 : .11;
-            return new AnimationPlayer(frameMultiplier,period);
+            double[] durations=null;
+            if(Illustrated) durations=AnimationPlayer.States.Select(n=>Manifest.Animations[n].Loop ? 0 : Manifest.Animations[n].Frames/Manifest.Animations[n].Fps).ToArray();
+            return new AnimationPlayer(frameMultiplier,period,durations);
         }
     }
     public sealed class SkinCatalog
@@ -69,12 +82,20 @@ namespace Dafeiyu
             skins.Add(new SkinDefinition("marfu","马尔芙","Dafeiyu.MarfuAtlas","Dafeiyu.MarfuPreview",true,
                 PersonaProfiles.Marfu,
                 "聪明俏皮 · 金发绿眼魔法少女"));
+            try {
+                var bundled=BundledSkinCache.LoadXiaobei(dataDirectory);
+                if(bundled!=null)skins.Add(bundled);
+            } catch(Exception e) {
+                if(!(e is IOException || e is UnauthorizedAccessException || e is SerializationException || e is ArgumentException || e is InvalidOperationException))throw;
+                System.Diagnostics.Trace.WriteLine("Bundled Xiaobei could not be loaded: "+e.GetType().Name);
+            }
             if(!Directory.Exists(directory)) return;
             foreach(string folder in Directory.GetDirectories(directory))
             {
                 try
                 {
                     var manifest=ReadManifest(Path.Combine(folder,"pet.json"));
+                    if(manifest.Version==2) { IllustratedPack.Validate(folder,manifest,false);skins.Add(new SkinDefinition(Path.GetFileName(folder),folder,manifest));continue; }
                     string atlas=AtlasPath(folder,manifest.Atlas); ValidatePng(atlas);
                     skins.Add(new SkinDefinition(Path.GetFileName(folder),CleanName(manifest.Name),atlas,null,false,manifest.SystemPrompt,manifest.Description));
                 }
@@ -87,7 +108,7 @@ namespace Dafeiyu
         {
             string atlas,name,prompt=null,description=null;
             if(String.Equals(Path.GetExtension(path),".json",StringComparison.OrdinalIgnoreCase))
-            { var m=ReadManifest(path); atlas=AtlasPath(Path.GetDirectoryName(Path.GetFullPath(path)),m.Atlas); name=CleanName(m.Name); prompt=m.SystemPrompt; description=m.Description; }
+            { var m=ReadManifest(path); if(m.Version==2)return ImportIllustrated(path,m); atlas=AtlasPath(Path.GetDirectoryName(Path.GetFullPath(path)),m.Atlas); name=CleanName(m.Name); prompt=m.SystemPrompt; description=m.Description; }
             else
             { if(!String.Equals(Path.GetExtension(path),".png",StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("请选择透明 PNG 精灵图或 pet.json 外观文件。"); atlas=path; name=CleanName(Path.GetFileNameWithoutExtension(path)); }
             ValidatePng(atlas);
@@ -116,16 +137,38 @@ namespace Dafeiyu
                 Directory.Delete(destination); throw;
             }
         }
+        private SkinDefinition ImportIllustrated(string path,SkinManifest manifest)
+        {
+            string source=Path.GetDirectoryName(Path.GetFullPath(path));
+            var files=IllustratedPack.Validate(source,manifest,true);
+            string id="skin-"+Guid.NewGuid().ToString("N"),destination=Path.Combine(directory,id);
+            Directory.CreateDirectory(destination);
+            try {
+                foreach(string relative in files) {
+                    string target=Path.Combine(destination,relative.Replace('/',Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));
+                    File.Copy(IllustratedPack.AssetPath(source,relative),target,false);
+                }
+                // Validate the copied bytes before publishing the catalog entry.
+                IllustratedPack.Validate(destination,manifest,true);
+                manifest.Name=CleanName(manifest.Name);
+                using(var stream=File.Create(Path.Combine(destination,"pet.json"))) Serializer().WriteObject(stream,manifest);
+                var skin=new SkinDefinition(id,destination,manifest);skins.Add(skin);return skin;
+            } catch { Directory.Delete(destination,true);throw; }
+        }
+        internal static DataContractJsonSerializer Serializer()
+        { return new DataContractJsonSerializer(typeof(SkinManifest),new DataContractJsonSerializerSettings {UseSimpleDictionaryFormat=true}); }
         private static SkinManifest ReadManifest(string path)
         {
-            using(var stream=File.OpenRead(path))
-            {
-                if(stream.Length>65536) throw new InvalidOperationException("外观说明文件过大。");
-                var result=(SkinManifest)new DataContractJsonSerializer(typeof(SkinManifest)).ReadObject(stream);
-                if(result==null || result.Version!=1) throw new InvalidOperationException("外观版本应为 1。");
-                if((result.SystemPrompt ?? "").Length>8000 || (result.Description ?? "").Length>1000) throw new InvalidOperationException("人格最多 8000 字，简介最多 1000 字。");
-                return result;
-            }
+            using(var stream=File.OpenRead(path))return ReadManifest(stream);
+        }
+        internal static SkinManifest ReadManifest(Stream stream)
+        {
+            if(stream.Length>65536) throw new InvalidOperationException("外观说明文件过大。");
+            var result=(SkinManifest)Serializer().ReadObject(stream);
+            if(result==null || (result.Version!=1 && result.Version!=2)) throw new InvalidOperationException("外观版本应为 1 或 2。");
+            if((result.SystemPrompt ?? "").Length>8000 || (result.Description ?? "").Length>1000) throw new InvalidOperationException("人格最多 8000 字，简介最多 1000 字。");
+            return result;
         }
         private static string AtlasPath(string folder,string filename)
         {
@@ -133,7 +176,7 @@ namespace Dafeiyu
                 throw new InvalidOperationException("atlas 必须是与 pet.json 同文件夹的 PNG 文件名。");
             return Path.Combine(folder,filename);
         }
-        private static string CleanName(string name)
+        internal static string CleanName(string name)
         {
             string result=new string((name??"").Where(c=>!Char.IsControl(c)).ToArray()).Trim();
             return result.Length==0 ? "新伙伴" : result.Substring(0,Math.Min(32,result.Length));
@@ -153,6 +196,7 @@ namespace Dafeiyu
         private static int BigEndian(byte[] b,int i) { return (b[i]<<24)|(b[i+1]<<16)|(b[i+2]<<8)|b[i+3]; }
         public static BitmapSource GetPreview(SkinDefinition skin)
         {
+            if(skin.Illustrated) return IllustratedPack.ReadImage(IllustratedPack.AssetPath(skin.Source,skin.Manifest.Preview),480,520);
             using(Stream stream=skin.Embedded ? Assembly.GetExecutingAssembly().GetManifestResourceStream(skin.Preview) : File.OpenRead(skin.Source))
             {
                 if(stream==null) throw new InvalidOperationException("找不到外观预览。");

@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests','InteractionTests','SpriteAlignmentTests','InteractionUiSmoke','ActionPaletteSmoke','SettingsNavigationSmoke','OnboardingSmoke','LiveCallSmoke','GuideMenuSmoke','QueueTests','ComposerSmoke','DictationTests','AboutSmoke','SteeringSmoke')][string]$Target = 'App', [string]$OutputDirectory = '')
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests','InteractionTests','SpriteAlignmentTests','InteractionUiSmoke','ActionPaletteSmoke','SettingsNavigationSmoke','OnboardingSmoke','LiveCallSmoke','GuideMenuSmoke','QueueTests','ComposerSmoke','DictationTests','AboutSmoke','SteeringSmoke','FeedbackSmoke','ProviderTests','ProviderUiSmoke','ImportedSkinTests','XiaobeiUiSmoke','AiGreetingTests','AiGreetingUiSmoke','BundledSkinTests','SkinPackExport')][string]$Target = 'App', [string]$OutputDirectory = '', [string[]]$TestArguments = @())
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -38,6 +38,19 @@ foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.I
     if (!(Test-Path -LiteralPath $assetPath)) { throw "Required artwork is missing: $assetPath" }
     $assets += '/resource:' + $assetPath + ',' + $asset[1]
 }
+# Bundled presets are embedded in the app and test executables, keeping the
+# portable ZIP compatible with old update workers that reject a pets directory.
+$bundledSkinRoot = Join-Path $projectRoot 'assets\bundled-skins\xiaobei'
+if (Test-Path -LiteralPath $bundledSkinRoot -PathType Container) {
+    $bundledResourceNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($bundledAsset in Get-ChildItem -LiteralPath $bundledSkinRoot -Recurse -File | Sort-Object FullName) {
+        $bundledRelative = $bundledAsset.FullName.Substring($bundledSkinRoot.Length + 1)
+        if ($bundledRelative -ne 'pet.json' -and $bundledAsset.Extension -ine '.png') { continue }
+        $bundledResource = 'Dafeiyu.Bundled.Xiaobei.' + $bundledRelative.Replace('\','.').Replace('/','.')
+        if (!$bundledResourceNames.Add($bundledResource)) { throw "Bundled preset resource collision: $bundledRelative" }
+        $assets += '/resource:' + $bundledAsset.FullName + ',' + $bundledResource
+    }
+}
 $arguments = @('/nologo','/optimize+','/codepage:65001','/utf8output','/platform:anycpu',('/out:' + $destination)) + $references + $options + $assets + $sources
 & $compiler @arguments
 if ($LASTEXITCODE -ne 0) { throw "Compilation failed ($Target)." }
@@ -50,6 +63,6 @@ if ($Target -eq 'App') {
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'app.config') -Destination ($destination + '.config') -Force
 if ($Target -ne 'App') {
-    & $destination
+    & $destination @TestArguments
     if ($LASTEXITCODE -ne 0) { throw "Tests failed ($Target)." }
 } else { Write-Output $destination }

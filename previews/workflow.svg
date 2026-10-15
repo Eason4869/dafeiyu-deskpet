@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-label="桌面伙伴0.5.2使用流程：双击快速对话并展开完整聊天，中键打开动作轮盘，Live在当前窗口内显示；四项设置导航和十六步实操引导">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-label="桌面伙伴0.5.4使用流程：双击快速对话并展开完整聊天，中键打开动作轮盘，Live在当前窗口内显示；四项设置导航和十六步实操引导">
   <rect width="1000" height="680" rx="22" fill="#F7F9FD"/>
   <g font-family="Microsoft YaHei UI,Microsoft YaHei,Arial,sans-serif">
     <text x="40" y="46" fill="#203754" font-size="25" font-weight="600">和桌面伙伴一起开始</text>
@@ -16,7 +16,7 @@
         <text x="160" y="306">中键动作轮盘</text><text x="670" y="306">窗口内 Live 通话</text>
       </g>
       <g fill="#61738B" font-size="15">
-        <text x="160" y="156">摸头、戳身体、拖动定位</text><text x="160" y="181">E包 / 大肥鱼 / 马尔芙</text>
+        <text x="160" y="156">摸头、戳身体、拖动定位</text><text x="160" y="181">E包 / 大肥鱼 / 马尔芙 / 小贝</text>
         <text x="500" y="156">在头顶写一句话</text><text x="500" y="181">头像旁喇叭开关朗读</text>
         <text x="840" y="156">共享消息、查看历史</text><text x="840" y="181">文字 / ASR + TTS</text>
         <text x="160" y="337">动作：九组基础动作</text><text x="160" y="365">技能：投喂、小憩、专属动作</text>

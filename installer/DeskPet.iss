@@ -62,6 +62,7 @@ Source: "{#RuntimeDir}\docs\installation.md"; DestDir: "{app}\docs"; Flags: igno
 Source: "{#RuntimeDir}\docs\daily-use.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\voice-presets.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\sources.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\roadmap.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RuntimeDir}\templates\*.png"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RuntimeDir}\templates\*.json"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RuntimeDir}\templates\*.md"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist

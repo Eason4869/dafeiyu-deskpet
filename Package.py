@@ -38,10 +38,10 @@ def include_source(file):
 source_files=[p for p in sorted(PROJECT.rglob('*')) if include_source(p)]
 # User-facing templates and documentation remain in the runtime; developer
 # verification reports, tests and intermediate artwork stay out.
-user_docs=['skin-format.md','dialogue-setup.md','installation.md','daily-use.md','voice-presets.md','sources.md']
+user_docs=['skin-format.md','dialogue-setup.md','installation.md','daily-use.md','voice-presets.md','sources.md','roadmap.md']
 runtime_text={name:(PROJECT/name).read_text(encoding='utf-8-sig') for name in ['README.md','CHANGELOG.md']+[str(Path('docs')/name) for name in user_docs]}
 readme=runtime_text['README.md']
-for pet,still in [('ebao','e-bao'),('dafeiyu','dafeiyu'),('marfu','marfu')]:
+for pet,still in [('ebao','e-bao'),('dafeiyu','dafeiyu'),('marfu','marfu'),('xiaobei','xiaobei')]:
     readme=readme.replace('previews/'+pet+'-running.gif','previews/'+still+'.png')
 readme=readme.replace('跑动预览来自真实 WPF 窗口。','本地文档显示静态预览；真实 WPF 跑动预览请查看 GitHub README。')
 runtime_text['README.md']=readme

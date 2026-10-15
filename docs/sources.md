@@ -23,3 +23,32 @@ Gemini Live：[WebSocket 入门](https://ai.google.dev/gemini-api/docs/live-api/
 自动更新安装参数：[Inno Setup 命令行](https://jrsoftware.org/ishelp/topic_setupcmdline.htm)，使用静默安装、原目录、禁止系统重启和自动关闭其他程序的选项。
 
 0.3.3 新增「马尔芙」：根据用户提供的金发绿眼人物与黑绿魔法袍 Q 版参考图生成角色、九组动作及十六个基础视线方向。原始高清帧保存在 `assets/marfu-spritesheet.png`。0.4.0 删除造成重影的光流与混合补帧，直接播放原始帧。音色预设依据见[厂商官方音色说明](voice-presets.md)。
+
+## 服务商 Logo
+
+服务商标识采用 [Lobe Icons](https://github.com/lobehub/lobe-icons) 的单色矢量路径，固定来源提交 `8a1b2821bb768c484fe8da20c5e1838b6bf551a9`。小米 MiMo 使用 [Simple Icons 的 Xiaomi 图形](https://github.com/simple-icons/simple-icons/blob/develop/icons/xiaomi.svg) 中的 mi 标志，采用黑色圆底、白色字形；该路径使用 [CC0-1.0](https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md) 许可。标识仅用于辨识服务商，不表示合作或授权背书。图形与许可随程序离线提供，不从网络加载图标。
+
+模型获取依据：[OpenAI Models](https://developers.openai.com/api/reference/resources/models/methods/list)、[Anthropic Models](https://platform.claude.com/docs/en/api/models/list)。列表可见性、对话兼容性与调用权限以实际服务为准。
+
+Lobe Icons MIT 许可：
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

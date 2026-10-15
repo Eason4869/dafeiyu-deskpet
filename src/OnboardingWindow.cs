@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,6 +29,7 @@ namespace Dafeiyu
         private GuideAdorner highlight;
         private bool finished,navigating,positioning,ownerClosing;
         GuideFocusScope focusScope,petScope;bool gestureDone;
+        readonly List<GuideFocusScope> lessonRestrictions=new List<GuideFocusScope>();
         readonly DispatcherTimer readiness=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(120)};readonly List<GuideFocusScope> otherScopes=new List<GuideFocusScope>();
         public int Step {get;private set;}
         public string TargetName {get;private set;}
@@ -77,7 +78,7 @@ namespace Dafeiyu
             Loaded+=delegate {pet.SetGuideLock(true);foreach(Window window in Application.Current.Windows.Cast<Window>().ToArray())if(window!=this && window!=settings && window!=pet && !(window is QuickChatWindow) && window.Content is UIElement)otherScopes.Add(new GuideFocusScope((UIElement)window.Content));Navigate();readiness.Start();};
             readiness.Tick+=delegate{RefreshReadiness();};pet.GuideInteractionCompleted+=InteractionCompleted;
             settings.Closing+=OwnerClosing;settings.LocationChanged+=OwnerMoved;settings.SizeChanged+=OwnerSized;
-            Closing+=ClosingGuide;Closed+=delegate {readiness.Stop();RestoreNetworkPreview();pet.SetGuideLock(false);if(!ownerClosing && !settings.IsVisible && settings.IsLoaded)settings.Show();pet.GuideInteractionCompleted-=InteractionCompleted;pet.SetGuideInteraction("");if(petScope!=null)petScope.Dispose();if(focusScope!=null)focusScope.Dispose();foreach(var scope in otherScopes)scope.Dispose();RemoveHighlight();settings.Closing-=OwnerClosing;settings.LocationChanged-=OwnerMoved;settings.SizeChanged-=OwnerSized;};
+            Closing+=ClosingGuide;Closed+=delegate {readiness.Stop();RestoreNetworkPreview();RestoreLessonRestrictions();pet.SetGuideLock(false);if(!ownerClosing && !settings.IsVisible && settings.IsLoaded)settings.Show();pet.GuideInteractionCompleted-=InteractionCompleted;pet.SetGuideInteraction("");if(petScope!=null)petScope.Dispose();if(focusScope!=null)focusScope.Dispose();foreach(var scope in otherScopes)scope.Dispose();RemoveHighlight();settings.Closing-=OwnerClosing;settings.LocationChanged-=OwnerMoved;settings.SizeChanged-=OwnerSized;};
         }
 
         private static Button SmallButton(string text,string name)
@@ -130,7 +131,7 @@ namespace Dafeiyu
             if(finished || navigating)return;navigating=true;
             try
             {
-                RestoreNetworkPreview();if(focusScope!=null){focusScope.Dispose();focusScope=null;}if(petScope!=null){petScope.Dispose();petScope=null;}pet.SetGuideInteraction("");gestureDone=false;RemoveHighlight();
+                RestoreNetworkPreview();RestoreLessonRestrictions();if(focusScope!=null){focusScope.Dispose();focusScope=null;}if(petScope!=null){petScope.Dispose();petScope=null;}pet.SetGuideInteraction("");gestureDone=false;RemoveHighlight();
                 if(PetLesson){Owner=pet;settings.Hide();}else{if(!settings.IsVisible)settings.Show();Owner=settings;}status.Text="";actions.Children.Clear();
                 introduction.Text="和"+pet.Skin.Name+"一起开始";avatar.Source=SkinCatalog.GetPreview(pet.Skin);
                 for(int i=0;i<chips.Length;i++){chips[i].Background=i==Step?Ui.Blue:i<Step?Ui.Mint:Ui.Pale;((TextBlock)chips[i].Child).Foreground=i==Step?Brushes.White:Ui.Muted;}
@@ -160,23 +161,23 @@ namespace Dafeiyu
                 }
                 else if(Step==8)
                 {
-                    title.Text="9 · 配置文字模型";instruction.Text="先选服务预设，填写地址、模型与密钥，按需开启代理。下一步会校验并保存当前服务；没有账号可跳过本项。不会自动请求模型。";
-                    settings.SelectAiSection(0);TargetName="TextServicePreset";scopeName="TextServiceGuideSection";
+                    title.Text="9 · 添加文字模型";instruction.Text="点击“新增”选厂商，填写 Key 后“保存并获取模型列表”。勾选需要的模型后点“添加所选模型”，选择当前模型，再点引导的“下一步”保存本页。\n\n列表不可用时，手填模型 ID 后点“添加 / 更新”。可搜索模型或填写中文名称；没有账号可跳过本项。\n\n底部“保存配置”在引导中暂时锁定。已保存的有效连接可自动刷新列表，仅查询模型信息，不发送对话或录音。";
+                    settings.SelectAiSection(0);TargetName="AddTextProvider";scopeName="GuideTextProviderSection";
                 }
                 else if(Step==9)
                 {
-                    title.Text="10 · 配置语音输入";instruction.Text="麦克风用于听写。输入区右侧，麦克风位于主按钮左边。录音后，左侧黑方块“停止听写”识别并追加到草稿；右侧黑箭头“发送听写”识别后连同原草稿发送，AI 忙碌时加入队列。Esc 取消；录满 60 秒自动识别并保留草稿。填写识别模型和服务；复用文字服务需先完成文字配置。本步不会打开麦克风。";
-                    settings.SelectAiSection(1);TargetName="TranscriptionPreset";scopeName="TranscriptionGuideSection";
+                    title.Text="10 · 配置语音输入";instruction.Text="点击“新增”选择识别厂商，核对自动填入的模型名；模型可编辑，填写该服务独立的 Key，按需设置代理。语音页不获取模型列表，也不复用文字 Key。点击“下一步”保存本页。\n\n麦克风用于听写：停止后识别并保留草稿，发送则识别后发送或排队；Esc 取消。本步不录音。";
+                    settings.SelectAiSection(1);TargetName="AddAsrProvider";scopeName="GuideAsrProviderSection";
                 }
                 else if(Step==10)
                 {
-                    title.Text="11 · 选择回复声音";instruction.Text="可保留 Windows 系统朗读；开启云端 TTS 时需填写服务、模型和音色。朗读开关与音量可在这里调整；不会自动试听。";
-                    settings.SelectAiSection(2);TargetName="UseCloudVoice";scopeName="SpeechGuideSection";
+                    title.Text="11 · 选择回复声音";instruction.Text="可保留 Windows 系统朗读。使用云端 TTS 时，点击“新增”选择厂商，核对可编辑的预填模型，填写独立 Key，再选择或手填音色；各厂商分别保存声音。这里还可调整朗读开关与音量。\n\n点击“下一步”保存本页。引导中不试听；完成后可回到朗读页点击“测试朗读”，它只使用当前 TTS 或系统语音。";
+                    settings.SelectAiSection(2);TargetName="UseCloudVoice";scopeName="GuideSpeechProviderSection";
                 }
                 else if(Step==11)
                 {
-                    title.Text="12 · 配置 Live 通话";instruction.Text="填写完整 WSS 地址、模型、密钥与音色，暂时不用可跳过。这与听写分开配置。完成引导后，输入框为空且 AI 空闲时，点击右侧声波“通话”按钮才会连接并收音。本步只保存配置，不代表已连接成功。";
-                    settings.SelectAiSection(3);TargetName="LiveServicePreset";scopeName="LiveServiceGuideSection";
+                    title.Text="12 · 配置 Live 通话";instruction.Text="点击“新增”选择 Gemini，核对完整 WSS 地址和可编辑的预填模型，填写独立 Key，选择或手填 Live 音色。不获取模型列表，也不使用 TTS 服务。\n\n点击“下一步”只保存配置，不连接或收音。完成引导后，可在本页点击“测试 Live 通话”，或从对话框声波按钮开始；连接成功才开启麦克风，挂断返回。暂时不用可跳过。";
+                    settings.SelectAiSection(3);TargetName="AddLiveProvider";scopeName="GuideLiveProviderSection";
                 }
                 else if(Step==12)
                 {
@@ -199,6 +200,7 @@ namespace Dafeiyu
                     settings.SelectPage(6);networkPreview=(Expander)settings.FindControl("UpdateNetwork");networkWasExpanded=networkPreview.IsExpanded;networkPreview.IsExpanded=true;TargetName=scopeName="UpdateNetwork";
                 }
                 settings.UpdateLayout();focusScope=new GuideFocusScope((UIElement)settings.Content,scopeName.Length==0?null:settings.FindControl(scopeName),scopeName.Length==0?null:settings.FindControl("ConnectionNotice"));
+                if(Step>=8 && Step<=11)foreach(string name in new[]{"PreviewSpeech","StopPreviewSpeech","PreviewLive"}){var control=settings.FindControl(name);if(control!=null)lessonRestrictions.Add(new GuideFocusScope(control));}
                 settings.UpdateLayout();target=Step==14?(FrameworkElement)Application.Current.Windows.OfType<QuickChatWindow>().First().Content:PetLesson?(FrameworkElement)pet.Content:settings.FocusGuideTarget(TargetName);if(!PetLesson || Step==14)petScope=new GuideFocusScope((UIElement)pet.Content);
                 if(target!=null)
                 {
@@ -214,6 +216,7 @@ namespace Dafeiyu
             finally{navigating=false;RefreshReadiness();}
         }
         private void RestoreNetworkPreview(){if(networkPreview!=null){networkPreview.IsExpanded=networkWasExpanded;networkPreview=null;}}
+        private void RestoreLessonRestrictions(){foreach(var scope in lessonRestrictions)scope.Dispose();lessonRestrictions.Clear();}
         private void TargetVisibilityChanged(object sender,DependencyPropertyChangedEventArgs args)
         {
             if(!navigating && target!=null && !target.IsVisible){RemoveHighlight();status.Text="你切换了设置页，可点下方按钮回到当前步骤。";}

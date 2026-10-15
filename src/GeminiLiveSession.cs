@@ -95,6 +95,8 @@ namespace Dafeiyu
                     if(json.ContainsKey("setupComplete") && !ready)
                     {
                         ready=true;speaker=speakers();speaker.SetVolume(volume);microphone=microphones();
+                        var failures=speaker as ILiveAudioFailureSource;
+                        if(failures!=null)failures.Failed+=delegate(string failure){if(token.IsCancellationRequested)return;SetStatus(failure);cancellation.Cancel();socket.Abort();};
                         microphone.PcmAvailable+=delegate(byte[] bytes){if(token.IsCancellationRequested)return;Volatile.Write(ref inputLevel,AudioLevel.Pcm16(bytes));Interlocked.Exchange(ref inputAt,DateTime.UtcNow.Ticks);if(!queue.TryAdd(bytes)){SetStatus("Live 上传缓冲已满，请检查网络后重连。");cancellation.Cancel();socket.Abort();}};
                         microphone.Failed+=delegate(string failure){SetStatus(failure);cancellation.Cancel();socket.Abort();};
                         sending=Task.Run(async delegate {try{foreach(byte[] bytes in queue.GetConsumingEnumerable(token))await socket.SendTextAsync(Json(new {realtimeInput=new {audio=new {data=Convert.ToBase64String(bytes),mimeType="audio/pcm;rate=16000"}}}),token).ConfigureAwait(false);}catch(OperationCanceledException){}catch(Exception){SetStatus("Live 音频上传中断，请检查网络或代理。");cancellation.Cancel();socket.Abort();}});

@@ -29,7 +29,7 @@ namespace Dafeiyu
             pet=companion;
             Ui.Window(this,"和"+pet.Skin.Name+"互动",360,394);
             Owner=pet;ShowInTaskbar=false;WindowStyle=WindowStyle.None;AllowsTransparency=true;Background=Brushes.Transparent;ResizeMode=ResizeMode.NoResize;
-            MinWidth=0;MinHeight=0;Topmost=pet.Topmost;WindowStartupLocation=WindowStartupLocation.Manual;
+            MinWidth=0;MinHeight=0;Topmost=pet.Topmost;WindowStartupLocation=WindowStartupLocation.Manual;Focusable=true;
             var layout=new Grid{Width=448,Height=490};layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(440)});layout.RowDefinitions.Add(new RowDefinition());
             actions=new Canvas{Width=Diameter,Height=Diameter,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};layout.Children.Add(actions);
             var center=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10)};
@@ -50,7 +50,7 @@ namespace Dafeiyu
                 if(e.Key==Key.Left || e.Key==Key.Right || e.Key==Key.Up || e.Key==Key.Down)
                 {
                     int index=actionButtons.FindIndex(button=>button.IsKeyboardFocused),step=e.Key==Key.Left || e.Key==Key.Up?-1:1;
-                    if(actionButtons.Count>0)actionButtons[(index+step+actionButtons.Count)%actionButtons.Count].Focus();e.Handled=true;
+                    if(actionButtons.Count>0)actionButtons[index<0?(step>0?0:actionButtons.Count-1):(index+step+actionButtons.Count)%actionButtons.Count].Focus();e.Handled=true;
                 }
             };
             PreviewMouseWheel+=delegate(object sender,MouseWheelEventArgs e){e.Handled=true;SelectSection(e.Delta<0);};
@@ -67,7 +67,7 @@ namespace Dafeiyu
             if(!IsVisible)invocationPoint=DesktopInterop.Cursor();
             if(!IsVisible){Opacity=0;new WindowInteropHelper(this).EnsureHandle();UpdateLayout();PlaceNearPet();Show();}
             UpdateLayout();PlaceNearPet();Opacity=1;Activate();
-            if(actionButtons.Count>0)actionButtons[0].Focus();
+            Keyboard.Focus(this);
             availability.Start();
         }
 

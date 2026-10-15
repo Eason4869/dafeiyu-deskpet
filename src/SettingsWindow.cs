@@ -198,6 +198,7 @@ namespace Dafeiyu
         }
         public FrameworkElement FocusGuideTarget(string controlName)
         {
+            connections.ExpandConnectionFor(controlName);
             var target=FindControl(controlName);if(target==null)return null;
             target.BringIntoView();UpdateLayout();if(target.Focusable && target.IsEnabled)target.Focus();return target;
         }

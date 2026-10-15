@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -79,6 +79,47 @@ namespace Dafeiyu
         private static StringContent Json(object value)
         {
             return new StringContent(new JavaScriptSerializer { MaxJsonLength = 32*1024*1024 }.Serialize(value), Encoding.UTF8, "application/json");
+        }
+        public async Task<IList<string>> ListModelsAsync(ConnectionSettings settings,CancellationToken cancel)
+        {
+            // Listing models must work before the user has selected a model.
+            var probe=settings.Copy();probe.Model="model-catalog";
+            var models=new SortedSet<string>(StringComparer.Ordinal);var cursors=new HashSet<string>();string after=null;
+            using(var bounded=CancellationTokenSource.CreateLinkedTokenSource(cancel))
+            {
+                bounded.CancelAfter(requestTimeout);
+                try
+                {
+                    for(int page=0;page<10;page++)
+                    {
+                        using(var request=Request(probe,"models",null))
+                        {
+                            request.Method=HttpMethod.Get;
+                            if(after!=null)request.RequestUri=new Uri(request.RequestUri.AbsoluteUri+"?after_id="+Uri.EscapeDataString(after));
+                            byte[] bytes=await SendAsync(probe,request,MaxJsonBytes,bounded.Token).ConfigureAwait(false);
+                            try
+                            {
+                                var json=ObjectJson(bytes);object raw;
+                                if(!json.TryGetValue("data",out raw) || !(raw is object[]))throw new FormatException();
+                                foreach(object entry in (object[])raw)
+                                {
+                                    var item=entry as Dictionary<string,object>;object value;
+                                    if(item==null || !item.TryGetValue("id",out value) || !(value is string))continue;
+                                    string id=((string)value).Trim();
+                                    if(id.Length==0 || id.Length>256 || id.IndexOfAny(new[]{'\r','\n','\t'})>=0)continue;
+                                    models.Add(id);if(models.Count>=1000)return new List<string>(models);
+                                }
+                                if(!json.TryGetValue("has_more",out raw) || !Object.Equals(raw,true))return new List<string>(models);
+                                if(!json.TryGetValue("last_id",out raw) || !(raw is string) || String.IsNullOrWhiteSpace((string)raw) || !cursors.Add((string)raw))throw new FormatException();
+                                after=(string)raw;
+                            }
+                            catch(Exception e){if(!Malformed(e))throw;throw new ApiException("此服务没有返回兼容的模型列表，可继续手动添加模型。");}
+                        }
+                    }
+                    throw new ApiException("模型列表分页过多，请缩小服务端可用模型范围后重试，或手动添加。");
+                }
+                catch(OperationCanceledException){if(cancel.IsCancellationRequested)throw;throw new ApiException("获取模型列表超时，可点击刷新重试或手动添加。");}
+            }
         }
         public async Task<string> ChatAsync(ConnectionSettings settings, IList<ChatMessage> messages, CancellationToken cancel)
         {

@@ -17,7 +17,7 @@ namespace Dafeiyu
             if(kind=="asr" || kind=="speech")
             {
                 items.Add(new ServicePreset("MiMo","https://api.xiaomimimo.com/v1",kind=="asr" ? "mimo-v2.5-asr" : "mimo-v2.5-tts","mimo","MiMo 使用对话音频协议。Token Plan 用户可改为自己的 Token Plan 地址。"));
-                items.Add(new ServicePreset("MiMo · 国内 Token Plan","https://token-plan-cn.xiaomimimo.com/v1",kind=="asr" ? "mimo-v2.5-asr" : "mimo-v2.5-tts","mimo","使用对应 Token Plan 的密钥，或勾选复用文字服务。"));
+                items.Add(new ServicePreset("MiMo · 国内 Token Plan","https://token-plan-cn.xiaomimimo.com/v1",kind=="asr" ? "mimo-v2.5-asr" : "mimo-v2.5-tts","mimo","使用对应 Token Plan 的密钥；文字与语音服务分别保存配置。"));
                 items.Add(new ServicePreset("OpenAI","https://api.openai.com/v1",kind=="asr" ? "whisper-1" : "tts-1","openai",kind=="asr" ? "兼容 audio/transcriptions，发送 WAV 录音。" : "兼容 audio/speech，要求返回 WAV。"));return items;
             }
             items.Add(new ServicePreset("ChatGPT / OpenAI","https://api.openai.com/v1","gpt-4.1-mini"));

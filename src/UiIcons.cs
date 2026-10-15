@@ -13,14 +13,42 @@ namespace Dafeiyu
                 name=="muted"?"M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,9 L22,15 M22,9 L16,15":
                 name=="live"?"M4,9 L4,15 M8,5 L8,19 M12,2 L12,22 M16,6 L16,18 M20,9 L20,15":
                 name=="stop"?"M6,6 L18,6 18,18 6,18 Z":
-                name=="expand"?"M3,9 L3,3 9,3 M15,3 L21,3 21,9 M21,15 L21,21 15,21 M9,21 L3,21 3,15":
-                name=="phone"?"M4,15 C7,7 17,7 20,15 L17,18 14,15 14,12 10,12 10,15 7,18 Z":"M6,6 L18,18 M18,6 L6,18";
-            return new Viewbox {Width=20,Height=20,Child=new Path {Data=Geometry.Parse(shape),Stroke=ink,StrokeThickness=1.8,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,StrokeLineJoin=PenLineJoin.Round,Stretch=Stretch.Uniform,Width=24,Height=24}};
+                name=="expand"?"M14,4 L20,4 20,10 M20,4 L11,13 M10,5 L5,5 5,19 19,19 19,14":
+                name=="send"?"M12,19 L12,5 M6,11 L12,5 18,11":
+                name=="back"?"M19,12 L5,12 M11,6 L5,12 11,18":
+                name=="mic"?"M9,6 C9,2 15,2 15,6 L15,12 C15,16 9,16 9,12 Z M5,11 L5,12 C5,21 19,21 19,12 L19,11 M12,19 L12,22":
+                name=="trash"?"M4,6 L20,6 M9,6 L9,3 15,3 15,6 M6,6 L7,21 17,21 18,6 M10,10 L10,17 M14,10 L14,17":
+                name=="settings"?"M4,7 L20,7 M4,17 L20,17 M9,4 L9,10 M15,14 L15,20":
+                name=="phone"?"M3,10 C8,5 16,5 21,10 L20,15 C19,16 16,14 15,13 L15,10 C13,9 11,9 9,10 L9,13 C8,14 5,16 4,15 Z":"M6,6 L18,18 M18,6 L6,18";
+            // Keep every glyph on the same 24-unit canvas. Stretching the path
+            // itself made small shapes (especially stop/expand) look oversized.
+            var canvas=new Canvas {Width=24,Height=24};
+            Geometry geometry=name=="stop"?new RectangleGeometry(new Rect(5,5,14,14),2,2):Geometry.Parse(shape);
+            if(name=="stop")ink=Ui.Brush("#CC4055");
+            if(name=="settings")
+            {
+                var gear=new StreamGeometry();
+                using(var context=gear.Open())
+                {
+                    for(int i=0;i<32;i++)
+                    {
+                        double angle=(i*11.25-5.625)*Math.PI/180,radius=i%4<2?9.5:7.5;
+                        var point=new Point(12+Math.Cos(angle)*radius,12+Math.Sin(angle)*radius);
+                        if(i==0)context.BeginFigure(point,false,true);else context.LineTo(point,true,false);
+                    }
+                }
+                var group=new GeometryGroup();group.Children.Add(gear);group.Children.Add(new EllipseGeometry(new Point(12,12),3,3));geometry=group;
+            }
+            geometry.Freeze();
+            canvas.Children.Add(new Path {Data=geometry,Stroke=ink,Fill=name=="phone"?ink:null,StrokeThickness=1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,StrokeLineJoin=PenLineJoin.Round});
+            return new Viewbox {Width=18,Height=18,Child=canvas};
         }
         public static Button Button(string icon,string label,bool primary=false)
         {
             var button=Ui.Button(label,primary);button.Content=Image(icon,primary?Brushes.White:Ui.Ink);button.ToolTip=label;
-            button.Width=36;button.MinHeight=34;button.Padding=new Thickness(7);System.Windows.Automation.AutomationProperties.SetName(button,label);return button;
+            button.Width=36;button.Height=36;button.MinHeight=36;button.Padding=new Thickness(8);button.Margin=new Thickness(0,0,6,0);
+            if(!primary){button.Background=Brushes.Transparent;button.BorderBrush=Brushes.Transparent;}
+            System.Windows.Automation.AutomationProperties.SetName(button,label);return button;
         }
         public static CheckBox Speech(PetWindow pet)
         {

@@ -15,7 +15,7 @@ namespace Dafeiyu
         public QuietPanel(PetWindow owner)
         {
             pet=owner;VerticalScrollBarVisibility=ScrollBarVisibility.Auto;HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled;
-            var root=new StackPanel{Margin=new Thickness(24,22,24,24)};root.Children.Add(Ui.Text("免打扰与快捷键",25));
+            var root=new StackPanel{Margin=new Thickness(24,22,24,24)};root.Children.Add(Ui.Text("快捷键",25));
             root.Children.Add(Ui.Text("按你的工作节奏，决定伙伴何时出现。",12,Ui.Muted));
             var behavior=new StackPanel{Margin=new Thickness(0,14,0,0)};
             quiet=Ui.Toggle("免打扰",pet.Settings.QuietMode,delegate(bool enabled){if(!refreshing)pet.SetQuietMode(enabled);});quiet.Name="QuietMode";behavior.Children.Add(quiet);
@@ -34,7 +34,7 @@ namespace Dafeiyu
         }
         void AddShortcut(Panel panel,string action,string label)
         {
-            var row=new DockPanel{Margin=new Thickness(0,12,0,0)};var save=Ui.Button("保存");DockPanel.SetDock(save,Dock.Right);row.Children.Add(save);
+            var row=new DockPanel{Name="GuideShortcut"+action,Margin=new Thickness(0,12,0,0)};var save=Ui.Button("保存");save.Name="SaveShortcut"+action;DockPanel.SetDock(save,Dock.Right);row.Children.Add(save);
             var caption=Ui.Text(label,12);caption.Width=135;caption.VerticalAlignment=VerticalAlignment.Center;DockPanel.SetDock(caption,Dock.Left);row.Children.Add(caption);
             var field=Ui.Field(pet.Settings.Hotkeys[action]);field.Name="Hotkey"+action;field.MaxLength=64;fields[action]=field;row.Children.Add(field);
             save.Click+=delegate {string error;if(pet.UpdateHotkey(action,field.Text,out error)){field.Text=pet.Settings.Hotkeys[action];notice.Text=String.IsNullOrWhiteSpace(field.Text)?"已停用该快捷键。":"快捷键已保存。";}else{notice.Text=error;}};panel.Children.Add(row);

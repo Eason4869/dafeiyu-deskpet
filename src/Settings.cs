@@ -127,7 +127,7 @@ namespace Dafeiyu
         public void Normalize()
         {
             if(OnboardingState!="new" && OnboardingState!="deferred" && OnboardingState!="skipped" && OnboardingState!="completed")OnboardingState="completed";
-            OnboardingStep=Math.Max(0,Math.Min(5,OnboardingStep));
+            OnboardingStep=Math.Max(0,Math.Min(12,OnboardingStep));
             Hotkeys=Hotkeys ?? new Dictionary<string,string>();
             foreach(var pair in new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} })
                 if(!Hotkeys.ContainsKey(pair.Key))Hotkeys[pair.Key]=pair.Value; else Hotkeys[pair.Key]=(Hotkeys[pair.Key] ?? "").Trim();

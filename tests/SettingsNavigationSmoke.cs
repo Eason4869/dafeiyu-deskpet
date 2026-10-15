@@ -25,11 +25,11 @@ namespace Dafeiyu.Tests
                 pet=new PetWindow(null,cfg,new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump();
                 settings=new SettingsWindow(pet);settings.Show();Pump();
                 var nav=(ListBox)settings.FindControl("SettingsNavigation");
-                Check(nav.Items.Count==5,"five primary settings destinations");
-                Check(nav.Items.Cast<ListBoxItem>().Select(i=>(string)i.Content).SequenceEqual(new[]{"伙伴与外观","人格","AI 配置","免打扰与快捷键","关于与更新"}),"navigation follows companion to AI to preferences order");
+                Check(nav.Items.Count==4,"four primary settings destinations");
+                Check(nav.Items.Cast<ListBoxItem>().Select(i=>(string)i.Content).SequenceEqual(new[]{"伙伴","AI 配置","快捷键","关于"}),"navigation combines companion and persona");
                 bool guide=false;settings.GuideRequested+=delegate {guide=true;};Click(settings,"OpenOnboarding");Check(guide,"sidebar guide entry invokes guide event");
                 settings.SelectPage(2);Pump();var model=(TextBox)settings.FindControl("TextServiceModel");string original=model.Text;model.Text="navigation-draft";
-                settings.SelectPage(3);Pump();Check(settings.FindControl("TranscriptionModel")!=null && nav.SelectedIndex==2,"legacy ASR route opens AI secondary page");
+                settings.SelectPage(3);Pump();Check(settings.FindControl("TranscriptionModel")!=null && nav.SelectedIndex==1,"legacy ASR route opens AI secondary page");
                 settings.SelectPage(4);Pump();Check(settings.FindControl("SpeechVoice")!=null,"legacy TTS route opens voice field");
                 settings.SelectPage(5);Pump();Check(settings.FindControl("LiveServiceUrl")!=null,"legacy Live route opens realtime settings");
                 settings.SelectPage(2);Pump();Check(((TextBox)settings.FindControl("TextServiceModel")).Text=="navigation-draft","secondary navigation preserves unsaved draft");
@@ -51,9 +51,23 @@ namespace Dafeiyu.Tests
                     var target=settings.FocusGuideTarget(fields[index]);Pump();Check(target!=null && target.IsVisible,"guide locates and scrolls to real field "+index);
                     Capture(settings,Path.Combine(folder,"ai-"+index+"-minimum.png"));
                 }
-                settings.SelectPage(6);Pump();Check(settings.IsOnAboutPage && nav.SelectedIndex==4,"legacy About route uses fifth navigation item");
-                nav.ScrollIntoView(nav.Items[4]);Pump();Check(Inside((FrameworkElement)nav.Items[4],settings),"About item reachable at minimum window height");
-                settings.SelectPage(7);Pump();Check(settings.FindControl("QuietMode")!=null && nav.SelectedIndex==3 && !settings.IsOnAboutPage,"legacy quiet route uses fourth navigation item");
+                settings.SelectPage(6);Pump();Check(settings.IsOnAboutPage && nav.SelectedIndex==3,"legacy About route uses fourth navigation item");
+                nav.ScrollIntoView(nav.Items[3]);Pump();Check(Inside((FrameworkElement)nav.Items[3],settings),"About item reachable at minimum window height");
+                settings.SelectPage(7);Pump();Check(settings.FindControl("QuietMode")!=null && nav.SelectedIndex==2 && !settings.IsOnAboutPage,"legacy quiet route uses third navigation item");
+                string[] companionTabs={"CompanionPersonaTab","CompanionBehaviorTab","CompanionGreetingsTab"};string[] companionFields={"SkinPicker","SizeSlider","GreetingMinMinutes"};
+                for(int index=0;index<3;index++)
+                {
+                    settings.SelectCompanionSection(index);Pump();Check(companionTabs.All(tab=>Inside(settings.FindControl(tab),settings)),"all companion tabs fit minimum size "+index);
+                    Check(settings.FocusGuideTarget(companionFields[index])!=null,"companion section exposes its real control "+index);
+                    Capture(settings,Path.Combine(folder,"companion-"+index+"-minimum.png"));
+                }
+                settings.SelectCompanionSection(0);Pump();var prompt=(TextBox)settings.FindControl("PersonaPrompt");string savedPrompt=prompt.Text;prompt.Text="保留人格草稿";
+                settings.SelectCompanionSection(1);settings.SelectCompanionSection(2);settings.SelectCompanionSection(0);Pump();
+                Check(((TextBox)settings.FindControl("PersonaPrompt")).Text=="保留人格草稿","companion tabs preserve persona draft");prompt.Text=savedPrompt;
+                var appearance=pet.ContextMenu.Items.OfType<MenuItem>().Single(i=>(string)i.Header=="外观");
+                Check(appearance.Items.Count==pet.Catalog.Skins.Count && pet.ContextMenu.Items.OfType<MenuItem>().Any(i=>(string)i.Header=="设置"),"context menu separates quick appearance from detailed settings");
+                var switchTo=appearance.Items.OfType<MenuItem>().First(i=>(string)i.Tag!=pet.Skin.Id);string expected=(string)switchTo.Tag;switchTo.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Check(pet.Skin.Id==expected,"appearance submenu switches companion directly");
                 settings.Width=850;settings.Height=790;settings.SelectPage(0);Pump();Capture(settings,Path.Combine(folder,"companion-normal.png"));
                 Console.WriteLine("Settings navigation smoke: "+passed+" passed; previews: "+folder);return 0;
             }

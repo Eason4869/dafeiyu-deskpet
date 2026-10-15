@@ -80,6 +80,46 @@ namespace Dafeiyu
             }
             catch(Exception e){ShowError(e);return false;}
         }
+        public bool ValidateGuideSection(int index,out string error)
+        {
+            try
+            {
+                var draft=pet.Settings.Copy();ConnectionSettings service;
+                if(index==0){service=text.Read();ApiClient.ValidateConnection(service,ApiClient.ChatPath(service));}
+                else if(index==1){draft.Transcription=recognition.Read();draft.VoiceUsesTextService=reuse.IsChecked==true;service=draft.TranscriptionConnection();ApiClient.ValidateConnection(service,ApiClient.AsrPath(service));}
+                else if(index==2 && cloud.IsChecked==true){draft.Speech=synthesis.Read();draft.SpeechUsesTextService=reuseSpeech.IsChecked==true;service=draft.SpeechConnection();ApiClient.ValidateConnection(service,ApiClient.SpeechPath(service));if(String.IsNullOrWhiteSpace(voice.Text) || voice.Text.Trim().Length>512)throw new InvalidOperationException("请选择或填写有效音色。");}
+                else if(index==3){GeminiLiveSocket.Endpoint(live.Read());if(String.IsNullOrWhiteSpace(liveVoice.Text) || liveVoice.Text.Trim().Length>512)throw new InvalidOperationException("请选择或填写 Live 音色。");}
+                error="";return true;
+            }
+            catch(Exception e){error=e is ApiException || e is InvalidOperationException?e.Message:"请检查当前服务的填写内容。";return false;}
+        }
+        public bool SaveGuideSection(int index)
+        {
+            string error;if(!ValidateGuideSection(index,out error)){notice.Text=error;return false;}
+            try
+            {
+                var draft=pet.Settings.Copy();
+                if(index==0){draft.Text=text.Read();ApiClient.ValidateConnection(draft.Text,ApiClient.ChatPath(draft.Text));pet.Settings.Text=draft.Text;}
+                else if(index==1)
+                {
+                    draft.Transcription=recognition.Read();draft.VoiceUsesTextService=reuse.IsChecked==true;var service=draft.TranscriptionConnection();ApiClient.ValidateConnection(service,ApiClient.AsrPath(service));
+                    pet.Settings.Transcription=draft.Transcription;pet.Settings.VoiceUsesTextService=draft.VoiceUsesTextService;
+                }
+                else if(index==2)
+                {
+                    draft.UseCloudVoice=cloud.IsChecked==true;draft.SpeechUsesTextService=reuseSpeech.IsChecked==true;draft.Speech=synthesis.Read();draft.VoiceName=voice.Text.Trim();
+                    if(draft.UseCloudVoice){var service=draft.SpeechConnection();ApiClient.ValidateConnection(service,ApiClient.SpeechPath(service));if(draft.VoiceName.Length==0 || draft.VoiceName.Length>512)throw new InvalidOperationException("请选择或填写有效音色。");}
+                    pet.Settings.UseCloudVoice=draft.UseCloudVoice;pet.Settings.SpeechUsesTextService=draft.SpeechUsesTextService;pet.Settings.Speech=draft.Speech;pet.Settings.VoiceName=draft.VoiceName;PersonaProfiles.SaveVoices(pet.Settings);
+                }
+                else
+                {
+                    draft.Live=live.Read();GeminiLiveSocket.Endpoint(draft.Live);draft.LiveVoice=liveVoice.Text.Trim();if(draft.LiveVoice.Length==0 || draft.LiveVoice.Length>512)throw new InvalidOperationException("请选择或填写 Live 音色。");
+                    pet.Settings.Live=draft.Live;pet.Settings.LiveVoice=draft.LiveVoice;PersonaProfiles.SaveVoices(pet.Settings);
+                }
+                pet.SaveSettings();pet.RefreshChatAppearance();notice.Text=String.IsNullOrEmpty(pet.Notice)?"当前引导项已保存。":pet.Notice;return String.IsNullOrEmpty(pet.Notice);
+            }
+            catch(Exception e){ShowError(e);return false;}
+        }
         static void ValidateAddress(ConnectionSettings settings,string path)
         {if(String.IsNullOrWhiteSpace(settings.BaseUrl))return;var probe=settings.Copy();probe.Model="validation";ApiClient.Endpoint(probe,path);if(settings.ApiKey.IndexOfAny(new[]{'\r','\n'})>=0)throw new ApiException("密钥中有换行，请重新粘贴。");}
         void ShowError(Exception e){notice.Text=e is OperationCanceledException?"朗读已停止。":e is ApiException || e is InvalidOperationException?e.Message:e is CryptographicException?"当前 Windows 用户无法加密密钥。":"设置或朗读未完成，请检查配置与输出设备。";}
@@ -89,7 +129,7 @@ namespace Dafeiyu
             public event Action Changed;bool applyingPreset;
             public ConnectionEditor(string title,string prefix,string serviceKind,ConnectionSettings settings)
             {
-                kind=serviceKind;var heading=Ui.Text(title,17);heading.FontWeight=FontWeights.SemiBold;Children.Add(heading);Children.Add(Ui.Text(kind=="text" ? "选择常用服务，或接入自己的兼容接口。" : kind=="live" ? "边说边听，支持字幕与语音打断。" : kind=="asr" ? "把录音转成文字，再交给当前对话模型。" : "给伙伴选一副声音。",12,Ui.Muted));
+                Name=prefix+"GuideSection";kind=serviceKind;var heading=Ui.Text(title,17);heading.FontWeight=FontWeights.SemiBold;Children.Add(heading);Children.Add(Ui.Text(kind=="text" ? "选择常用服务，或接入自己的兼容接口。" : kind=="live" ? "边说边听，支持字幕与语音打断。" : kind=="asr" ? "把录音转成文字，再交给当前对话模型。" : "给伙伴选一副声音。",12,Ui.Muted));
                 address=Ui.Field(settings.BaseUrl);address.Name=prefix+"Url";model=Ui.Field(settings.Model);model.Name=prefix+"Model";
                 key=new PasswordBox{Name=prefix+"Key",Password=settings.ApiKey,MinHeight=38,Padding=new Thickness(10,7,10,7),BorderBrush=Ui.Line,Background=Brushes.White};
                 protocol=new ComboBox{Name=prefix+"Protocol",ItemsSource=kind=="text" ? new[]{"OpenAI Chat Completions","Anthropic Messages"} : kind=="live" ? new[]{"Gemini Live WebSocket"} : new[]{"自动识别（MiMo 模型使用 MiMo 协议）","OpenAI Audio","MiMo Chat Audio"},MinHeight=38,Padding=new Thickness(8)};

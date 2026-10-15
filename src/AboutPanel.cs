@@ -38,7 +38,7 @@ namespace Dafeiyu
             status=Ui.Text("",12);status.Name="UpdateStatus";status.Margin=new Thickness(0,12,0,0);update.Children.Add(status);
             var updateCard=Ui.Card(update);updateCard.Margin=new Thickness(0,20,0,18);panel.Children.Add(updateCard);
 
-            var network=new Expander{Header="更新网络与下载文件",IsExpanded=true,Margin=new Thickness(0,0,0,20)};
+            var network=new Expander{Name="UpdateNetwork",Header="网络代理",IsExpanded=false,Margin=new Thickness(0,0,0,20)};
             var networkBody=new StackPanel{Margin=new Thickness(0,8,0,0)};
             proxy=Ui.Toggle("更新使用代理",pet.Settings.UpdateUseProxy,v=>{pet.Settings.UpdateUseProxy=v;pet.SaveSettings();});proxy.Name="UpdateProxy";networkBody.Children.Add(proxy);
             proxyAddress=Ui.Field(ProxyConfiguration.Normalize(pet.Settings.UpdateProxyAddress));proxyAddress.Name="UpdateProxyAddress";proxyAddress.LostFocus+=delegate {SaveProxy();};Ui.Label(networkBody,"代理地址",proxyAddress);networkBody.Children.Add(Ui.Text("默认 127.0.0.1:7890；修改后移开焦点即可保存。",11,Ui.Muted));
@@ -47,7 +47,7 @@ namespace Dafeiyu
             var repository=Ui.Text("",12,Ui.Blue);repository.Name="RepositoryUrl";
             var link=new Hyperlink(new Run(ReleaseInfo.RepositoryUrl)){NavigateUri=new Uri(ReleaseInfo.RepositoryUrl)};link.RequestNavigate+=delegate(object sender,System.Windows.Navigation.RequestNavigateEventArgs args){args.Handled=true;Open(ReleaseInfo.RepositoryUrl);};repository.Inlines.Add(link);
             panel.Children.Add(Ui.Text("项目仓库",12,Ui.Muted));panel.Children.Add(repository);
-            var links=new WrapPanel{Margin=new Thickness(0,12,0,0)};var copy=Ui.Button("复制地址");copy.Name="CopyRepository";copy.Click+=delegate {try{Clipboard.SetText(ReleaseInfo.RepositoryUrl);updates.ReportValidation("仓库地址已复制。");}catch(System.Runtime.InteropServices.COMException){updates.ReportValidation("剪贴板正忙，请稍后重试。");}};links.Children.Add(copy);
+            var links=new WrapPanel{Margin=new Thickness(0,12,0,0)};
             var releases=Ui.Button("查看版本记录");releases.Click+=delegate {Open(ReleaseInfo.RepositoryUrl+"/releases");};links.Children.Add(releases);panel.Children.Add(links);
             panel.Children.Add(Ui.Text("更新仅来自上述仓库的正式 Release。安装版原目录升级；便携版替换运行文件，data 始终保留。",11,Ui.Muted));
             updates.Changed+=Refresh;Refresh();

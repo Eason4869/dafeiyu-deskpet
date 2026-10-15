@@ -35,12 +35,22 @@ namespace Dafeiyu.Tests
                     Check(palette.IsVisible && palette.Owner==pet && !palette.ShowInTaskbar,"owned compact palette "+skin);
                     Check(Actions(palette).Count()==3,"three skill choices "+skin);
                     Check(All(palette).OfType<Image>().Count(i=>i.Source!=null)==3,"three actual pet previews "+skin);
+                    var previewPositions=All(palette).OfType<Image>().Select(i=>i.TransformToAncestor(palette).Transform(new Point(i.ActualWidth/2,i.ActualHeight/2))).ToArray();
+                    Check(previewPositions.Max(p=>p.Y)-previewPositions.Min(p=>p.Y)>60,"skill choices are arranged around a wheel, not a grid");
                     Check(!Actions(palette).Any(b=>b.Name.Contains("petting") || b.Name.Contains("poked") || b.Name.Contains("happy") || b.Name.Contains("lifted") || b.Name.Contains("landing")),"gesture actions excluded "+skin);
                     Capture(palette,Path.Combine(folder,skin+"-interactions.png"));
                     Click(palette,"PaletteBasicTab");Pump();
                     Check(Actions(palette).Count()==9,"nine base action choices "+skin);
                     Check(All(palette).OfType<Image>().Count(i=>i.Source!=null)==9,"nine actual base previews "+skin);
                     Check(All(palette).OfType<Button>().Where(b=>b.Name.StartsWith("PaletteAction_")).All(b=>BoundsInside(b,palette)),"all base actions visible "+skin);
+                    foreach(var button in Actions(palette))
+                    {
+                        var preview=All(button).OfType<Image>().Single();
+                        Point point=preview.TransformToAncestor(palette).Transform(new Point(preview.ActualWidth/2,preview.ActualHeight/2));
+                        DependencyObject hit=palette.InputHitTest(point) as DependencyObject;
+                        while(hit!=null && !(hit is Button))hit=VisualTreeHelper.GetParent(hit);
+                        Check(ReferenceEquals(hit,button),"wheel pointer selects only its own sector "+button.Name);
+                    }
                     Capture(palette,Path.Combine(folder,skin+"-base.png"));
                     Click(palette,"PaletteAction_waving");Check(!palette.IsVisible && pet.Animation.State=="waving","base action plays and closes "+skin);
                     palette=new ActionPaletteWindow(pet);palette.ShowForPet();Pump();Click(palette,"PaletteInteraction_feeding");

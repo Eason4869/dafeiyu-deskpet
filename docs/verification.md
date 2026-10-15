@@ -1,3 +1,31 @@
+# 0.5.1 dev 验证记录
+
+日期：2026-10-15。基于 0.5.0 和 README 路线图提交 `fd2939c`；使用隔离配置，未替换用户安装。README TODO 保持原样，帧率提升已按要求撤回，动画素材与原始播放节奏未改变。
+
+| 检查 | 结果 |
+| --- | --- |
+| Profile | 83 通过；引导步骤上限、保存与复制 |
+| SettingsNavigation | 36 通过；4 个主入口、伙伴的 3 个二级页签、最小窗口布局和右键外观切换 |
+| LiveCall | 40 通过；两处左侧 Live/语音输入、右侧统一发送/停止、隐藏名称、ASR 路由与取消、窗口内通话、草稿恢复及关闭竞态 |
+| Onboarding | 56 通过；13 步、区域锁定、必填校验、当前项独立保存、稍后跳过本项、跳过退出和解锁恢复 |
+| Chat | 52 通过；真实本机 HTTP/WebSocket，Live 收音显式使用模拟麦克风 |
+| ActionPalette | 70 通过；等宽扇形、角色缩略图、9 个基础动作的点击命中与关闭 |
+| Ui / FeatureUi | 102 / 27 通过；设置、外观、历史和音色编辑回归 |
+| ReleaseUi | 19 通过；关于页、版本信息、问候与关闭清理；1 项前台全屏检查因锁屏跳过 |
+| Core / API / Conversation / History / Streaming | 15 / 17 / 12 / 21 / 22 通过 |
+| VoicePreset / Live / Update / UpdateApply | 14 / 27 / 16 / 24 通过 |
+| Greeting / Startup / Proxy / Interaction / SpriteAlignment | 15 / 8 / 12 / 242 / 9 通过 |
+
+引导的程序内回归使用 `DESKPET_TEST_SIMULATED_GESTURES=1`，不代表已验证原生鼠标操作。原生测试已尝试：Windows 默认锁屏界面截获鼠标，未执行解锁；需在解锁桌面复验拖动、右键、中键与单击。测试脚本默认仍使用原生鼠标，仅显式设置上述变量才启用完成事件夹具。
+
+UI 测试的临时目录显式设在 `work/test-temp`，避免沙箱外临时目录的写入限制；UiSmoke 关闭夹具的全屏自动隐藏，保证动画与设置用例不被锁屏打断。
+
+当前环境无法打开默认麦克风。`DESKPET_TEST_SIMULATED_MIC=1` 的 ChatSmoke 验证真实本机 WebSocket 和模拟收音；LiveCallSmoke 验证模拟传输与音频释放。未连接付费模型、未验收真实云端 Live。ReleaseUiSmoke 已修正锁屏触发全屏隐藏、导致问候夹具未创建的问题；非全屏用例关闭自动隐藏，仅在测试窗口实际获得前台时执行全屏检查。此前通过的 0.5.0 历史记录保留如下，不作为本次新改动的验证结论。
+
+本地构建：`work/DeskPet-preview/桌面伙伴.exe`，主程序与更新助手版本为 0.5.1.0。截图来自真实 WPF 窗口与隔离演示数据。本版仅推送 `dev` 和 `v0.5.1` 标签，不创建 GitHub Release、不发布安装包。
+
+---
+
 # 0.5.0 验证记录
 
 日期：2026-10-15。基线：main `55e7d08`。Windows / .NET Framework 4.8；测试使用隔离配置、HTTP/WebSocket 服务与安装目录，未替换用户当前安装。

@@ -21,7 +21,7 @@ namespace Dafeiyu.Tests
                 Check(guide.OnboardingState=="completed" && guide.VoiceName=="keep-me" && guide.LiveVoice=="Kore","legacy settings upgrade without reopening first-run onboarding or losing configuration");
                 guide.OnboardingState="deferred";guide.OnboardingStep=3;guideStore.Save(guide);guide=guideStore.Load().Copy();
                 Check(guide.OnboardingState=="deferred" && guide.OnboardingStep==3,"deferred onboarding resumes its persisted step and survives settings copy");
-                guide.OnboardingState="invalid";guide.OnboardingStep=99;guide.Normalize();Check(guide.OnboardingState=="completed" && guide.OnboardingStep==5,"unknown onboarding state cannot retrigger welcome and step is bounded");
+                guide.OnboardingState="invalid";guide.OnboardingStep=99;guide.Normalize();Check(guide.OnboardingState=="completed" && guide.OnboardingStep==12,"unknown onboarding state cannot retrigger welcome and step is bounded");
                 Check(catalog.Skins[0].Id=="e-bao" && catalog.Skins[1].Id=="dafeiyu" && catalog.Find("missing").Id=="e-bao","Ebao is first and default fallback, with Dafeiyu second");
                 PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));Check(settings.SystemPrompt.Contains("鲸鱼娘"),"new dafeiyu resolves whale persona");
                 foreach(var builtin in catalog.Skins) {

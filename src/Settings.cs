@@ -9,6 +9,25 @@ using System.Text;
 namespace Dafeiyu
 {
     [DataContract]
+    public sealed class PersonaVoiceProfile
+    {
+        [DataMember] public Dictionary<string,string> Speech { get; set; }
+        [DataMember] public Dictionary<string,string> Live { get; set; }
+        public PersonaVoiceProfile() { Speech=new Dictionary<string,string>();Live=new Dictionary<string,string>(); }
+        public void Normalize() { Speech=Clean(Speech);Live=Clean(Live); }
+        static Dictionary<string,string> Clean(Dictionary<string,string> source)
+        {
+            var result=new Dictionary<string,string>();if(source==null)return result;
+            foreach(var pair in source) {
+                if(result.Count>=8)break;
+                if(String.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length>128 || pair.Value==null || pair.Value.Length>512)continue;
+                result[pair.Key]=pair.Value.Trim();
+            }
+            return result;
+        }
+        public PersonaVoiceProfile Copy() { return new PersonaVoiceProfile{Speech=Clean(Speech),Live=Clean(Live)}; }
+    }
+    [DataContract]
     public sealed class ConnectionSettings
     {
         [DataMember] public string BaseUrl { get; set; }
@@ -45,6 +64,8 @@ namespace Dafeiyu
     [DataContract]
     public sealed class PetSettings
     {
+        [DataMember] public string OnboardingState { get; set; }
+        [DataMember] public int OnboardingStep { get; set; }
         [DataMember] public bool SaveChatHistory { get; set; }
         [DataMember] public bool QuietMode { get; set; }
         [DataMember] public bool HideOnFullscreen { get; set; }
@@ -71,6 +92,8 @@ namespace Dafeiyu
         [DataMember] public ConnectionSettings Live { get; set; }
         [DataMember] public Dictionary<string,string> PersonaOverrides { get; set; }
         [DataMember] public int PersonaProfileVersion { get; set; }
+        [DataMember] public int VoiceProfileVersion { get; set; }
+        [DataMember] public Dictionary<string,PersonaVoiceProfile> VoiceProfiles { get; set; }
         [DataMember] public string RepositoryUrl { get; set; }
         [DataMember] public bool UpdateUseProxy { get; set; }
         [DataMember] public string UpdateProxyAddress { get; set; }
@@ -82,9 +105,10 @@ namespace Dafeiyu
         [DataMember] public ConnectionSettings Transcription { get; set; }
         [DataMember] public ConnectionSettings Speech { get; set; }
         public PetSettings() { Defaults(); }
-        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults(); }
+        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingState="legacy";LiveVoice="Kore"; }
         private void Defaults()
         {
+            OnboardingState="new";OnboardingStep=0;
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
             Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false;
@@ -93,7 +117,8 @@ namespace Dafeiyu
             ReadReplies = true; UseCloudVoice = false; VoiceUsesTextService = false; VoiceName = "";
             Text = new ConnectionSettings(); Transcription = new ConnectionSettings(); Speech = new ConnectionSettings();
             Live = new ConnectionSettings { BaseUrl="wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", Model="gemini-3.8-live", Protocol="gemini-live" };
-            VoiceMode="pipeline"; LiveVoice="Kore"; PersonaOverrides=new Dictionary<string,string>();
+            VoiceMode="pipeline"; LiveVoice="Puck"; PersonaOverrides=new Dictionary<string,string>();
+            VoiceProfiles=new Dictionary<string,PersonaVoiceProfile>();
             RepositoryUrl=ReleaseInfo.RepositoryUrl;
             UpdateProxyAddress=ProxyConfiguration.DefaultAddress;
             AutoUpdate=true;
@@ -101,6 +126,8 @@ namespace Dafeiyu
         }
         public void Normalize()
         {
+            if(OnboardingState!="new" && OnboardingState!="deferred" && OnboardingState!="skipped" && OnboardingState!="completed")OnboardingState="completed";
+            OnboardingStep=Math.Max(0,Math.Min(5,OnboardingStep));
             Hotkeys=Hotkeys ?? new Dictionary<string,string>();
             foreach(var pair in new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} })
                 if(!Hotkeys.ContainsKey(pair.Key))Hotkeys[pair.Key]=pair.Value; else Hotkeys[pair.Key]=(Hotkeys[pair.Key] ?? "").Trim();
@@ -121,6 +148,13 @@ namespace Dafeiyu
             if(PersonaProfileVersion==0 && Speech.Model.StartsWith("mimo-",StringComparison.OrdinalIgnoreCase) && String.IsNullOrWhiteSpace(Speech.BaseUrl) && String.IsNullOrEmpty(Speech.EncryptedKey)) SpeechUsesTextService=true;
             VoiceName = (VoiceName ?? "").Trim(); SystemPrompt = SystemPrompt ?? "";
             SkinId = String.IsNullOrWhiteSpace(SkinId) ? "e-bao" : SkinId;
+            var profiles=new Dictionary<string,PersonaVoiceProfile>();
+            if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles) {
+                if(profiles.Count>=32)break;
+                if(String.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length>256 || pair.Value==null)continue;
+                pair.Value.Normalize();profiles[pair.Key]=pair.Value;
+            }
+            VoiceProfiles=profiles;VoiceProfileVersion=Math.Max(0,VoiceProfileVersion);
         }
         public ConnectionSettings TranscriptionConnection()
         {
@@ -136,10 +170,12 @@ namespace Dafeiyu
         }
         public PetSettings Copy()
         {
-            return new PetSettings { SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
+            var voiceProfiles=new Dictionary<string,PersonaVoiceProfile>();
+            if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles)if(pair.Value!=null)voiceProfiles[pair.Key]=pair.Value.Copy();
+            return new PetSettings { OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
                 GreetingEnabled=GreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
-                SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,
+                SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,
                 PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,AutoUpdate=AutoUpdate,LastUpdateCheckUtcTicks=LastUpdateCheckUtcTicks,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
         }
     }

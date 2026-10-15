@@ -1,6 +1,22 @@
-# 音色预设依据
+﻿# 音色选择与预设依据（0.5.0）
 
 核对日期：2026-10-14。设置中的音色下拉框可编辑；选择预设后保存真实 Voice ID，也可手动输入服务商或代理支持的其他 ID。列表按服务类型、协议、实际地址与模型筛选；已知厂商地址与其他厂商模型冲突时不显示预设。自定义代理可按明确的模型名称匹配。未知模型仍可手动填写。
+
+## 按伙伴与服务保存
+
+在设置 → AI 配置 → 声音与朗读或 Live 实时语音中选择音色。下拉列表显示名称与说明，保存和发给服务的只有 Voice ID；也可以直接在输入框中填写自定义 ID。
+
+每位伙伴的 TTS 与 Live 音色各自保存，并区分服务地址、协议和模型。保存后切换伙伴会恢复对应选择；切换服务时恢复该服务的历史选择，尚未配置过则提供当前伙伴的推荐值。当前窗口切换服务可保留未保存的音色草稿，关闭设置前请点击“保存服务设置”。
+
+| 伙伴 | MiMo TTS 首次推荐 | OpenAI TTS 首次推荐 | Gemini Live 首次推荐 |
+| --- | --- | --- | --- |
+| E包 | 苏打 | ash | Puck |
+| 大肥鱼 | 冰糖 | nova | Aoede |
+| 马尔芙 | 茉莉 | coral | Kore |
+
+推荐只会从当前服务与模型支持的列表中选择，不保证符合每个人的听感。已有保存值优先保留；从旧版迁移时，当前伙伴已有的自定义音色会保留。推荐表没有覆盖的模型仍可手动填写。
+
+伙伴名字旁的喇叭控制 TTS 自动朗读，音量在“声音与朗读”中调节；Live 原生声音由独立通话窗口管理。
 
 ## MiMo
 
@@ -12,7 +28,7 @@
 
 ## Gemini Live
 
-Gemini 原生音频 Live 模型使用 30 个预置 ID；Kore 是应用默认。中文标签根据官方风格翻译，不把其他 Google TTS 产品的性别属性套用到 Live。核对同时使用 [Gemini Live capabilities — Change voice and language](https://ai.google.dev/gemini-api/docs/live-api/capabilities#change-voice-and-language)、[Google Cloud Live — Voices supported](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/live-api/configure-language-voice#voices-supported) 和 [Gemini 预置音色表](https://ai.google.dev/gemini-api/docs/speech-generation#prebuilt-voices)，后两者列出 30 个名称和风格，Live 指南确认原生音频模型的适用范围。
+Gemini 原生音频 Live 模型使用 30 个预置 ID；应用按伙伴提供 Puck、Aoede 或 Kore 等首次推荐，已有保存值优先。中文标签根据官方风格翻译，不把其他 Google TTS 产品的性别属性套用到 Live。核对同时使用 [Gemini Live capabilities — Change voice and language](https://ai.google.dev/gemini-api/docs/live-api/capabilities#change-voice-and-language)、[Google Cloud Live — Voices supported](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/live-api/configure-language-voice#voices-supported) 和 [Gemini 预置音色表](https://ai.google.dev/gemini-api/docs/speech-generation#prebuilt-voices)，后两者列出 30 个名称和风格，Live 指南确认原生音频模型的适用范围。
 
 | Voice ID | 中文风格 | Voice ID | 中文风格 | Voice ID | 中文风格 |
 | --- | --- | --- | --- | --- | --- |

@@ -55,6 +55,9 @@ namespace Dafeiyu
         public bool IsActive {get{lock(gate)return running!=null;}} public string Status {get;private set;}
         public event Action StateChanged;public event Action<string,string> PartialTranscript;public event Action<string,string> TurnCompleted;
         public event Action<string,string,string> TurnCommitted;
+        double inputLevel;long inputAt;
+        public double InputLevel {get{return DateTime.UtcNow.Ticks-Interlocked.Read(ref inputAt)>TimeSpan.TicksPerSecond/3?0:Volatile.Read(ref inputLevel);}}
+        public double OutputLevel {get{lock(gate){var meter=speaker as IAudioLevelSource;return meter==null?0:meter.AudioLevel;}}}
         public GeminiLiveSession() : this(()=>new GeminiLiveSocket(),()=>new AudioRecorder(true),()=>new PcmOutput()){}
         public GeminiLiveSession(Func<ILiveSocket> transport,Func<IPcmMicrophone> capture,Func<ILiveAudioOutput> output){sockets=transport;microphones=capture;speakers=output;Status="Live 尚未连接。";}
         public async Task StartAsync(PetSettings settings,string persona)
@@ -92,7 +95,7 @@ namespace Dafeiyu
                     if(json.ContainsKey("setupComplete") && !ready)
                     {
                         ready=true;speaker=speakers();speaker.SetVolume(volume);microphone=microphones();
-                        microphone.PcmAvailable+=delegate(byte[] bytes){if(token.IsCancellationRequested)return;if(!queue.TryAdd(bytes)){SetStatus("Live 上传缓冲已满，请检查网络后重连。");cancellation.Cancel();socket.Abort();}};
+                        microphone.PcmAvailable+=delegate(byte[] bytes){if(token.IsCancellationRequested)return;Volatile.Write(ref inputLevel,AudioLevel.Pcm16(bytes));Interlocked.Exchange(ref inputAt,DateTime.UtcNow.Ticks);if(!queue.TryAdd(bytes)){SetStatus("Live 上传缓冲已满，请检查网络后重连。");cancellation.Cancel();socket.Abort();}};
                         microphone.Failed+=delegate(string failure){SetStatus(failure);cancellation.Cancel();socket.Abort();};
                         sending=Task.Run(async delegate {try{foreach(byte[] bytes in queue.GetConsumingEnumerable(token))await socket.SendTextAsync(Json(new {realtimeInput=new {audio=new {data=Convert.ToBase64String(bytes),mimeType="audio/pcm;rate=16000"}}}),token).ConfigureAwait(false);}catch(OperationCanceledException){}catch(Exception){SetStatus("Live 音频上传中断，请检查网络或代理。");cancellation.Cancel();socket.Abort();}});
                         microphone.Start();SetStatus("Live 已连接 · 正在听 · 再次点击结束");configured.TrySetResult(true);
@@ -141,7 +144,7 @@ namespace Dafeiyu
             }
             finally
             {
-                lock(gate){running=null;microphone=null;speaker=null;socket=null;if(cancellation!=null)cancellation.Dispose();cancellation=null;}
+                lock(gate){running=null;microphone=null;speaker=null;socket=null;Volatile.Write(ref inputLevel,0);if(cancellation!=null)cancellation.Dispose();cancellation=null;}
                 if(!disposed && StateChanged!=null)StateChanged();
             }
         }

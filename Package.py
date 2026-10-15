@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 from pathlib import Path
 import hashlib
 import json
@@ -34,6 +34,17 @@ for pet,still in [('ebao','e-bao'),('dafeiyu','dafeiyu'),('marfu','marfu')]:
     runtime_readme=runtime_readme.replace('previews/'+pet+'-running.gif','previews/'+still+'.png')
 runtime_readme=runtime_readme.replace('跑动预览来自真实 WPF 窗口。','本地文档显示静态预览；真实 WPF 跑动预览请查看 GitHub README。')
 (APP/'README.md').write_text(runtime_readme,encoding='utf-8')
+
+# Supplemental builtin artwork is embedded in the executable. Check every
+# authored interaction frame before distributing the runtime and source archives.
+for pet in ['e-bao', 'dafeiyu', 'marfu']:
+    with Image.open(PROJECT/'assets'/(pet+'-interactions.png')) as image:
+        assert image.size == (1920,4160) and image.mode == 'RGBA', pet
+        for row in range(8):
+            for col in range(4):
+                bbox=image.crop((col*480,row*520,(col+1)*480,(row+1)*520)).getbbox()
+                assert bbox and bbox[0]>0 and bbox[1]>0 and bbox[2]<480 and bbox[3]<520, (pet,row,col,bbox)
+    print('PASS interaction source validation: '+pet)
 
 counts=[6,8,8,4,5,8,6,6,6,8,8]
 for prefix in ['', 'e-bao-', 'marfu-']:

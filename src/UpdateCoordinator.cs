@@ -25,6 +25,7 @@ namespace Dafeiyu
         public bool CanCancel {get{return !applying && (checking || pending!=null);}}
         public bool IsDownloading {get;private set;}
         public bool IsApplying {get{return applying;}}
+        public bool IsReadyToInstall {get{return pending!=null && !applying;}}
         public bool HasRestartCountdown {get{return restartAt.HasValue && !applying;}}
         public int RestartSeconds {get{return restartAt.HasValue?Math.Max(0,(int)Math.Ceiling((restartAt.Value-DateTime.UtcNow).TotalSeconds)):0;}}
         public event Action Changed;
@@ -51,7 +52,12 @@ namespace Dafeiyu
         }
         public async Task CheckAndUpdateAsync(bool manual)
         {
-            if(disposed || IsBusy)return;checking=true;checkingManual=manual;cancel=new CancellationTokenSource();var token=cancel.Token;
+            if(disposed)return;
+            if(manual && IsReadyToInstall)
+            {
+                pendingManual=true;restartAt=null;Status="新版已就绪，空闲后将自动退出、安装并重启。";readyTimer.Start();Notify();return;
+            }
+            if(IsBusy)return;checking=true;checkingManual=manual;cancel=new CancellationTokenSource();var token=cancel.Token;
             Progress=0;Status="正在检查 GitHub 正式版本…";Notify();
             pet.Settings.LastUpdateCheckUtcTicks=DateTime.UtcNow.Ticks;pet.SaveSettings();
             try
@@ -80,21 +86,24 @@ namespace Dafeiyu
         {
             if(disposed || pending==null || applying)return;
             if(!pet.CanApplyUpdate(pendingManual))
-            {restartAt=null;Status="新版已就绪。请保存设置草稿，关闭对话窗口并结束语音；回到更新页或关闭设置后，将自动安装。";Notify();return;}
+            {restartAt=null;Status=pet.HasHistorySaveWarning?"聊天记录尚未保存，请先导出或处理保存问题后再更新。":pendingManual?"新版已就绪。请保存设置草稿、发送或清空输入，并等待对话或语音结束；空闲后会自动退出、安装并重启。":"新版已就绪，等待对话、设置和桌面操作空闲后自动更新。";Notify();return;}
             if(!restartAt.HasValue)restartAt=DateTime.UtcNow.AddSeconds(5);
             int seconds=Math.Max(0,(int)Math.Ceiling((restartAt.Value-DateTime.UtcNow).TotalSeconds));
             Status="新版已就绪，"+seconds+" 秒后自动更新并重启。可点击“取消更新”。";Notify();if(seconds>0)return;
             applying=true;readyTimer.Stop();Status="正在退出并安装更新…";Notify();
+            var job=pending;
             try
             {
-                var job=pending;await apply(job);
+                await pet.PrepareUpdateAsync();
+                if(disposed || !pet.CanApplyUpdate(pendingManual))throw new InvalidOperationException("活动状态已变化，本次更新交接已停止，当前版本继续运行。");
+                await apply(job);
                 if(disposed || !pet.CanApplyUpdate(pendingManual))
                 {
                     Abort(job);if(!disposed){applying=false;pending=null;restartAt=null;Status="活动状态已变化，本次更新交接已停止，当前版本继续运行。";Notify();}return;
                 }
                 pet.Close();
             }
-            catch(Exception e){applying=false;pending=null;restartAt=null;Status=e is InvalidOperationException?e.Message:"更新助手无法启动，当前版本继续运行。";Notify();}
+            catch(Exception e){Abort(job);applying=false;pending=null;restartAt=null;Status=e is InvalidOperationException?e.Message:"更新助手无法启动，当前版本继续运行。";Notify();}
         }
         async Task StartWorkerAsync(UpdateJob job)
         {

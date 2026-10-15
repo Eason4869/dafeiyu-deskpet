@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -45,7 +45,7 @@ namespace Dafeiyu.Tests
                 pet.RestorePet(); Pump(.2); Require(pet.IsVisible,"tray restore works");
                 pet.ShowSettings(); Pump(.3);
                 var preferences=app.Windows.OfType<SettingsWindow>().Single();
-                preferences.Width=700;preferences.Height=430;preferences.SelectPage(6);Pump(.15);var nav=Find<ListBox>(preferences,"SettingsNavigation");nav.ScrollIntoView(nav.Items[6]);Pump(.1);var about=(ListBoxItem)nav.Items[6];Rect navBounds=about.TransformToAncestor(preferences).TransformBounds(new Rect(about.RenderSize));Require(navBounds.Bottom<=preferences.ActualHeight,"About navigation remains reachable at minimum window height");preferences.Width=850;preferences.Height=790;preferences.SelectPage(0);Pump(.1);
+                preferences.Width=700;preferences.Height=430;preferences.SelectPage(6);Pump(.15);var nav=Find<ListBox>(preferences,"SettingsNavigation");nav.ScrollIntoView(nav.Items[4]);Pump(.1);var about=(ListBoxItem)nav.Items[4];Rect navBounds=about.TransformToAncestor(preferences).TransformBounds(new Rect(about.RenderSize));Require(navBounds.Bottom<=preferences.ActualHeight,"About navigation remains reachable at minimum window height");preferences.Width=850;preferences.Height=790;preferences.SelectPage(0);Pump(.1);
                 var slider=Find<Slider>(preferences,"SizeSlider");
                 Require(slider != null,"settings contains size control");
                 slider.Value=1.5; Pump(.2);

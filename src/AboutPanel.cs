@@ -59,7 +59,7 @@ namespace Dafeiyu
         }
         void Refresh()
         {
-            if(disposed)return;check.IsEnabled=!updates.IsBusy;proxy.IsEnabled=proxyAddress.IsEnabled=!updates.IsBusy;cancel.IsEnabled=updates.CanCancel;
+            if(disposed)return;check.Content=updates.IsReadyToInstall?"立即安装并重启":"检查并更新";check.IsEnabled=!updates.IsBusy || updates.IsReadyToInstall;proxy.IsEnabled=proxyAddress.IsEnabled=!updates.IsBusy;cancel.IsEnabled=updates.CanCancel;
             progress.Visibility=updates.IsBusy?Visibility.Visible:Visibility.Collapsed;progress.IsIndeterminate=updates.IsBusy && !updates.IsDownloading && updates.Progress<100;progress.Value=updates.Progress;
             progressLabel.Text=updates.IsDownloading?"下载进度 "+Math.Round(updates.Progress)+"%":"";status.Text=updates.Status;openFolder.IsEnabled=Directory.Exists(Path.Combine(pet.Store.DirectoryPath,"updates"));
         }

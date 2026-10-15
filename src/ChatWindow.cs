@@ -19,13 +19,14 @@ namespace Dafeiyu
         private readonly StackPanel messages;
         private readonly ScrollViewer scroll;
         private readonly TextBox input;
+        public bool HasDraft { get { return !String.IsNullOrWhiteSpace(input.Text); } }
         private readonly TextBlock status,title,service,liveCaption;
         private readonly Image avatar;
-        private readonly Button send,record,stop,clear;
+        private readonly Button send,record,stop,clear,liveButton;
         private readonly ComboBox voiceMode;
         private readonly DispatcherTimer recordTimer;
         private readonly Stopwatch recording=new Stopwatch();
-        private bool closed,showingWelcome,ownsOperation,ownsLive,refreshing,reloading;
+        private bool closed,showingWelcome,ownsOperation,refreshing,reloading;
         private int visibleTurns=50;
         private readonly Button earlier,export;
         private readonly Dictionary<string,TextBox> rendered=new Dictionary<string,TextBox>();
@@ -38,10 +39,10 @@ namespace Dafeiyu
             var root=new Grid {Margin=new Thickness(22,18,22,18)};
             root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             var header=new DockPanel {Margin=new Thickness(0,0,0,16)};
-            var settings=Ui.Button("连接设置");settings.Margin=new Thickness(10,0,0,0);settings.VerticalAlignment=VerticalAlignment.Center;
+            var settings=Ui.Button("AI 配置");settings.Margin=new Thickness(10,0,0,0);settings.VerticalAlignment=VerticalAlignment.Center;
             settings.Click+=delegate {pet.ShowSettings(true);};DockPanel.SetDock(settings,Dock.Right);header.Children.Add(settings);
             avatar=new Image {Width=62,Height=72,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,16,0)};RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);header.Children.Add(avatar);
-            var introduction=new StackPanel {VerticalAlignment=VerticalAlignment.Center};title=Ui.Text("",23);title.FontWeight=FontWeights.SemiBold;service=Ui.Text("",11,Ui.Muted);introduction.Children.Add(title);introduction.Children.Add(service);header.Children.Add(introduction);root.Children.Add(header);
+            var introduction=new StackPanel {VerticalAlignment=VerticalAlignment.Center};title=Ui.Text("",23);title.FontWeight=FontWeights.SemiBold;service=Ui.Text("",11,Ui.Muted);var titleRow=new StackPanel{Orientation=Orientation.Horizontal};titleRow.Children.Add(title);titleRow.Children.Add(UiIcons.Speech(pet));introduction.Children.Add(titleRow);introduction.Children.Add(service);header.Children.Add(introduction);root.Children.Add(header);
             messages=new StackPanel {Margin=new Thickness(2,8,2,12)};scroll=Ui.Scroll(messages);scroll.Name="ChatHistoryScroll";
             var messageArea=new Grid();messageArea.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messageArea.RowDefinitions.Add(new RowDefinition());
             var historyTools=new DockPanel{LastChildFill=false};
@@ -53,16 +54,16 @@ namespace Dafeiyu
             status=Ui.Text("",12,Ui.Muted);status.Name="ChatStatus";status.Margin=new Thickness(0,0,0,8);composer.Children.Add(status);
             input=Ui.Field("",true);input.Name="MessageInput";input.MinHeight=76;input.MaxHeight=140;input.MaxLength=8000;input.ToolTip="Enter 发送，Shift + Enter 换行";input.PreviewKeyDown+=delegate(object sender,KeyEventArgs e) {if(e.Key==Key.Enter && (Keyboard.Modifiers&ModifierKeys.Shift)==0){e.Handled=true;if(!pet.DialogueBusy)SendText();}};composer.Children.Add(input);
             var controls=new DockPanel {Margin=new Thickness(0,10,0,0),LastChildFill=false};
-            var tts=Ui.ReplySpeechToggle(pet);tts.Margin=new Thickness(12,3,0,0);
+            liveButton=UiIcons.Button("live","开始 Live 通话");liveButton.Name="StartLiveCall";liveButton.Click+=delegate{pet.ShowLiveCall();};DockPanel.SetDock(liveButton,Dock.Left);controls.Children.Add(liveButton);
             send=Ui.Button("发送",true);send.Name="SendMessage";send.Margin=new Thickness(8,0,0,0);send.Click+=delegate {SendText();};DockPanel.SetDock(send,Dock.Right);controls.Children.Add(send);
             clear=Ui.Button("清空");clear.Name="ClearChat";clear.Click+=delegate {try{session.Clear();ShowStatus("已清空当前会话。");}catch(Exception e){ShowError(e);}};DockPanel.SetDock(clear,Dock.Right);controls.Children.Add(clear);
             record=Ui.Button("点击说话");record.Name="VoiceRecord";record.Click+=delegate {if(pet.LiveActive || pet.Settings.VoiceMode=="live")ToggleLive();else if(session.Stage==ConversationStage.Recording)FinishRecording();else StartRecording();};DockPanel.SetDock(record,Dock.Left);controls.Children.Add(record);
             stop=Ui.Button("停止");stop.Name="StopConversation";stop.Click+=async delegate {try{await pet.StopDialogueAsync();}catch(Exception e){ShowError(e);}};DockPanel.SetDock(stop,Dock.Left);controls.Children.Add(stop);composer.Children.Add(controls);
-            voiceMode=new ComboBox{Name="ChatVoiceMode",ItemsSource=new[]{"ASR + TTS","Live 实时语音"},SelectedIndex=pet.Settings.VoiceMode=="live"?1:0,MinHeight=30,Width=155,Padding=new Thickness(6),Margin=new Thickness(0,10,0,6),HorizontalAlignment=HorizontalAlignment.Left};voiceMode.SelectionChanged+=delegate {if(refreshing)return;if(pet.DialogueBusy){RefreshAppearance();ShowStatus("请先结束当前对话，再切换语音模式。");return;}pet.Settings.VoiceMode=voiceMode.SelectedIndex==1?"live":"pipeline";pet.SaveSettings();RefreshState();};var voiceBar=new DockPanel{Margin=new Thickness(0,10,0,6),LastChildFill=false};DockPanel.SetDock(tts,Dock.Right);voiceBar.Children.Add(tts);voiceMode.Margin=new Thickness(0);DockPanel.SetDock(voiceMode,Dock.Left);voiceBar.Children.Add(voiceMode);composer.Children.Add(voiceBar);
+            voiceMode=new ComboBox{Name="ChatVoiceMode",ItemsSource=new[]{"ASR + TTS","Live 实时语音"},SelectedIndex=pet.Settings.VoiceMode=="live"?1:0,MinHeight=30,Width=155,Padding=new Thickness(6),Margin=new Thickness(0,10,0,6),HorizontalAlignment=HorizontalAlignment.Left};voiceMode.SelectionChanged+=delegate {if(refreshing)return;if(pet.DialogueBusy){RefreshAppearance();ShowStatus("请先结束当前对话，再切换语音模式。");return;}pet.Settings.VoiceMode=voiceMode.SelectedIndex==1?"live":"pipeline";pet.SaveSettings();RefreshState();};var voiceBar=new DockPanel{Margin=new Thickness(0,10,0,6),LastChildFill=false};voiceMode.Margin=new Thickness(0);DockPanel.SetDock(voiceMode,Dock.Left);voiceBar.Children.Add(voiceMode);composer.Children.Add(voiceBar);
             composer.Children.Add(Ui.Text("Enter 发送 · Shift + Enter 换行",10,Ui.Muted));var composerSurface=new Border{Child=composer,Padding=new Thickness(16,12,16,12),Margin=new Thickness(0,12,0,0),CornerRadius=new CornerRadius(18),Background=Brushes.White,BorderBrush=Ui.Line,BorderThickness=new Thickness(1)};Grid.SetRow(composerSurface,2);root.Children.Add(composerSurface);Content=root;
             recordTimer=new DispatcherTimer {Interval=TimeSpan.FromMilliseconds(200)};recordTimer.Tick+=delegate {if(session.Stage!=ConversationStage.Recording){recordTimer.Stop();return;}ShowStatus("正在录音 · "+(int)recording.Elapsed.TotalSeconds+" 秒 · 再次点击结束并发送");if(recording.Elapsed.TotalSeconds>=60)FinishRecording();};
             messagePump=new MessageUpdatePump(session,UpdateMessage);ReloadHistory();session.MessageAdded+=AddMessage;session.HistoryChanged+=HistoryChanged;session.StateChanged+=RefreshState;pet.Live.StateChanged+=RefreshState;pet.Live.PartialTranscript+=PartialTranscript;RefreshAppearance();RefreshState();
-            Closed+=async delegate {closed=true;recordTimer.Stop();messagePump.Dispose();session.MessageAdded-=AddMessage;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;pet.Live.PartialTranscript-=PartialTranscript;try{if(ownsLive)await pet.Live.StopAsync();if(ownsOperation)await session.StopAsync();}catch(OperationCanceledException){}catch(ObjectDisposedException){}catch(InvalidOperationException){}};
+            Closed+=async delegate {closed=true;recordTimer.Stop();messagePump.Dispose();session.MessageAdded-=AddMessage;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;pet.Live.PartialTranscript-=PartialTranscript;try{if(ownsOperation)await session.StopAsync();}catch(OperationCanceledException){}catch(ObjectDisposedException){}catch(InvalidOperationException){}};
             Loaded+=delegate {input.Focus();};
         }
         public void RefreshAppearance()
@@ -107,8 +108,8 @@ namespace Dafeiyu
         private void RefreshState()
         {
             if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(RefreshState));return;}
-            bool busy=pet.DialogueBusy;send.IsEnabled=!busy;clear.IsEnabled=!busy;stop.IsEnabled=busy;record.IsEnabled=!busy || session.Stage==ConversationStage.Recording || pet.LiveActive;voiceMode.IsEnabled=!busy;RefreshAppearance();
-            record.Content=pet.LiveActive?"结束 Live":pet.Settings.VoiceMode=="live"?"开始 Live":session.Stage==ConversationStage.Recording?"结束并发送":"点击说话";
+            bool busy=pet.DialogueBusy;liveButton.IsEnabled=!busy || pet.LiveActive;send.IsEnabled=!busy;clear.IsEnabled=!busy;stop.IsEnabled=busy;record.IsEnabled=!busy || session.Stage==ConversationStage.Recording || pet.LiveActive;voiceMode.IsEnabled=!busy;RefreshAppearance();
+            record.Content=pet.LiveActive?"返回通话":pet.Settings.VoiceMode=="live"?"开始 Live":session.Stage==ConversationStage.Recording?"结束并发送":"点击说话";
             if(pet.LiveActive){recordTimer.Stop();ShowStatus(pet.Live.Status);return;}
             if(pet.Settings.VoiceMode=="live" && session.Stage==ConversationStage.Idle){recordTimer.Stop();ShowStatus(String.IsNullOrEmpty(session.HistoryWarning)?pet.Live.Status:session.HistoryWarning);return;}
             if(session.Stage==ConversationStage.Recording){if(!recordTimer.IsEnabled){recording.Restart();recordTimer.Start();}ShowStatus("正在录音 · 再次点击结束并发送");}
@@ -125,7 +126,7 @@ namespace Dafeiyu
         }
         private void StartRecording(){if(pet.DialogueBusy){ShowStatus("请先结束当前对话。");return;}try{ownsOperation=true;session.StartRecording(pet.Settings);}catch(Exception e){ownsOperation=false;ShowError(e);}}
         private async void FinishRecording(){recordTimer.Stop();try{await session.FinishRecordingAsync(pet.Skin.Name);}catch(Exception e){ShowError(e);}finally{ownsOperation=false;}}
-        private async void ToggleLive(){try{if(pet.LiveActive){await pet.Live.StopAsync();ownsLive=false;}else{ownsLive=true;await pet.StartLiveAsync();}}catch(Exception e){ownsLive=false;ShowError(e);}}
+        private void ToggleLive(){pet.ShowLiveCall();}
         private void PartialTranscript(string role,string text){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>PartialTranscript(role,text)));return;}if(!pet.LiveActive)return;liveCaption.Text=(role=="user"?"你：":pet.Skin.Name+"：")+text;}
         private void ShowStatus(string text){if(!closed)status.Text=text;}
         private void ShowError(Exception error)

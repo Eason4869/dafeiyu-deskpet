@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -14,6 +14,14 @@ namespace Dafeiyu.Tests
             try
             {
                 string root=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"profile-tests",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);var catalog=new SkinCatalog(root);var settings=new PetSettings();
+                CheckVoiceProfiles(catalog,root);
+                Check(settings.LiveVoice=="Puck","new default Ebao gets its recommended Live voice");
+                Check(new PetSettings().OnboardingState=="new","fresh install requests first-run onboarding");
+                string guideFile=Path.Combine(root,"onboarding-settings.json");File.WriteAllText(guideFile,"{\"SkinId\":\"marfu\",\"VoiceName\":\"keep-me\"}");var guideStore=new SettingsStore(guideFile);var guide=guideStore.Load();
+                Check(guide.OnboardingState=="completed" && guide.VoiceName=="keep-me" && guide.LiveVoice=="Kore","legacy settings upgrade without reopening first-run onboarding or losing configuration");
+                guide.OnboardingState="deferred";guide.OnboardingStep=3;guideStore.Save(guide);guide=guideStore.Load().Copy();
+                Check(guide.OnboardingState=="deferred" && guide.OnboardingStep==3,"deferred onboarding resumes its persisted step and survives settings copy");
+                guide.OnboardingState="invalid";guide.OnboardingStep=99;guide.Normalize();Check(guide.OnboardingState=="completed" && guide.OnboardingStep==5,"unknown onboarding state cannot retrigger welcome and step is bounded");
                 Check(catalog.Skins[0].Id=="e-bao" && catalog.Skins[1].Id=="dafeiyu" && catalog.Find("missing").Id=="e-bao","Ebao is first and default fallback, with Dafeiyu second");
                 PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));Check(settings.SystemPrompt.Contains("鲸鱼娘"),"new dafeiyu resolves whale persona");
                 foreach(var builtin in catalog.Skins) {
@@ -68,6 +76,33 @@ namespace Dafeiyu.Tests
         }
         static int ActionFrame(SkinDefinition skin,int row,int phase)
         {return skin.ActionFrame(row,phase);}
+        static void CheckVoiceProfiles(SkinCatalog catalog,string root)
+        {
+            var settings=new PetSettings {SkinId="e-bao",VoiceName="clone-ebao-123",LiveVoice="custom-live-ebao"};
+            settings.Speech=new ConnectionSettings{BaseUrl="https://api.xiaomimimo.com/v1",Model="mimo-v2.5-tts",Protocol="mimo",EncryptedKey="keep-encrypted-bytes"};
+            PersonaProfiles.Activate(settings,catalog.Find("e-bao"));
+            PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));
+            Check(settings.VoiceName!="clone-ebao-123" && settings.LiveVoice!="custom-live-ebao","legacy global voice belongs only to the previously active pet");
+            Check(HasVoice("speech",settings.SpeechConnection(),settings.VoiceName) && HasVoice("live",settings.Live,settings.LiveVoice),"other pet receives only supported catalog recommendations");
+            settings.VoiceName="clone-whale";settings.LiveVoice="custom-live-whale";
+            PersonaProfiles.Activate(settings,catalog.Find("marfu"));
+            Check(HasVoice("speech",settings.SpeechConnection(),settings.VoiceName) && HasVoice("live",settings.Live,settings.LiveVoice),"third pet receives compatible recommended voices");
+            settings.VoiceName="clone-marfu";settings.LiveVoice="custom-live-marfu";
+            PersonaProfiles.Activate(settings,catalog.Find("e-bao"));
+            Check(settings.VoiceName=="clone-ebao-123" && settings.LiveVoice=="custom-live-ebao","manual IDs return intact when switching pets");
+            Check(settings.Speech.EncryptedKey=="keep-encrypted-bytes" && settings.Speech.Model=="mimo-v2.5-tts","pet switch preserves shared service and encrypted credentials");
+            var store=new SettingsStore(Path.Combine(root,"voice-settings.json"));store.Save(settings);var loaded=store.Load();
+            PersonaProfiles.Activate(loaded,catalog.Find("marfu"));Check(loaded.VoiceName=="clone-marfu" && loaded.LiveVoice=="custom-live-marfu","manual voice IDs persist across restart and pet switching");
+            var copy=loaded.Copy();copy.VoiceName="copy-only";PersonaProfiles.Activate(copy,catalog.Find("dafeiyu"));
+            PersonaProfiles.Activate(loaded,catalog.Find("dafeiyu"));Check(loaded.VoiceName=="clone-whale" && loaded.LiveVoice=="custom-live-whale","all three pets retain independent manual selections");
+            PersonaProfiles.Activate(loaded,catalog.Find("marfu"));Check(loaded.VoiceName=="clone-marfu","copied settings cannot mutate original voice profile");
+            loaded.VoiceProfileVersion=0;loaded.VoiceName="stale-global";PersonaProfiles.Activate(loaded,catalog.Find("marfu"));
+            Check(loaded.VoiceName=="clone-marfu","migration never overwrites a preexisting pet-specific manual voice");
+            var malformed=new PetSettings();malformed.VoiceProfiles["e-bao"]=new PersonaVoiceProfile();malformed.VoiceProfiles["e-bao"].Speech["valid"]="  private-id  ";malformed.VoiceProfiles["e-bao"].Speech["oversize"]=new string('x',513);malformed.VoiceProfiles["null"]=null;
+            malformed.Normalize();Check(malformed.VoiceProfiles["e-bao"].Speech["valid"]=="private-id" && !malformed.VoiceProfiles["e-bao"].Speech.ContainsKey("oversize") && !malformed.VoiceProfiles.ContainsKey("null"),"malformed voice entries normalize without discarding valid manual IDs");
+        }
+        static bool HasVoice(string kind,ConnectionSettings connection,string id)
+        {foreach(var item in VoicePresets.For(kind,connection))if(item.Id==id)return true;return false;}
         static int ActionRow(SkinDefinition skin,int row)
         {return skin.ActionRow(row);}
         static bool MirrorsAction(SkinDefinition skin,int row)

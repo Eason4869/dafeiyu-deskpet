@@ -23,7 +23,7 @@ ROOT = PROJECT / 'work' / ('update-lifecycle-' + uuid.uuid4().hex)
 ROOT.mkdir(parents=True)
 CSC = Path(os.environ['WINDIR']) / 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 FRAMEWORK = CSC.parent
-INNO = PROJECT / 'work/tools/inno/ISCC.exe'
+INNO = Path(os.environ.get('DESKPET_TEST_INNO', str(PROJECT / 'work/tools/inno/ISCC.exe')))
 APP_ID = '3B63C162-076E-4B2F-BDCC-2572664875A9'
 passed = 0
 
@@ -120,7 +120,7 @@ def scenario(mode, abandon=False, blocked_receipts=False, invalid_package=False)
     for name in ['README.md', 'CHANGELOG.md']:
         shutil.copy2(PROJECT / name, runtime / name)
     for name in ['docs', 'templates', 'previews']:
-        shutil.copytree(PROJECT / name, runtime / name, ignore=shutil.ignore_patterns('superpowers'))
+        shutil.copytree(PROJECT / name, runtime / name, ignore=shutil.ignore_patterns('superpowers', '*.gif'))
     parent = updater = None
     registered = False
     try:
@@ -135,6 +135,8 @@ def scenario(mode, abandon=False, blocked_receipts=False, invalid_package=False)
         (data / 'settings.json').write_text('private configuration sentinel', encoding='utf-8')
         (data / 'skins' / 'custom').mkdir(parents=True)
         (data / 'skins/custom/pet.json').write_text('imported pet sentinel', encoding='utf-8')
+        (data / 'history').mkdir()
+        (data / 'history/keep.history').write_text('private history sentinel', encoding='utf-8')
         old_hash = hashlib.sha256((directory / '桌面伙伴.exe').read_bytes()).hexdigest()
         parent = start([directory / '桌面伙伴.exe'], directory)
         wait_for(lambda: (data / 'parent-started').exists())
@@ -189,7 +191,8 @@ def scenario(mode, abandon=False, blocked_receipts=False, invalid_package=False)
         check((data / 'restarted').read_text() == ('old' if invalid_package else VERSION),
               mode + (': restarts the old executable after rejecting a corrupt package' if invalid_package else ': automatically restarts the updated executable'))
         check((data / 'settings.json').read_text() == 'private configuration sentinel' and
-              (data / 'skins/custom/pet.json').read_text() == 'imported pet sentinel', mode + ': preserves settings and imported skins')
+              (data / 'skins/custom/pet.json').read_text() == 'imported pet sentinel' and
+              (data / 'history/keep.history').read_text() == 'private history sentinel', mode + ': preserves settings, history and imported skins')
         if blocked_receipts:
             check((data / 'update-result.json').is_dir() and (work / 'result.json').is_dir(), 'failed receipt writes cannot prevent restart')
         else:

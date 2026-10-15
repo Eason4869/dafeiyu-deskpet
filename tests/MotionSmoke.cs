@@ -77,7 +77,7 @@ namespace Dafeiyu.Tests
                     Pump(.25);
                     int gazeRow=(int)typeof(PetWindow).GetField("shownRow",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(pet);
                     int gazeCol=(int)typeof(PetWindow).GetField("shownCol",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(pet);
-                    Check(gazeRow>=9 && gazeRow<=10 && gazeCol>=0 && gazeCol<8,"cursor selects one of sixteen original gaze frames "+id);
+                    Check(gazeRow>=9 && gazeRow<=10 && gazeCol>=0 && gazeCol<8,"cursor selects one of sixteen original gaze frames "+id+" (row="+gazeRow+", col="+gazeCol+", visible="+pet.IsVisible+", paused="+pet.Paused+", state="+pet.Animation.State+")");
                     pet.Settings.FollowCursor=false;Pump(.1);
                 }
                 string legacy=Path.Combine(folder,"legacy.png");using(var input=typeof(SpriteAtlas).Assembly.GetManifestResourceStream("Dafeiyu.Atlas"))using(var output=File.Create(legacy))input.CopyTo(output);
@@ -107,8 +107,9 @@ namespace Dafeiyu.Tests
         private static void CheckMirroredHitTesting(PetWindow pet,SpriteAtlas atlas,int row,int col)
         {
             IntPtr handle=new WindowInteropHelper(pet).Handle;Rect bounds=DesktopInterop.Bounds(handle);bool opaque=false,transparent=false;
+            Point offset=SpriteAlignment.Offset(pet.Skin.Id,row,col,true);
             for(int y=0;y<(int)bounds.Height && !(opaque && transparent);y++)for(int x=0;x<(int)bounds.Width && !(opaque && transparent);x++) {
-                int sx=(int)(x/bounds.Width*atlas.CellWidth),sy=(int)(y/bounds.Height*atlas.CellHeight);
+                int sx=(int)Math.Floor(x/bounds.Width*atlas.CellWidth-offset.X*atlas.CellWidth/480),sy=(int)Math.Floor(y/bounds.Height*atlas.CellHeight-offset.Y*atlas.CellHeight/520);
                 bool expected=atlas.AlphaAt(row,col,atlas.CellWidth-1-sx,sy)>=12,original=atlas.AlphaAt(row,col,sx,sy)>=12;
                 if(expected==original || (expected?opaque:transparent))continue;
                 int screenX=(int)bounds.Left+x,screenY=(int)bounds.Top+y;

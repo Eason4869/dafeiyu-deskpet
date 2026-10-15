@@ -1,4 +1,6 @@
 using System;
+using System.Security.Cryptography;
+using System.Text;
 namespace Dafeiyu
 {
     public static class PersonaProfiles
@@ -10,6 +12,8 @@ namespace Dafeiyu
         public static void Activate(PetSettings settings,SkinDefinition skin)
         {
             settings.Normalize();
+            SaveVoiceProfile(settings,settings.VoiceProfileVersion==0);
+            settings.VoiceProfileVersion=1;
             if(settings.PersonaProfileVersion==0)
             {
                 string old=settings.SystemPrompt ?? "";
@@ -22,6 +26,8 @@ namespace Dafeiyu
             }
             string prompt; settings.SystemPrompt=settings.PersonaOverrides.TryGetValue(skin.Id,out prompt) ? prompt : skin.SystemPrompt;
             settings.SkinId=skin.Id;
+            settings.VoiceName=VoiceFor(settings,skin.Id,"speech",settings.SpeechConnection());
+            settings.LiveVoice=VoiceFor(settings,skin.Id,"live",settings.Live);
         }
         public static void Save(PetSettings settings,SkinDefinition skin,string prompt)
         {
@@ -29,5 +35,52 @@ namespace Dafeiyu
             Activate(settings,skin); settings.PersonaOverrides[skin.Id]=prompt; settings.SystemPrompt=prompt;
         }
         public static void Reset(PetSettings settings,SkinDefinition skin) { Activate(settings,skin); settings.PersonaOverrides.Remove(skin.Id); settings.SystemPrompt=skin.SystemPrompt; }
+        public static void SaveVoices(PetSettings settings)
+        {
+            settings.Normalize();SaveVoiceProfile(settings,false);settings.VoiceProfileVersion=1;
+        }
+        static void SaveVoiceProfile(PetSettings settings,bool migrating)
+        {
+            PersonaVoiceProfile profile;
+            if(!settings.VoiceProfiles.TryGetValue(settings.SkinId,out profile)) {
+                if(settings.VoiceProfiles.Count>=32) {string remove=null;foreach(string key in settings.VoiceProfiles.Keys){remove=key;break;}if(remove!=null)settings.VoiceProfiles.Remove(remove);}
+                settings.VoiceProfiles[settings.SkinId]=profile=new PersonaVoiceProfile();
+            }
+            string speechKey=VoiceContext("speech",settings.SpeechConnection()),liveKey=VoiceContext("live",settings.Live);
+            if(!migrating || !profile.Speech.ContainsKey(speechKey))StoreVoice(profile.Speech,speechKey,settings.VoiceName.Length==0 ? RecommendedVoice(settings.SkinId,"speech",settings.SpeechConnection()) : settings.VoiceName);
+            if(!migrating || !profile.Live.ContainsKey(liveKey))StoreVoice(profile.Live,liveKey,settings.LiveVoice);
+        }
+        static void StoreVoice(System.Collections.Generic.Dictionary<string,string> choices,string key,string value)
+        {
+            if(!choices.ContainsKey(key) && choices.Count>=8) {string remove=null;foreach(string item in choices.Keys){remove=item;break;}if(remove!=null)choices.Remove(remove);}
+            if(value.Length<=512)choices[key]=value;
+        }
+        public static string VoiceFor(PetSettings settings,string skinId,string kind,ConnectionSettings connection)
+        {
+            PersonaVoiceProfile profile;string value;
+            if(settings.VoiceProfiles!=null && settings.VoiceProfiles.TryGetValue(skinId,out profile) && profile!=null) {
+                var choices=kind=="live"?profile.Live:profile.Speech;
+                if(choices!=null && choices.TryGetValue(VoiceContext(kind,connection),out value))return value;
+            }
+            return RecommendedVoice(skinId,kind,connection);
+        }
+        public static string VoiceContext(string kind,ConnectionSettings connection)
+        {
+            connection=connection??new ConnectionSettings();Uri uri;string address=(connection.BaseUrl??"").Trim();
+            if(Uri.TryCreate(address,UriKind.Absolute,out uri))address=uri.Scheme.ToLowerInvariant()+"://"+uri.Authority.ToLowerInvariant()+uri.AbsolutePath.TrimEnd('/');
+            string protocol=(connection.Protocol??"auto").Trim().ToLowerInvariant();
+            // Auto and OpenAI use the same model-inferred catalog; UI normalizes auto to OpenAI.
+            if(protocol=="auto" || protocol=="openai" || protocol.Length==0)protocol="auto";
+            string model=(connection.Model??"").Trim().ToLowerInvariant();if(model.StartsWith("models/"))model=model.Substring(7);
+            using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(kind+"\n"+address+"\n"+model+"\n"+protocol))).Replace("-","");
+        }
+        public static string RecommendedVoice(string skinId,string kind,ConnectionSettings connection)
+        {
+            var choices=VoicePresets.For(kind,connection);
+            string[] preferred=kind=="live" ? (skinId=="e-bao"?new[]{"Puck"}:skinId=="marfu"?new[]{"Kore"}:new[]{"Aoede"}) :
+                skinId=="e-bao"?new[]{"苏打","ash"}:skinId=="marfu"?new[]{"茉莉","coral"}:new[]{"冰糖","nova"};
+            foreach(string id in preferred)foreach(var item in choices)if(item.Id==id)return id;
+            return choices.Count>0?choices[0].Id:"";
+        }
     }
 }

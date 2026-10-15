@@ -26,9 +26,9 @@ namespace Dafeiyu.Tests
                 pet=new PetWindow(new SpriteAtlas(),new PetSettings{AutoUpdate=false,FollowCursor=false,ReadReplies=false},new SettingsStore(Path.Combine(directory,"data","settings.json")),null);pet.Show();pet.ShowChat();Pump(.2);
                 using(var feed=new Feed())using(var controller=new UpdateCoordinator(pet,feed,job=>{throw new Exception("must not apply while chat is visible");},ReleaseInfo.DisplayVersion))
                 {
-                    Task task=null;pet.Dispatcher.BeginInvoke(new Action(()=>task=controller.CheckAndUpdateAsync(true)));Wait(()=>task!=null && task.IsCompleted,6);task.GetAwaiter().GetResult();Pump(.4);
-                    Check(feed.Checks==1 && feed.Downloads==1 && controller.IsBusy && controller.CanCancel,"手动检查自动下载并等待空闲");
-                    Check(controller.Status.Contains("对话"),"打开对话窗口时自动安装延期");
+                    Task task=null;pet.Dispatcher.BeginInvoke(new Action(()=>task=controller.CheckAndUpdateAsync(false)));Wait(()=>task!=null && task.IsCompleted,6);task.GetAwaiter().GetResult();Pump(.4);
+                    Check(feed.Checks==1 && feed.Downloads==1 && controller.IsBusy && controller.CanCancel,"后台检查自动下载并等待空闲: "+controller.Status);
+                    Check(controller.Status.Contains("对话"),"打开对话窗口时后台自动安装延期");
                     Check(feed.Repository==ReleaseInfo.RepositoryUrl && feed.Portable,"使用固定仓库且为便携目录选择 ZIP");
                     controller.Cancel();Pump(.1);Check(!controller.IsBusy && !controller.CanCancel && pet.IsVisible,"下载完成后取消，不退出桌宠");
                     feed.DownloadDelay=3000;task=null;pet.Dispatcher.BeginInvoke(new Action(()=>task=controller.CheckAndUpdateAsync(true)));Wait(()=>feed.Downloads==2,3);controller.Cancel();Wait(()=>task.IsCompleted,4);
@@ -73,6 +73,79 @@ namespace Dafeiyu.Tests
                         typeof(PetWindow).GetField("sessionLocked",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(pet,false);
                     }
                 }
+                pet.ShowChat();pet.ShowQuickChat();pet.ShowSettings();Pump(.2);
+                var idleChat=app.Windows.OfType<ChatWindow>().Single(w=>w.IsVisible);var idleQuick=app.Windows.OfType<QuickChatWindow>().Single(w=>w.IsVisible);
+                Check(pet.CanApplyUpdate(true),"手动更新允许空闲聊天、快捷对话及设置窗口保持打开");
+                var chatInput=Find<TextBox>(idleChat,"MessageInput");chatInput.Text="未发送聊天草稿";idleChat.Hide();
+                Check(!pet.CanApplyUpdate(true),"隐藏聊天窗口的未发送草稿阻止自动退出");chatInput.Clear();
+                var quickInput=Find<TextBox>(idleQuick,"QuickMessageInput");quickInput.Text="未发送快捷草稿";idleQuick.Hide();
+                Check(!pet.CanApplyUpdate(true),"隐藏快捷对话的未发送草稿阻止自动退出");quickInput.Clear();
+                pet.ShowChat();pet.ShowQuickChat();Pump(.1);
+                string historyPath=Path.Combine(pet.Store.DirectoryPath,"history");
+                using(var feed=new Feed())
+                {
+                    bool handedOff=false,disabledDuringPrepare=false;
+                    using(var controller=new UpdateCoordinator(pet,feed,job=>{handedOff=true;return Task.FromResult(true);},ReleaseInfo.DisplayVersion))
+                    {
+                        typeof(PetWindow).GetField("updates",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(pet,controller);
+                        controller.Changed+=delegate
+                        {
+                            if(!controller.IsApplying || disabledDuringPrepare)return;
+                            disabledDuringPrepare=!idleChat.IsEnabled && !idleQuick.IsEnabled;
+                            File.WriteAllText(historyPath,"owned storage obstacle");
+                            pet.Conversation.AddLiveTurn(pet.Skin.Id,"keep this question","keep this answer");
+                        };
+                        Task task=controller.CheckAndUpdateAsync(true);Wait(()=>task.IsCompleted,4);
+                        Wait(()=>disabledDuringPrepare,8);Wait(()=>!controller.IsBusy,4);
+                        Check(!handedOff && pet.IsVisible && controller.Status.Contains("聊天记录"),"交接前保存失败保留窗口及未保存历史，不启动更新助手");
+                        Check(idleChat.IsEnabled && idleQuick.IsEnabled,"保存失败取消交接后恢复聊天与快捷对话输入");
+                        Check(pet.HasHistorySaveWarning && !pet.CanApplyUpdate(true),"历史保存警告阻止更新关闭内存中的记录");
+                        task=controller.CheckAndUpdateAsync(true);Wait(()=>task.IsCompleted,4);Pump(.4);
+                        Check(controller.Status.Contains("聊天记录") && !controller.IsApplying,"已有历史保存警告显示具体等待原因");controller.Cancel();
+                        File.Delete(historyPath);pet.Conversation.AddLiveTurn(pet.Skin.Id,"second question","second answer");
+                        task=pet.Conversation.FlushHistoryAsync();Wait(()=>task.IsCompleted,4);task.GetAwaiter().GetResult();
+                        Check(!pet.HasHistorySaveWarning && pet.Conversation.History.Messages.Count==4,"修复存储后完整保留并保存两轮会话");
+                    }
+                }
+                using(var feed=new Feed())
+                {
+                    bool handedOff=false;FileStream settingsLock=null;
+                    using(var controller=new UpdateCoordinator(pet,feed,job=>{handedOff=true;return Task.FromResult(true);},ReleaseInfo.DisplayVersion))
+                    try
+                    {
+                        typeof(PetWindow).GetField("updates",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(pet,controller);
+                        controller.Changed+=delegate
+                        {
+                            if(controller.IsApplying && settingsLock==null)settingsLock=new FileStream(Path.Combine(pet.Store.DirectoryPath,"settings.json"),FileMode.Open,FileAccess.Read,FileShare.Read);
+                        };
+                        Task task=controller.CheckAndUpdateAsync(true);Wait(()=>task.IsCompleted,4);pet.Settings.ReadReplies=true;
+                        Wait(()=>settingsLock!=null,8);Wait(()=>!controller.IsBusy,4);
+                        Check(!handedOff && pet.IsVisible && controller.Status.Contains("设置尚未保存") && !pet.Store.Load().ReadReplies,"设置写入失败时保留原设置且不启动助手或退出");
+                        Check(idleChat.IsEnabled && idleQuick.IsEnabled,"设置保存失败后恢复两个聊天窗口");
+                    }
+                    finally{if(settingsLock!=null)settingsLock.Dispose();pet.Settings.ReadReplies=false;}
+                }
+                using(var feed=new Feed())
+                {
+                    bool closed=false;UpdateJob handoff=null;pet.Closed+=delegate{closed=true;};
+                    using(var controller=new UpdateCoordinator(pet,feed,job=>{handoff=job;return Task.FromResult(true);},ReleaseInfo.DisplayVersion))
+                    {
+                        typeof(PetWindow).GetField("updates",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(pet,controller);
+                        foreach(var window in app.Windows.OfType<SettingsWindow>().ToArray())window.Close();
+                        pet.ShowSettings();Pump(.1);var updateSettings=app.Windows.OfType<SettingsWindow>().Single();updateSettings.SelectPage(6);Pump(.1);
+                        Task task=controller.CheckAndUpdateAsync(false);Wait(()=>task.IsCompleted,4);Pump(.3);
+                        var install=Find<Button>(updateSettings,"CheckUpdates");
+                        Check(install.IsEnabled && install.Content.ToString()=="立即安装并重启","后台已下载时提供可用的立即安装按钮");
+                        install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Check(feed.Checks==1 && feed.Downloads==1,"立即安装复用已下载包，不重复检查和下载");
+                        // Change an in-memory preference after the check's initial save.
+                        pet.Settings.ReadReplies=true;Wait(()=>closed,10);
+                        Check(handoff!=null && closed && !pet.IsVisible,"手动检查下载后自动完成助手交接并正常退出，无需手动关闭窗口");
+                        Check(!app.Windows.OfType<ChatWindow>().Any(w=>w.IsVisible) && !app.Windows.OfType<QuickChatWindow>().Any(w=>w.IsVisible) && !app.Windows.OfType<SettingsWindow>().Any(w=>w.IsVisible),"更新退出自动关闭空闲子窗口");
+                        Check(pet.Store.Load().ReadReplies,"自动退出保存尚未落盘的用户设置");
+                    }
+                }
+                pet=null;
                 Console.WriteLine("Auto update smoke: "+passed+" passed");return 0;
             }
             catch(Exception e){Console.WriteLine("FAIL Auto update: "+e.Message);return 1;}

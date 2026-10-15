@@ -16,7 +16,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($target in @('CoreTests','ProfileTests','ApiTests','ConversationTests','HistoryTests','StreamingTests','VoicePresetTests','LiveTests','UpdateTests','UpdateApplyTests','GreetingTests','StartupTests','ProxyTests')) {
+          foreach ($target in @('CoreTests','ProfileTests','ApiTests','ConversationTests','HistoryTests','StreamingTests','VoicePresetTests','LiveTests','UpdateTests','UpdateApplyTests','GreetingTests','StartupTests','ProxyTests','InteractionTests','SpriteAlignmentTests')) {
             & .\Build.ps1 -Target $target
             if ($LASTEXITCODE -ne 0) { throw "Failed: $target" }
           }

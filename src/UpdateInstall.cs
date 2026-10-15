@@ -44,7 +44,19 @@ namespace Dafeiyu
                 using(var root=RegistryKey.OpenBaseKey(RegistryHive.CurrentUser,view))using(var key=root.OpenSubKey(UninstallKey,false))
                 {
                     string value=key==null?null:key.GetValue("InstallLocation") as string;
-                    if(!String.IsNullOrWhiteSpace(value) && Same(value,directory))return true;
+                    string command=key==null?null:key.GetValue("UninstallString") as string;
+                    if(String.IsNullOrWhiteSpace(value) || String.IsNullOrWhiteSpace(command))continue;
+                    try
+                    {
+                        // A portable copy may reuse a directory left in the uninstall registry.
+                        // Only a live Inno uninstaller belonging to this directory selects Setup.
+                        string uninstaller=command.Trim().Trim('"');
+                        string uninstallDirectory=Path.GetDirectoryName(uninstaller);
+                        if(Path.IsPathRooted(uninstaller) && !String.IsNullOrWhiteSpace(uninstallDirectory) && Same(value,directory) && Same(uninstallDirectory,directory) &&
+                            Regex.IsMatch(Path.GetFileName(uninstaller),@"^unins[0-9]+\.exe$",RegexOptions.IgnoreCase) &&
+                            File.Exists(uninstaller) && File.Exists(Path.ChangeExtension(uninstaller,".dat")))return true;
+                    }
+                    catch(ArgumentException){}catch(NotSupportedException){}catch(PathTooLongException){}
                 }
             return false;
         }

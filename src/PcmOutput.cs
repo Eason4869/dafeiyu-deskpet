@@ -11,12 +11,13 @@ namespace Dafeiyu
         void SetVolume(int value);
     }
     // WinMM accepts raw PCM directly; queued headers remain pinned until WHDR_DONE.
-    public sealed class PcmOutput : ILiveAudioOutput
+    public sealed class PcmOutput : ILiveAudioOutput, IAudioLevelSource
     {
         readonly object gate=new object(); readonly Queue<Buffer> buffers=new Queue<Buffer>();
         readonly AutoResetEvent ready=new AutoResetEvent(false); readonly Thread worker;
         IntPtr device; int rate,volume=50,queued; bool disposed; volatile bool stopping;
         public PcmOutput(){worker=new Thread(Drain){IsBackground=true,Name="DeskPet Live playback"};worker.Start();}
+        public double AudioLevel {get{lock(gate){return disposed || buffers.Count==0?0:buffers.Peek().Level*volume/100.0;}}}
         public void Enqueue(byte[] bytes,int sampleRate)
         {
             if(bytes==null || bytes.Length==0 || bytes.Length%2!=0 || (sampleRate!=16000 && sampleRate!=24000 && sampleRate!=48000)) throw new ApiException("Live 返回了不支持的 PCM 音频格式。");
@@ -59,8 +60,8 @@ namespace Dafeiyu
         static readonly uint HeaderSize=(uint)Marshal.SizeOf(typeof(WaveHeader));
         sealed class Buffer : IDisposable
         {
-            public IntPtr Data,Header;public int Length;public bool Prepared;
-            public Buffer(byte[] bytes){Length=bytes.Length;Data=Marshal.AllocHGlobal(Length);Header=Marshal.AllocHGlobal((int)HeaderSize);Marshal.Copy(bytes,0,Data,Length);Marshal.StructureToPtr(new WaveHeader{Data=Data,BufferLength=(uint)Length},Header,false);}
+            public IntPtr Data,Header;public int Length;public bool Prepared;public readonly double Level;
+            public Buffer(byte[] bytes){Level=Dafeiyu.AudioLevel.Pcm16(bytes);Length=bytes.Length;Data=Marshal.AllocHGlobal(Length);Header=Marshal.AllocHGlobal((int)HeaderSize);Marshal.Copy(bytes,0,Data,Length);Marshal.StructureToPtr(new WaveHeader{Data=Data,BufferLength=(uint)Length},Header,false);}
             public void Dispose(){Marshal.FreeHGlobal(Header);Marshal.FreeHGlobal(Data);}
         }
         [StructLayout(LayoutKind.Sequential,Pack=2)] struct WaveFormat{public ushort FormatTag,Channels;public uint SamplesPerSec,AvgBytesPerSec;public ushort BlockAlign,BitsPerSample,Size;}

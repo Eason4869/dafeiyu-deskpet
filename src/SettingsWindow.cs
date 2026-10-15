@@ -23,10 +23,13 @@ namespace Dafeiyu
         private readonly ContentControl content;
         private readonly PersonaPanel persona;
         private readonly ConnectionSettingsPanel connections;
+        private readonly AiConfigurationPanel aiConfiguration;
         private readonly ScrollViewer companionPage;
         private readonly AboutPanel about;
         private readonly QuietPanel quiet;
         private bool refreshing;
+        private string displayedSkinId;
+        public event Action GuideRequested;
         public bool HasUnsavedEdits {get{return persona.HasUnsavedChanges || connections.HasUnsavedChanges || about.HasUnsavedChanges || quiet.HasUnsavedChanges || greetingMin.Text!=pet.Settings.GreetingMinMinutes.ToString() || greetingMax.Text!=pet.Settings.GreetingMaxMinutes.ToString();}}
         public SettingsWindow(PetWindow companion)
         {
@@ -53,6 +56,8 @@ namespace Dafeiyu
             {
                 if(refreshing || skins.SelectedItem==null) return;
                 var selected=(SkinDefinition)skins.SelectedItem;
+                if(selected==pet.Skin)return;
+                if(HasUnsavedEdits){refreshing=true;skins.SelectedItem=pet.Skin;refreshing=false;ShowNotice("请先保存当前修改，再切换伙伴。");return;}
                 if(pet.SelectSkin(selected)) RefreshAvatar(); else { RefreshState(); ShowNotice(pet.Notice); }
             };
             appearanceRow.Children.Add(skins);
@@ -101,17 +106,21 @@ namespace Dafeiyu
             var hide=Ui.Button("隐藏伙伴"); hide.Click+=delegate { pet.HidePet(); }; footer.Children.Add(hide);
             var exit=Ui.Button("退出桌宠"); exit.Click+=delegate { pet.Close(); }; footer.Children.Add(exit); root.Children.Add(footer);
             notice=Ui.Text("",11,Ui.Muted); notice.Margin=new Thickness(0,12,0,0); root.Children.Add(notice);
-            companionPage=Ui.Scroll(root);persona=new PersonaPanel(pet);connections=new ConnectionSettingsPanel(pet);about=new AboutPanel(pet);quiet=new QuietPanel(pet);content=new ContentControl();
+            companionPage=Ui.Scroll(root);persona=new PersonaPanel(pet);connections=new ConnectionSettingsPanel(pet);aiConfiguration=new AiConfigurationPanel(connections);about=new AboutPanel(pet);quiet=new QuietPanel(pet);content=new ContentControl();
             navigation=new ListBox{Name="SettingsNavigation",BorderThickness=new Thickness(0),Background=Brushes.Transparent,Margin=new Thickness(12,0,12,0),Padding=new Thickness(0)};
-            foreach(string label in new[]{"伙伴与外观","人格","对话模型","语音识别","声音与朗读","Live 实时语音","关于与更新","免打扰与快捷键"})navigation.Items.Add(new ListBoxItem{Content=label,Padding=new Thickness(14,12,14,12),Margin=new Thickness(0,0,0,6),FontSize=13});
+            string[] navigationLabels={"伙伴与外观","人格","AI 配置","免打扰与快捷键","关于与更新"};
+            string[] navigationNames={"CompanionNavigation","PersonaNavigation","AiNavigation","QuietNavigation","AboutNavigation"};
+            for(int index=0;index<navigationLabels.Length;index++)navigation.Items.Add(new ListBoxItem{Name=navigationNames[index],Content=navigationLabels[index],Style=Ui.NavigationItemStyle,Padding=new Thickness(12,12,12,12),Margin=new Thickness(0,0,0,6),FontSize=13});
             var shell=new Grid();shell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(182)});shell.ColumnDefinitions.Add(new ColumnDefinition());
             var sidebar=new Grid();sidebar.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});sidebar.RowDefinitions.Add(new RowDefinition());sidebar.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             var brandRow=new DockPanel{Margin=new Thickness(20,26,14,24)};var brandLogo=new Image{Source=Ui.ApplicationIcon(),Width=34,Height=34,Margin=new Thickness(0,0,9,0)};DockPanel.SetDock(brandLogo,Dock.Left);brandRow.Children.Add(brandLogo);
             var brandText=new StackPanel();var brand=Ui.Text("桌面伙伴",16);brand.FontWeight=FontWeights.SemiBold;brandText.Children.Add(brand);brandText.Children.Add(Ui.Text("设置与偏好",11,Ui.Muted));brandRow.Children.Add(brandText);sidebar.Children.Add(brandRow);
-            foreach(ListBoxItem item in navigation.Items)item.Padding=new Thickness(12,10,12,10);
-            var navScroll=Ui.Scroll(navigation);Grid.SetRow(navScroll,1);sidebar.Children.Add(navScroll);var version=Ui.Text("版本 "+ReleaseInfo.DisplayVersion,11,Ui.Muted);version.Margin=new Thickness(22,16,10,20);Grid.SetRow(version,2);sidebar.Children.Add(version);
+            var navScroll=Ui.Scroll(navigation);Grid.SetRow(navScroll,1);sidebar.Children.Add(navScroll);
+            var sidebarFooter=new StackPanel{Margin=new Thickness(20,14,14,20)};
+            var guideButton=Ui.Button("新手引导");guideButton.Name="OpenOnboarding";guideButton.HorizontalAlignment=HorizontalAlignment.Left;guideButton.Margin=new Thickness(0,0,0,10);guideButton.Click+=delegate {if(GuideRequested!=null)GuideRequested();};sidebarFooter.Children.Add(guideButton);
+            sidebarFooter.Children.Add(Ui.Text("版本 "+ReleaseInfo.DisplayVersion,11,Ui.Muted));Grid.SetRow(sidebarFooter,2);sidebar.Children.Add(sidebarFooter);
             shell.Children.Add(new Border{Child=sidebar,Background=Ui.Pale,BorderBrush=Ui.Line,BorderThickness=new Thickness(0,0,1,0)});Grid.SetColumn(content,1);shell.Children.Add(content);Content=shell;
-            navigation.SelectionChanged+=delegate {int index=navigation.SelectedIndex;if(index==0)content.Content=companionPage;else if(index==1)content.Content=persona;else if(index==6)content.Content=about;else if(index==7)content.Content=quiet;else{content.Content=connections;connections.ShowSection(index-2);}};navigation.SelectedIndex=0;Closed+=delegate {about.Dispose();};
+            navigation.SelectionChanged+=delegate(object sender,SelectionChangedEventArgs args) {if(args.Source!=navigation)return;int index=navigation.SelectedIndex;if(index==0)content.Content=companionPage;else if(index==1)content.Content=persona;else if(index==2)content.Content=aiConfiguration;else if(index==3)content.Content=quiet;else if(index==4)content.Content=about;};navigation.SelectedIndex=0;Closed+=delegate {about.Dispose();};
             Loaded+=delegate { DesktopInterop.PlaceBeside(new WindowInteropHelper(this).Handle,new WindowInteropHelper(pet).Handle); };
             RefreshState(); ShowNotice(pet.Notice ?? pet.Store.Warning);
         }
@@ -127,6 +136,7 @@ namespace Dafeiyu
         { var button=Ui.Button(caption); button.Margin=new Thickness(0,0,8,8); button.Click+=delegate { pet.PlayAction(state,duration); }; panel.Children.Add(button); }
         private void ImportSkin(object sender,RoutedEventArgs args)
         {
+            if(HasUnsavedEdits){ShowNotice("请先保存当前修改，再导入并切换伙伴。");return;}
             var dialog=new OpenFileDialog { Title="导入桌宠外观",Filter="桌宠外观 (*.png;pet.json)|*.png;*.json|透明 PNG 精灵图|*.png|外观说明 (*.json)|*.json",CheckFileExists=true,Multiselect=false };
             if(dialog.ShowDialog(this)!=true) return;
             try
@@ -142,10 +152,10 @@ namespace Dafeiyu
                 ShowNotice("导入失败：请使用有效的透明 PNG 精灵图（8 列 × 11 行，每个动作都应有画面），或同文件夹内的 pet.json。");
             }
         }
-        private void RefreshAvatar() { name.Text=pet.Skin.Name; avatar.Source=SkinCatalog.GetPreview(pet.Skin);if(persona!=null)persona.RefreshPersona(); }
+        private void RefreshAvatar() { displayedSkinId=pet.Skin.Id;name.Text=pet.Skin.Name; avatar.Source=SkinCatalog.GetPreview(pet.Skin);if(persona!=null)persona.RefreshPersona();if(connections!=null)connections.RefreshPersonaVoices(); }
         public void RefreshState()
         {
-            if(name.Text!=pet.Skin.Name)RefreshAvatar();
+            if(displayedSkinId!=pet.Skin.Id)RefreshAvatar();
             refreshing=true; follow.IsChecked=pet.Settings.FollowCursor; wander.IsChecked=pet.Settings.Wander;
             top.IsChecked=pet.Settings.Topmost; pause.IsChecked=pet.Paused;greetings.IsChecked=pet.Settings.GreetingEnabled; size.Value=pet.Settings.Scale;
             sizeLabel.Text=Math.Round(pet.Settings.Scale*100)+"%"; skins.SelectedItem=pet.Skin; refreshing=false;
@@ -166,9 +176,34 @@ namespace Dafeiyu
             finally{refreshing=false;}
         }
         public void ShowNotice(string text) { if(notice!=null) notice.Text=text ?? ""; }
-        public void SelectConnections() { navigation.SelectedIndex=2; }
-        public void SelectPage(int index){navigation.SelectedIndex=index;}
-        public bool IsOnAboutPage {get{return navigation.SelectedIndex==6;}}
+        public void SelectConnections() { SelectAiSection(0); }
+        // Preserve existing menu, guide and automation routes while the visible navigation is grouped.
+        public void SelectPage(int index)
+        {
+            if(index<0 || index>7)throw new ArgumentOutOfRangeException("index");
+            if(index>=2 && index<=5){SelectAiSection(index-2);return;}
+            navigation.SelectedIndex=index==6?4:index==7?3:index;
+        }
+        public void SelectAiSection(int index){aiConfiguration.SelectSection(index);navigation.SelectedIndex=2;}
+        public bool IsOnAboutPage {get{return navigation.SelectedIndex==4;}}
+        public bool SaveAiConfiguration(){return connections.Save();}
+        public FrameworkElement FindControl(string controlName)
+        {
+            UpdateLayout();return FindVisual(this,controlName);
+        }
+        static FrameworkElement FindVisual(DependencyObject parent,string controlName)
+        {
+            var element=parent as FrameworkElement;if(element!=null && element.Name==controlName)return element;
+            for(int index=0;index<VisualTreeHelper.GetChildrenCount(parent);index++)
+            {var match=FindVisual(VisualTreeHelper.GetChild(parent,index),controlName);if(match!=null)return match;}
+            return null;
+        }
+        public FrameworkElement FocusGuideTarget(string controlName)
+        {
+            var target=FindControl(controlName);if(target==null)return null;
+            target.BringIntoView();UpdateLayout();if(target.Focusable && target.IsEnabled)target.Focus();return target;
+        }
+        public FrameworkElement ShowGuideTarget(string controlName){return FocusGuideTarget(controlName);}
         private void OpenGuide(string relative)
         {
             try{string path=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,relative);if(!File.Exists(path) && !Directory.Exists(path))path=Path.Combine(Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)),relative);if(!File.Exists(path) && !Directory.Exists(path))throw new InvalidOperationException();Process.Start(new ProcessStartInfo(path){UseShellExecute=true});}

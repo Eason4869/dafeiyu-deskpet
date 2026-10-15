@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -23,6 +23,7 @@ namespace Dafeiyu
             input.TextChanged+=delegate{placeholder.Visibility=input.Text.Length==0?Visibility.Visible:Visibility.Collapsed;};
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
             var left=new Border{Child=leading,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)};
+            if(leading==null)left.Visibility=Visibility.Collapsed;
             var right=new Border{Child=trailing,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,0,0)};
             body.Children.Add(left);Grid.SetColumn(field,1);body.Children.Add(field);Grid.SetColumn(right,2);body.Children.Add(right);
             var surface=new Border{Child=body,Background=Brushes.White,BorderBrush=Ui.Brush("#E3E7ED"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(22),Padding=new Thickness(8)};

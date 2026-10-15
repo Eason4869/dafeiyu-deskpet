@@ -19,13 +19,12 @@ namespace Dafeiyu
         private readonly StackPanel messages;
         private readonly ScrollViewer scroll;
         private readonly TextBox input;
-        public bool HasDraft { get { return !String.IsNullOrWhiteSpace(input.Text); } }
+        public bool HasDraft { get { return !String.IsNullOrWhiteSpace(input.Text) || (composer!=null && composer.HasEdit); } }
         private readonly TextBlock status;
         private readonly Image avatar;
-        private readonly Button send,record,stop,clear,liveButton;
-        private readonly DispatcherTimer recordTimer;
-        private readonly Stopwatch recording=new Stopwatch();
-        private bool closed,showingWelcome,ownsOperation,reloading;
+        private readonly Button record,clear;
+        private readonly ConversationComposer composer;
+        private bool closed,showingWelcome,reloading;
         private int visibleTurns=50;
         private readonly Button earlier,export;
         private readonly Dictionary<string,TextBox> rendered=new Dictionary<string,TextBox>();
@@ -49,19 +48,12 @@ namespace Dafeiyu
             export=Ui.Button("导出记录");export.Name="ExportChat";export.FontSize=11;export.Click+=delegate{Export();};DockPanel.SetDock(export,Dock.Right);historyTools.Children.Add(export);messageArea.Children.Add(historyTools);
             Grid.SetRow(scroll,1);messageArea.Children.Add(scroll);Grid.SetRow(messageArea,1);root.Children.Add(messageArea);
             status=Ui.Text("",11,Ui.Muted);status.Name="ChatStatus";
-            input=Ui.Field("",true);input.Name="MessageInput";input.MaxLength=8000;input.ToolTip="Enter 发送，Shift + Enter 换行";input.PreviewKeyDown+=delegate(object sender,KeyEventArgs e) {if(e.Key==Key.Enter && (Keyboard.Modifiers&ModifierKeys.Shift)==0){e.Handled=true;if(!pet.DialogueBusy)SendText();}};
-            var controls=new StackPanel {Orientation=Orientation.Horizontal};
-            liveButton=UiIcons.Button("live","开始 Live 通话");liveButton.Name="StartLiveCall";liveButton.Margin=new Thickness(0);liveButton.Click+=delegate{pet.ShowLiveCall(this);};
-            var leading=new StackPanel{Orientation=Orientation.Horizontal};liveButton.Margin=new Thickness(0,0,6,0);leading.Children.Add(liveButton);
-            record=UiIcons.Button("mic","语音输入");record.Margin=new Thickness(0);record.Name="VoiceRecord";record.Click+=delegate {if(session.Stage==ConversationStage.Recording)FinishRecording();else StartRecording();};leading.Children.Add(record);
-            send=ChatUi.Action("send","发送消息");send.Name="SendMessage";send.Click+=delegate {SendText();};controls.Children.Add(send);
-            stop=ChatUi.Action("stop","停止回复");stop.Name="StopConversation";stop.Margin=new Thickness(6,0,0,0);stop.Click+=async delegate {try{await pet.StopDialogueAsync();}catch(Exception e){ShowError(e);}};controls.Children.Add(stop);
-
+            input=Ui.Field("",true);input.Name="MessageInput";input.MaxLength=8000;
+            record=UiIcons.Button("mic","听写");record.Name="VoiceRecord";
             clear=UiIcons.Button("trash","清空当前聊天记录");clear.Name="ClearChat";clear.Margin=new Thickness(6,0,0,0);clear.Click+=delegate {try{session.Clear();ShowStatus("已清空当前会话。");}catch(Exception e){ShowError(e);}};DockPanel.SetDock(clear,Dock.Right);historyTools.Children.Add(clear);
-            var composerSurface=ChatUi.Composer(input,leading,controls,status,false);composerSurface.Margin=new Thickness(0,12,0,0);Grid.SetRow(composerSurface,2);root.Children.Add(composerSurface);Content=root;
-            recordTimer=new DispatcherTimer {Interval=TimeSpan.FromMilliseconds(200)};recordTimer.Tick+=delegate {if(session.Stage!=ConversationStage.Recording){recordTimer.Stop();return;}ShowStatus("正在录音 · "+(int)recording.Elapsed.TotalSeconds+" 秒 · 再次点击结束并发送");if(recording.Elapsed.TotalSeconds>=60)FinishRecording();};
+            composer=new ConversationComposer(pet,this,input,record,status,false);var composerSurface=composer;composerSurface.Margin=new Thickness(0,12,0,0);Grid.SetRow(composerSurface,2);root.Children.Add(composerSurface);Content=root;
             messagePump=new MessageUpdatePump(session,UpdateMessage);ReloadHistory();session.MessageAdded+=AddMessage;session.HistoryChanged+=HistoryChanged;session.StateChanged+=RefreshState;pet.Live.StateChanged+=RefreshState;RefreshAppearance();RefreshState();
-            Closed+=async delegate {closed=true;recordTimer.Stop();messagePump.Dispose();session.MessageAdded-=AddMessage;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;try{if(ownsOperation)await session.StopAsync();}catch(OperationCanceledException){}catch(ObjectDisposedException){}catch(InvalidOperationException){}};
+            Closed+=delegate {closed=true;messagePump.Dispose();session.MessageAdded-=AddMessage;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;};
             Loaded+=delegate {input.Focus();};
         }
         public void RefreshAppearance()
@@ -106,24 +98,10 @@ namespace Dafeiyu
         private void RefreshState()
         {
             if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(RefreshState));return;}
-            bool busy=pet.DialogueBusy;liveButton.IsEnabled=!busy || pet.LiveActive;send.IsEnabled=!busy;clear.IsEnabled=!busy;stop.IsEnabled=busy;record.IsEnabled=!busy || session.Stage==ConversationStage.Recording;RefreshAppearance();
-            string recordLabel=session.Stage==ConversationStage.Recording?"结束并发送":"语音输入";record.Content=UiIcons.Image(session.Stage==ConversationStage.Recording?"stop":"mic",Ui.Ink);record.ToolTip=recordLabel;System.Windows.Automation.AutomationProperties.SetName(record,recordLabel);
-            if(pet.LiveActive){recordTimer.Stop();ShowStatus(pet.Live.Status);return;}
-
-            if(session.Stage==ConversationStage.Recording){if(ownsOperation && !recordTimer.IsEnabled){recording.Restart();recordTimer.Start();}ShowStatus("正在录音 · 再次点击结束并发送");}
-            else
-            {recordTimer.Stop();ShowStatus(session.Stage==ConversationStage.Recognizing?"正在识别语音…":session.Stage==ConversationStage.Thinking?"正在思考…":session.Stage==ConversationStage.Speaking?"正在朗读 · 可以随时停止":String.IsNullOrEmpty(session.HistoryWarning)?(String.IsNullOrEmpty(session.LastNotice)?"Enter 发送 · Shift + Enter 换行":session.LastNotice):session.HistoryWarning);}
+            clear.IsEnabled=!pet.DialogueBusy;RefreshAppearance();if(pet.DictationActive)return;
+            if(pet.LiveActive){ShowStatus(pet.Live.Status);return;}
+            ShowStatus(session.Stage==ConversationStage.Recognizing?"正在识别语音…":session.Stage==ConversationStage.Thinking?"正在思考…":session.Stage==ConversationStage.Speaking?"正在朗读 · 可以随时停止":String.IsNullOrEmpty(session.HistoryWarning)?(String.IsNullOrEmpty(session.LastNotice)?"Enter 发送 · Shift + Enter 换行":session.LastNotice):session.HistoryWarning);
         }
-        private async void SendText()
-        {
-            if(pet.DialogueBusy)return;
-            string text=input.Text.Trim();if(text.Length==0){ShowStatus("先写下一句话吧。");return;}input.Clear();
-            try {ownsOperation=true;await session.SendTextAsync(text,pet.Settings,pet.Skin.Name);}
-            catch(Exception e){if(!closed && input.Text.Length==0)input.Text=text;ShowError(e);}
-            finally{ownsOperation=false;}
-        }
-        private void StartRecording(){if(pet.DialogueBusy){ShowStatus("请先结束当前对话。");return;}try{ownsOperation=true;session.StartRecording(pet.Settings);}catch(Exception e){ownsOperation=false;ShowError(e);}}
-        private async void FinishRecording(){recordTimer.Stop();try{await session.FinishRecordingAsync(pet.Skin.Name);}catch(Exception e){ShowError(e);}finally{ownsOperation=false;}}
         private void ShowStatus(string text){if(!closed)status.Text=text;}
         private void ShowError(Exception error)
         {if(error is OperationCanceledException)ShowStatus("已停止。");else if(error is ApiException || error is InvalidOperationException)ShowStatus(error.Message);else ShowStatus("操作未完成，请检查连接设置、麦克风或音频输出。当前文字回复会保留。");}

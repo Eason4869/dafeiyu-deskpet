@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -21,7 +21,11 @@ namespace Dafeiyu.Tests
                 Check(guide.OnboardingState=="completed" && guide.VoiceName=="keep-me" && guide.LiveVoice=="Kore","legacy settings upgrade without reopening first-run onboarding or losing configuration");
                 guide.OnboardingState="deferred";guide.OnboardingStep=3;guideStore.Save(guide);guide=guideStore.Load().Copy();
                 Check(guide.OnboardingState=="deferred" && guide.OnboardingStep==3,"deferred onboarding resumes its persisted step and survives settings copy");
-                guide.OnboardingState="invalid";guide.OnboardingStep=99;guide.Normalize();Check(guide.OnboardingState=="completed" && guide.OnboardingStep==12,"unknown onboarding state cannot retrigger welcome and step is bounded");
+                guide.OnboardingState="invalid";guide.OnboardingStep=99;guide.Normalize();Check(guide.OnboardingState=="completed" && guide.OnboardingStep==15,"unknown onboarding state cannot retrigger welcome and step is bounded");
+                File.WriteAllText(guideFile,"{\"OnboardingState\":\"deferred\",\"OnboardingStep\":7}");guide=guideStore.Load();
+                Check(guide.OnboardingStep==8,"old service lesson progress migrates after inserted double click step");guideStore.Save(guide);guide=guideStore.Load().Copy();guide.Normalize();
+                Check(guide.OnboardingStep==8,"migrated progress is not shifted again after save load and copy");
+                guide.OnboardingStep=15;guideStore.Save(guide);guide=guideStore.Load();Check(guide.OnboardingStep==15,"appended network lesson progress survives restart without remapping");
                 Check(catalog.Skins[0].Id=="e-bao" && catalog.Skins[1].Id=="dafeiyu" && catalog.Find("missing").Id=="e-bao","Ebao is first and default fallback, with Dafeiyu second");
                 PersonaProfiles.Activate(settings,catalog.Find("dafeiyu"));Check(settings.SystemPrompt.Contains("鲸鱼娘"),"new dafeiyu resolves whale persona");
                 foreach(var builtin in catalog.Skins) {

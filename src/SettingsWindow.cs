@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -117,7 +117,7 @@ namespace Dafeiyu
             var brandText=new StackPanel();var brand=Ui.Text("桌面伙伴",16);brand.FontWeight=FontWeights.SemiBold;brandText.Children.Add(brand);brandText.Children.Add(Ui.Text("设置与偏好",11,Ui.Muted));brandRow.Children.Add(brandText);sidebar.Children.Add(brandRow);
             var navScroll=Ui.Scroll(navigation);Grid.SetRow(navScroll,1);sidebar.Children.Add(navScroll);
             var sidebarFooter=new StackPanel{Margin=new Thickness(20,14,14,20)};
-            var guideButton=Ui.Button("新手引导");guideButton.Name="OpenOnboarding";guideButton.HorizontalAlignment=HorizontalAlignment.Left;guideButton.Margin=new Thickness(0,0,0,10);guideButton.Click+=delegate {if(GuideRequested!=null)GuideRequested();};sidebarFooter.Children.Add(guideButton);
+            var guideButton=Ui.Button("配置引导");guideButton.Name="OpenOnboarding";guideButton.HorizontalAlignment=HorizontalAlignment.Left;guideButton.Margin=new Thickness(0,0,0,10);guideButton.Click+=delegate {if(GuideRequested!=null)GuideRequested();};sidebarFooter.Children.Add(guideButton);
             sidebarFooter.Children.Add(Ui.Text("版本 "+ReleaseInfo.DisplayVersion,11,Ui.Muted));Grid.SetRow(sidebarFooter,2);sidebar.Children.Add(sidebarFooter);
             shell.Children.Add(new Border{Child=sidebar,Background=Ui.Pale,BorderBrush=Ui.Line,BorderThickness=new Thickness(0,0,1,0)});Grid.SetColumn(content,1);shell.Children.Add(content);Content=shell;
             navigation.SelectionChanged+=delegate(object sender,SelectionChangedEventArgs args) {if(args.Source!=navigation)return;int index=navigation.SelectedIndex;if(index==0)content.Content=companionPage;else if(index==1)content.Content=aiConfiguration;else if(index==2)content.Content=quiet;else if(index==3)content.Content=about;};navigation.SelectedIndex=0;Closed+=delegate {about.Dispose();};
@@ -188,6 +188,8 @@ namespace Dafeiyu
         public void SelectCompanionSection(int index){companionPage.SelectSection(index);navigation.SelectedIndex=0;}
         public void SelectAiSection(int index){aiConfiguration.SelectSection(index);navigation.SelectedIndex=1;}
         public bool IsOnAboutPage {get{return navigation.SelectedIndex==3;}}
+        public bool ValidateGuideNetwork(out string error){return about.ValidateNetwork(out error);}
+        public bool SaveGuideNetwork(){return about.SaveNetwork();}
         public bool SaveAiConfiguration(){return connections.Save();}
         public bool SaveGuideAiSection(int index){return connections.SaveGuideSection(index);}
         public bool ValidateGuideAiSection(int index,out string error){return connections.ValidateGuideSection(index,out error);}

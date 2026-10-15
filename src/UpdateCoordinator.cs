@@ -20,6 +20,7 @@ namespace Dafeiyu
         bool checking,applying,disposed,pendingManual,checkingManual;
         DateTime? restartAt;
         public string Status {get;private set;}
+        public string NetworkStatus {get;private set;}
         public double Progress {get;private set;}
         public bool IsBusy {get{return checking || pending!=null || applying;}}
         public bool CanCancel {get{return !applying && (checking || pending!=null);}}
@@ -62,16 +63,20 @@ namespace Dafeiyu
             pet.Settings.LastUpdateCheckUtcTicks=DateTime.UtcNow.Ticks;pet.SaveSettings();
             try
             {
+                bool useProxy=pet.Settings.UpdateUseProxy;string proxyAddress=pet.Settings.UpdateProxyAddress;
+                NetworkStatus=useProxy?"版本检查：GitHub · 网络代理":"版本检查：GitHub 直连";
+                var routing=feed as IUpdateDownloadRouting;if(routing!=null)routing.ConfigureMirror(pet.Settings.UpdateUseMirror,pet.Settings.UpdateMirrorAddress,new Progress<string>(value=>{if(!disposed && !token.IsCancellationRequested){NetworkStatus=value;Notify();}}));
+                Notify();
                 string directory=Path.GetDirectoryName(pet.Store.DirectoryPath);
                 bool portable=!UpdateInstall.IsInstalledDirectory(directory);
-                var release=await feed.CheckAsync(ReleaseInfo.RepositoryUrl,pet.Settings.UpdateUseProxy,pet.Settings.UpdateProxyAddress,portable,token);
+                var release=await feed.CheckAsync(ReleaseInfo.RepositoryUrl,useProxy,proxyAddress,portable,token);
                 if(!release.IsNewerThan(new Version(installedVersion))){Status="当前已是最新版本 "+installedVersion+"。";return;}
                 string version=release.VersionTag.TrimStart('v','V');string expected=(portable?"DeskPet-Windows-":"DeskPet-Setup-")+version+(portable?".zip":".exe");
                 if(release.AssetName!=expected || String.IsNullOrEmpty(release.Digest) || !release.Digest.StartsWith("sha256:",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("发现 "+release.VersionTag+"，但没有可验证的自动更新包。请到 GitHub Release 查看。");
                 string work=Path.Combine(pet.Store.DirectoryPath,"updates",Guid.NewGuid().ToString("N"));
                 IsDownloading=true;Status="正在下载 "+release.VersionTag+"…";Notify();
                 var reporter=new Progress<double>(value=>{if(!disposed && !token.IsCancellationRequested){Progress=value;Notify();}});
-                string package=await feed.DownloadAsync(release,work,pet.Settings.UpdateUseProxy,pet.Settings.UpdateProxyAddress,reporter,token);
+                string package=await feed.DownloadAsync(release,work,useProxy,proxyAddress,reporter,token);
                 token.ThrowIfCancellationRequested();if(disposed)return;
                 using(var process=Process.GetCurrentProcess())pending=new UpdateJob{InstallationDirectory=directory,WorkDirectory=work,PackagePath=package,Mode=portable?"portable":"installed",InstalledVersion=installedVersion,TargetVersion=version,Digest=release.Digest.Substring(7),Size=release.Size,AssetUrl=release.AssetUrl,ParentPid=process.Id,ParentStartedUtcTicks=process.StartTime.ToUniversalTime().Ticks};
                 UpdateInstall.Validate(pending);pendingManual=manual;Status="下载与校验完成，等待空闲后自动更新。";readyTimer.Start();

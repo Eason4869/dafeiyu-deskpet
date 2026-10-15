@@ -10,6 +10,8 @@ namespace Dafeiyu
         [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X, Y; }
         [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativePoint point);
+        [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
+        public static bool IsWindowAtPoint(IntPtr window,Point point){return WindowFromPoint(new NativePoint{X=(int)point.X,Y=(int)point.Y})==window;}
         [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr handle, out NativeRect rect);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr handle);

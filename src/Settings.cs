@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
@@ -64,8 +64,10 @@ namespace Dafeiyu
     [DataContract]
     public sealed class PetSettings
     {
+        public const int OnboardingLastStep=15;
         [DataMember] public string OnboardingState { get; set; }
         [DataMember] public int OnboardingStep { get; set; }
+        [DataMember] public int OnboardingVersion { get; set; }
         [DataMember] public bool SaveChatHistory { get; set; }
         [DataMember] public bool QuietMode { get; set; }
         [DataMember] public bool HideOnFullscreen { get; set; }
@@ -97,6 +99,9 @@ namespace Dafeiyu
         [DataMember] public string RepositoryUrl { get; set; }
         [DataMember] public bool UpdateUseProxy { get; set; }
         [DataMember] public string UpdateProxyAddress { get; set; }
+        public const string DefaultUpdateMirror="https://gh-proxy.org";
+        [DataMember] public bool UpdateUseMirror { get; set; }
+        [DataMember] public string UpdateMirrorAddress { get; set; }
         [DataMember] public bool AutoUpdate { get; set; }
         [DataMember] public long LastUpdateCheckUtcTicks { get; set; }
         [DataMember] public string VoiceName { get; set; }
@@ -105,10 +110,10 @@ namespace Dafeiyu
         [DataMember] public ConnectionSettings Transcription { get; set; }
         [DataMember] public ConnectionSettings Speech { get; set; }
         public PetSettings() { Defaults(); }
-        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingState="legacy";LiveVoice="Kore"; }
+        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingVersion=0;OnboardingState="legacy";LiveVoice="Kore"; }
         private void Defaults()
         {
-            OnboardingState="new";OnboardingStep=0;
+            OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
             Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false;
@@ -121,13 +126,16 @@ namespace Dafeiyu
             VoiceProfiles=new Dictionary<string,PersonaVoiceProfile>();
             RepositoryUrl=ReleaseInfo.RepositoryUrl;
             UpdateProxyAddress=ProxyConfiguration.DefaultAddress;
+            UpdateMirrorAddress=DefaultUpdateMirror;
             AutoUpdate=true;
             SystemPrompt = "你是{pet_name}，一位温和、俏皮的桌面伙伴。用自然的中文与用户对话，帮助写代码、做设计和整理思路。回答清楚简洁，如实表达不确定性。你不能直接看见用户桌面，也不会自动读取文件。";
         }
         public void Normalize()
         {
             if(OnboardingState!="new" && OnboardingState!="deferred" && OnboardingState!="skipped" && OnboardingState!="completed")OnboardingState="completed";
-            OnboardingStep=Math.Max(0,Math.Min(12,OnboardingStep));
+            // Version 1 inserts the double-click lesson before the old service steps.
+            if(OnboardingVersion<1){OnboardingStep=Math.Max(0,Math.Min(12,OnboardingStep));if(OnboardingStep>=7)OnboardingStep++;OnboardingVersion=1;}
+            OnboardingStep=Math.Max(0,Math.Min(OnboardingLastStep,OnboardingStep));
             Hotkeys=Hotkeys ?? new Dictionary<string,string>();
             foreach(var pair in new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} })
                 if(!Hotkeys.ContainsKey(pair.Key))Hotkeys[pair.Key]=pair.Value; else Hotkeys[pair.Key]=(Hotkeys[pair.Key] ?? "").Trim();
@@ -143,6 +151,8 @@ namespace Dafeiyu
             VoiceMode=VoiceMode=="live" ? "live" : "pipeline"; LiveVoice=String.IsNullOrWhiteSpace(LiveVoice) ? "Kore" : LiveVoice.Trim();
             RepositoryUrl=ReleaseInfo.RepositoryUrl;
             UpdateProxyAddress=ProxyConfiguration.Normalize(UpdateProxyAddress);
+            UpdateMirrorAddress=String.IsNullOrWhiteSpace(UpdateMirrorAddress)?DefaultUpdateMirror:UpdateMirrorAddress.Trim().TrimEnd('/');
+            if(UpdateUseMirror)UpdateUseProxy=false;
             if(LastUpdateCheckUtcTicks<0 || LastUpdateCheckUtcTicks>DateTime.UtcNow.AddDays(1).Ticks)LastUpdateCheckUtcTicks=0;
             // Older MiMo configurations reused the text endpoint only for ASR.
             if(PersonaProfileVersion==0 && Speech.Model.StartsWith("mimo-",StringComparison.OrdinalIgnoreCase) && String.IsNullOrWhiteSpace(Speech.BaseUrl) && String.IsNullOrEmpty(Speech.EncryptedKey)) SpeechUsesTextService=true;
@@ -172,11 +182,11 @@ namespace Dafeiyu
         {
             var voiceProfiles=new Dictionary<string,PersonaVoiceProfile>();
             if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles)if(pair.Value!=null)voiceProfiles[pair.Key]=pair.Value.Copy();
-            return new PetSettings { OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
+            return new PetSettings { OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
                 GreetingEnabled=GreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,
-                PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,AutoUpdate=AutoUpdate,LastUpdateCheckUtcTicks=LastUpdateCheckUtcTicks,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
+                PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,UpdateUseMirror=UpdateUseMirror,UpdateMirrorAddress=UpdateMirrorAddress,AutoUpdate=AutoUpdate,LastUpdateCheckUtcTicks=LastUpdateCheckUtcTicks,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
         }
     }
 

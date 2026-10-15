@@ -15,6 +15,7 @@ namespace Dafeiyu.Tests
                 FeedingSequence();
                 ClockInputs();
                 OptionalArtwork();
+                HoverEntry();
                 Console.WriteLine("Interaction tests: " + passed + " passed");
                 return 0;
             }
@@ -25,6 +26,17 @@ namespace Dafeiyu.Tests
             }
         }
 
+        private static void HoverEntry()
+        {
+            var hover=new HoverInteraction();
+            Check(!hover.Update(false,true,true),"transparent area never triggers hover jump");
+            Check(hover.Update(true,true,true) && hover.Active,"entering visible body triggers one jump");
+            Check(!hover.Update(false,true,true) && hover.Active,"animation moving away from stationary cursor does not retrigger hover");
+            Check(!hover.Update(true,true,true),"returning animation frame stays in same hover visit");
+            hover.Update(false,false,true);Check(!hover.Active && hover.Update(true,true,true),"leaving pet bounds rearms the next hover visit");
+            hover.Update(false,false,true);Check(!hover.Update(true,true,false),"busy or guided interaction suppresses hover jump");
+            Check(!hover.Update(true,true,true),"ending busy state under stationary cursor does not cause delayed jump");
+        }
         private static void LoopsAndInterruption()
         {
             var animation = new InteractionAnimation();

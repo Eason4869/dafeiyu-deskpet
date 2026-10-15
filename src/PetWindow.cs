@@ -39,6 +39,7 @@ namespace Dafeiyu
         bool GuideActive {get{return guide!=null && guide.IsVisible;}}
         internal void SetGuideInteraction(string action)
         {
+            if(guideInteraction=="double-click" && quick!=null){quick.SetGuidePreview(false);quick.Hide();}
             if(guideInteraction.Length>0){if(ContextMenu!=null)ContextMenu.IsOpen=false;if(palette!=null)palette.Close();SetPaused(guidePaused);if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,Settings.ClickThrough);}
             guideInteraction=action??"";guideWheelOpened=false;
             if(guideInteraction.Length>0){guidePaused=Paused;SetPaused(false);RestorePet();if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,false);}
@@ -48,13 +49,26 @@ namespace Dafeiyu
             if(!GuideActive)return;if(action=="wheel-open"){guideWheelOpened=true;return;}
             if(guideInteraction==action && (action!="wheel" || guideWheelOpened) && GuideInteractionCompleted!=null)GuideInteractionCompleted(action);
         }
-        internal void SetGuideLock(bool active){trayMenu.Enabled=!active;}
+        internal void SetGuideLock(bool active){trayMenu.Enabled=!active;if(active && quick!=null)quick.Hide();}
         bool ReturnToGuide(){if(!GuideActive)return false;if(guide.WindowState==WindowState.Minimized)guide.WindowState=WindowState.Normal;guide.Activate();return true;}
 
         private ActionPaletteWindow palette;
         private ChatWindow chat;
         private LiveCallView call;
         private ConversationSession conversation;
+        private ConversationQueue inputQueue;
+        private DictationSession dictation;
+        public DictationSession Dictation{get{return dictation ?? (dictation=new DictationSession(new ApiClient(),()=>new AudioRecorder(),()=>Settings));}}
+        public bool DictationActive{get{return dictation!=null && dictation.IsBusy;}}
+        public ConversationQueue InputQueue
+        {
+            get
+            {
+                if(inputQueue==null){inputQueue=new ConversationQueue(Conversation,()=>Settings,()=>Skin.Name,Path.Combine(Store.DirectoryPath,"queued-messages.json"));inputQueue.Changed+=delegate{if(!closing)Dispatcher.BeginInvoke(new Action(ConversationChanged));};}
+                return inputQueue;
+            }
+        }
+        bool HasQueuedMessages {get{return (inputQueue!=null || File.Exists(Path.Combine(Store.DirectoryPath,"queued-messages.json"))) && InputQueue.HasPending;}}
         private QuickChatWindow quick;
         private GreetingBubbleWindow greeting;
         private GreetingSchedule greetingSchedule;
@@ -68,7 +82,7 @@ namespace Dafeiyu
         public UpdateCoordinator Updates {get{return updates ?? (updates=new UpdateCoordinator(this));}}
         public bool CanApplyUpdate(bool manual)
         {
-            return !closing && !dragging && (call==null || !call.IsVisible) && !LiveActive && !HasHistorySaveWarning && (conversation==null || !conversation.IsBusy) && !sessionLocked && (ContextMenu==null || !ContextMenu.IsOpen) && (trayMenu==null || !trayMenu.Visible) &&
+            return !closing && !dragging && !DictationActive && (call==null || !call.IsVisible) && !LiveActive && !HasHistorySaveWarning && !HasQueuedMessages && (inputQueue==null || !inputQueue.IsRunning) && (conversation==null || !conversation.IsBusy) && !sessionLocked && (ContextMenu==null || !ContextMenu.IsOpen) && (trayMenu==null || !trayMenu.Visible) &&
                 (chat==null || (!chat.HasDraft && (manual || !chat.IsVisible))) && (quick==null || (!quick.HasDraft && (manual || !quick.IsVisible))) &&
                 (preferences==null || (!preferences.HasUnsavedEdits && (manual || !preferences.IsVisible))) && (guide==null || !guide.IsVisible) && (palette==null || !palette.IsVisible) && !DesktopInterop.ForegroundIsFullScreen();
         }
@@ -97,6 +111,7 @@ namespace Dafeiyu
         private double previousTick,lastCursorMove,nextWalk=8,walkTarget;
         private double nextRender;
         private readonly GazeController gaze=new GazeController();
+        private readonly HoverInteraction hover=new HoverInteraction();
         private bool gazeActive;
         private int shownRow=-1,shownCol=-1;
         private bool shownMirrored;
@@ -124,7 +139,7 @@ namespace Dafeiyu
             }
         }
         public bool LiveActive {get{return live!=null && live.IsActive;}}
-        public bool DialogueBusy {get{return IsUpdating || LiveActive || (conversation!=null && conversation.IsBusy);}}
+        public bool DialogueBusy {get{return IsUpdating || LiveActive || (inputQueue!=null && inputQueue.IsRunning) || (conversation!=null && conversation.IsBusy);}}
         public GeminiLiveSession Live
         {
             get
@@ -143,13 +158,14 @@ namespace Dafeiyu
             if(closing || IsUpdating || ReturnToGuide())return;
             if(call!=null){call.Activate();return;}
             if(origin==null)return;
+            if(DictationActive){Notice="请先结束或取消听写，再开始通话。";return;}
             if(DialogueBusy && !LiveActive){Notice="请先结束当前对话，再开始 Live。";return;}
             if(origin is ChatWindow && quick!=null)quick.Hide();
             CancelInteraction();call=new LiveCallView(this,origin);call.Closed+=delegate {call=null;};call.Show();
         }
         public async Task StartLiveAsync()
         {if(DialogueBusy)throw new InvalidOperationException("请先停止当前对话再开始 Live。");liveSkinId=Skin.Id;await Live.StartAsync(Settings,Settings.SystemPrompt.Replace("{pet_name}",Skin.Name));}
-        public async Task StopDialogueAsync(){if(live!=null)await live.StopAsync();if(conversation!=null)await conversation.StopAsync();}
+        public async Task StopDialogueAsync(){if(inputQueue!=null)await inputQueue.PauseAsync();if(live!=null)await live.StopAsync();if(conversation!=null)await conversation.StopAsync();}
 
         public PetWindow(SpriteAtlas source,PetSettings settings,SettingsStore store,EventWaitHandle wakeSignal)
         {
@@ -174,8 +190,15 @@ namespace Dafeiyu
             image.PreviewMouseDown+=delegate(object sender,MouseButtonEventArgs args){if(args.ChangedButton==MouseButton.Middle){args.Handled=true;if(!dragging)ShowActionPalette();}};
             image.LostMouseCapture+=delegate { if(dragging) { dragging=false; walking=false; CancelInteraction(); SavePosition(); UpdateFrame(); } };
             ContextMenu=CreateMenu();
-            ContextMenuOpening+=delegate(object sender,ContextMenuEventArgs args){if(GuideActive && guideInteraction!="menu")args.Handled=true;};
-            ContextMenu.Opened+=delegate{if(GuideActive){guideMenuScope=GuideFocusScope.BlockChildren(ContextMenu);NotifyGuideInteraction("menu");}};
+            ContextMenuOpening+=delegate(object sender,ContextMenuEventArgs args)
+            {
+                if(!GuideActive)return;
+                if(guideInteraction!="menu"){args.Handled=true;return;}
+                // Establish the guide's foreground ownership before WPF captures
+                // the mouse. Activating either window after opening drops capture.
+                guide.Activate();
+            };
+            ContextMenu.Opened+=delegate{if(GuideActive){guideMenuScope=GuideFocusScope.BlockMenuActions(ContextMenu);NotifyGuideInteraction("menu");}};
             ContextMenu.Closed+=delegate{if(guideMenuScope!=null){guideMenuScope.Dispose();guideMenuScope=null;}};
             LocationChanged+=delegate {if(quick!=null && quick.IsVisible)quick.FollowPet();if(greeting!=null && greeting.IsVisible)greeting.FollowPet();if(updateNotice!=null && updateNotice.IsVisible)updateNotice.FollowPet();};
             SourceInitialized+=delegate
@@ -217,7 +240,10 @@ namespace Dafeiyu
         private ContextMenu CreateMenu()
         {
             var menu=new ContextMenu();
-            menu.StaysOpen=false;menu.Opened+=delegate {Dispatcher.BeginInvoke(DispatcherPriority.Input,new Action(delegate {if(menu.IsOpen)DesktopInterop.ForegroundMenu(menu);}));};
+            // The guide already owns foreground focus. Activating its pet-owned
+            // popup makes Windows restore the guide and WPF dismiss the menu.
+            // Keep normal popup capture so a real outside click still closes it.
+            menu.StaysOpen=false;menu.Opened+=delegate {Dispatcher.BeginInvoke(DispatcherPriority.Input,new Action(delegate {if(menu.IsOpen && !GuideActive)DesktopInterop.ForegroundMenu(menu);}));};
             AddMenu(menu,"快速对话…",ShowQuickChat);AddMenu(menu,"打开完整对话…",ShowChat); var appearance=new MenuItem{Header="外观",Name="QuickAppearanceMenu"};menu.Items.Add(appearance);
             menu.Opened+=delegate{RefreshAppearanceMenu(appearance);};RefreshAppearanceMenu(appearance);
             AddMenu(menu,"设置",ShowSettings); menu.Items.Add(new Separator());
@@ -288,10 +314,24 @@ namespace Dafeiyu
             if(Paused) return;
             if(quick!=null && quick.IsVisible)quick.FollowPet();
             Point cursor=DesktopInterop.Cursor(); if((cursor-lastCursor).Length>2) { lastCursor=cursor; lastCursorMove=now; }
+            UpdateHover(cursor);
             if(!dragging && !interaction.Active && guideInteraction.Length==0) Wander(delta,now,cursor);
             bool interacting=interaction.Active;interaction.Advance(delta);
             if(interacting && !interaction.Active){fallbackInteraction="";Animation.Play("idle",0);nextWalk=now+8;}
             Animation.Advance(delta); UpdateFrame(delta);
+        }
+        internal void UpdateHover(Point cursor)
+        {
+            if(handle==IntPtr.Zero || shownRow<0 || shownCol<0)return;
+            Rect bounds=DesktopInterop.Bounds(handle);bool inside=bounds.Contains(cursor),solid=false;
+            if(inside && bounds.Width>0 && bounds.Height>0)
+            {
+                int width=shownSupplemental?interactionAtlas.FrameWidth:atlas.CellWidth,height=shownSupplemental?interactionAtlas.FrameHeight:atlas.CellHeight;
+                int x=(int)Math.Floor((cursor.X-bounds.Left)/bounds.Width*width-shownOffset.X*width/480),y=(int)Math.Floor((cursor.Y-bounds.Top)/bounds.Height*height-shownOffset.Y*height/520);if(shownMirrored)x=width-1-x;
+                solid=(shownSupplemental?interactionAtlas.AlphaAt(shownRow,shownCol,x,y):atlas.AlphaAt(shownRow,shownCol,x,y))>=24;
+            }
+            bool allowed=!Paused && !dragging && !walking && !interaction.Active && !DialogueBusy && !GuideActive && !Settings.ClickThrough && !clickTimer.IsEnabled && Animation.State=="idle" && (ContextMenu==null || !ContextMenu.IsOpen) && (palette==null || !palette.IsVisible) && (quick==null || !quick.IsVisible) && (chat==null || !chat.IsVisible);
+            if(hover.Update(solid && DesktopInterop.IsWindowAtPoint(handle,cursor),inside,allowed)){PlayAction("jumping",.7);nextWalk=watch.Elapsed.TotalSeconds+8;}
         }
         private void Wander(double delta,double now,Point cursor)
         {
@@ -329,7 +369,7 @@ namespace Dafeiyu
             }
             int row=Animation.Row,col=Animation.Frame;
             if(supplemental){row=interaction.Row;col=interaction.Frame;gazeActive=false;}
-            else if(!interaction.Active && !Paused && !dragging && !walking && Settings.FollowCursor && Animation.State=="idle" && handle!=IntPtr.Zero && watch.Elapsed.TotalSeconds-lastCursorMove<1.4)
+            else if(!interaction.Active && !Paused && !dragging && !walking && !hover.Active && Settings.FollowCursor && Animation.State=="idle" && handle!=IntPtr.Zero && watch.Elapsed.TotalSeconds-lastCursorMove<1.4)
             {
                 Rect bounds=DesktopInterop.Bounds(handle); Point cursor=DesktopInterop.Cursor();
                 double dx=cursor.X-(bounds.X+bounds.Width*.5),dy=cursor.Y-(bounds.Y+bounds.Height*.4);
@@ -357,8 +397,8 @@ namespace Dafeiyu
         }
         private void BeginDrag(object sender,MouseButtonEventArgs args)
         {
-            if(closing || IsUpdating || (GuideActive && guideInteraction!="drag" && guideInteraction!="click")){args.Handled=true;return;}
-            if(args.ClickCount==2) {CancelInteraction();UpdateFrame();ShowQuickChat();args.Handled=true;return;}
+            if(closing || IsUpdating || (GuideActive && guideInteraction!="drag" && guideInteraction!="click" && guideInteraction!="double-click")){args.Handled=true;return;}
+            if(args.ClickCount==2) {CancelInteraction();UpdateFrame();ShowQuickChat();if(quick!=null && quick.IsVisible && call==null)NotifyGuideInteraction("double-click");args.Handled=true;return;}
             if(DialogueBusy){args.Handled=true;return;}
             CancelPendingClick();
             walking=false; dragStart=DesktopInterop.Cursor(); Rect bounds=DesktopInterop.Bounds(handle); windowStart=bounds.TopLeft;
@@ -458,7 +498,7 @@ namespace Dafeiyu
         {
             if(skin.Id==Skin.Id)return true;
             if(preferences!=null && preferences.HasUnsavedEdits){Notice="请先保存当前设置，再切换伙伴。";preferences.ShowNotice(Notice);return false;}
-            if(DialogueBusy){Notice="请先停止对话或结束 Live，再切换伙伴。";return false;}
+            if(DialogueBusy || DictationActive){Notice="请先停止对话、听写或结束 Live，再切换伙伴。";return false;}
             try
             {
                 var replacement=skin.Load();var replacementInteractions=InteractionAtlas.LoadForSkin(skin);
@@ -488,12 +528,19 @@ namespace Dafeiyu
         {
             if(closing || IsUpdating)return;
             if(guide!=null && guide.IsVisible){guide.Activate();return;}
+            if(DialogueBusy || DictationActive || LiveActive){ShowSettings();preferences.ShowNotice("请先结束当前对话、听写或通话，再打开配置引导。");return;}
             ShowSettings();guide=new OnboardingWindow(this,preferences);guide.Closed+=delegate {guide=null;};guide.Show();
         }
         public void ShowChat()
         {if(closing || IsUpdating || ReturnToGuide())return;if(call!=null){call.Activate();return;}if(quick!=null)quick.Hide();DismissGreeting();if(chat==null){chat=new ChatWindow(this);chat.Closed+=delegate {chat=null;};}if(!chat.IsVisible)chat.Show();if(chat.WindowState==WindowState.Minimized)chat.WindowState=WindowState.Normal;chat.Activate();}
         public void ShowQuickChat()
-        {if(closing || IsUpdating || ReturnToGuide())return;if(call!=null){call.Activate();return;}CancelInteraction();UpdateFrame();DismissGreeting();visibility.OverrideFullscreen=true;visibility.UserVisible=true;ApplyVisibility();if(quick==null){quick=new QuickChatWindow(this);quick.Closed+=delegate {quick=null;visibility.OverrideFullscreen=false;PollVisibility();};}if(!quick.IsVisible)quick.Show();quick.FollowPet();quick.Activate();quick.FocusInput();}
+        {
+            bool preview=GuideActive && guideInteraction=="double-click";
+            if(closing || IsUpdating || (!preview && ReturnToGuide()))return;if(call!=null){call.Activate();return;}
+            CancelInteraction();UpdateFrame();DismissGreeting();visibility.OverrideFullscreen=true;visibility.UserVisible=true;ApplyVisibility();
+            if(quick==null){quick=new QuickChatWindow(this);quick.Closed+=delegate {quick=null;visibility.OverrideFullscreen=false;PollVisibility();};}
+            if(!quick.IsVisible)quick.Show();quick.FollowPet();quick.SetGuidePreview(preview);quick.Activate();if(!preview)quick.FocusInput();
+        }
         internal void UpdateStateChanged(UpdateCoordinator controller)
         {
             if(closing)return;
@@ -591,10 +638,10 @@ namespace Dafeiyu
             {
                 args.Cancel=true;if(closing)return;closing=true;if(guide!=null)guide.Close();if(palette!=null)palette.Close();if(call!=null)await call.CloseAsync();CancelInteraction();
                 timer.Stop();CompositionTarget.Rendering-=RenderFrame;if(hotkeys!=null)hotkeys.Dispose();if(updates!=null)updates.Dispose();
-                try{if(live!=null)await live.StopAsync();if(conversation!=null){await conversation.StopAsync();await conversation.FlushHistoryAsync();}}
+                try{if(dictation!=null)await dictation.CancelAsync();if(inputQueue!=null)await inputQueue.PauseAsync();if(live!=null)await live.StopAsync();if(conversation!=null){await conversation.StopAsync();await conversation.FlushHistoryAsync();}}
                 catch(OperationCanceledException){}finally{exitPrepared=true;DispatcherOperation closingDispatch=Dispatcher.BeginInvoke(new Action(Close));}return;
             }
-            SavePosition();if(quick!=null)quick.Close();if(chat!=null)chat.Close();if(live!=null)live.Dispose();if(conversation!=null){conversation.StateChanged-=ConversationChanged;conversation.Dispose();}if(preferences!=null)preferences.Close();
+            SavePosition();if(quick!=null)quick.Close();if(chat!=null)chat.Close();if(dictation!=null)dictation.Dispose();if(inputQueue!=null)inputQueue.Dispose();if(live!=null)live.Dispose();if(conversation!=null){conversation.StateChanged-=ConversationChanged;conversation.Dispose();}if(preferences!=null)preferences.Close();
             Microsoft.Win32.SystemEvents.SessionSwitch-=SessionChanged;Microsoft.Win32.SystemEvents.PowerModeChanged-=PowerChanged;if(greeting!=null)greeting.Close();if(updateNotice!=null)updateNotice.Close();
             tray.Visible=false;tray.Dispose();trayMenu.Dispose();trayIcon.Dispose();
         }

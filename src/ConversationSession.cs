@@ -24,6 +24,7 @@ namespace Dafeiyu
         public ConversationLog History { get; private set; }
         public ConversationStage Stage { get; private set; }
         public bool IsBusy { get { lock(gate) return active!=null; } }
+        public string PersonaId { get { lock(gate)return personaId; } }
         public string LastNotice { get; private set; }
         public string HistoryWarning { get { return store==null?"":store.Warning; } }
         public event Action StateChanged;
@@ -35,7 +36,7 @@ namespace Dafeiyu
             public readonly CancellationTokenSource Cancel=new CancellationTokenSource();
             public readonly TaskCompletionSource<bool> Complete=new TaskCompletionSource<bool>();
             public PetSettings Snapshot,Live; public IAudioRecorder Recorder; public bool Finishing; public int Ended;
-            public ConversationLog History;public string PersonaId,ReplyId,Source="text";
+            public ConversationLog History;public string PersonaId,ReplyId,Source="text";public IList<ChatMessage> SteeringContext;
             public readonly StringBuilder Partial=new StringBuilder();public readonly Stopwatch Checkpoint=Stopwatch.StartNew();
         }
         public ConversationSession(IConversationApi transport,IReplySpeech output,Func<IAudioRecorder> recorderFactory,HistoryStore historyStore=null,Func<bool> persistenceEnabled=null)
@@ -78,11 +79,12 @@ namespace Dafeiyu
         { Stage=stage; if(!disposed && StateChanged!=null) StateChanged(); }
         private void Emit(ChatMessage message)
         { if(!disposed && MessageAdded!=null) MessageAdded(message.Copy()); }
-        public async Task SendTextAsync(string text,PetSettings settings,string petName)
+        public async Task SendTextAsync(string text,PetSettings settings,string petName,IList<ChatMessage> steeringContext=null)
         {
             text=(text??"").Trim(); if(text.Length==0 || text.Length>8000) throw new ApiException("请输入 1～8000 个字符。");
             ApiClient.ValidateConnection(settings.Text,ApiClient.ChatPath(settings.Text));
             Operation op=Begin(settings,ConversationStage.Thinking);
+            op.SteeringContext=steeringContext;
             try { await RequestReply(op,text,petName); }
             catch(OperationCanceledException) { LastNotice="已停止本次对话。"; throw; }
             finally { End(op); }
@@ -132,6 +134,7 @@ namespace Dafeiyu
             CancellationToken token=op.Cancel.Token; token.ThrowIfCancellationRequested();
             string persona=(op.Snapshot.SystemPrompt??"").Replace("{pet_name}",petName??"桌面伙伴");
             var request=op.History.ForRequest(persona,text);
+            if(op.SteeringContext!=null)request.InsertRange(request.Count-1,op.SteeringContext.Select(m=>m.Copy()));
             lock(gate) {
                 token.ThrowIfCancellationRequested();if(disposed)throw new OperationCanceledException(token);
                 ChatMessage user;var reply=op.History.BeginTurn(text,op.Source,out user);op.ReplyId=reply.Id;Emit(user);Emit(reply);Save(op.PersonaId,op.History);op.Checkpoint.Restart();

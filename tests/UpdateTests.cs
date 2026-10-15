@@ -2,6 +2,11 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Security.Cryptography;
 namespace Dafeiyu.Tests
 {
     public static class UpdateTests
@@ -32,6 +37,56 @@ namespace Dafeiyu.Tests
             using(var server=new ApiTests.Fixture(new byte[]{1,2,3,4},"application/octet-stream"))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
             {server.DelayBodyMilliseconds=1000;using(var cancel=new CancellationTokenSource()){var task=updater.DownloadAsync(new UpdateRelease{AssetName="cancel.zip",AssetUrl=server.Url+"/cancel",Size=4},root,false,null,cancel.Token);await server.HeadersSent;cancel.Cancel();try{await task;throw new Exception("cancel ignored");}catch(OperationCanceledException){}Check(!File.Exists(Path.Combine(root,"cancel.zip")) && Directory.GetFiles(root,"cancel.zip*.part").Length==0,"canceled download removes the partial file");}}
             using(var server=new ApiTests.Fixture("null"))using(var updater=new GitHubUpdates(new Uri(server.Url+"/"))){try{await updater.CheckAsync("https://github.com/test/pet",false,CancellationToken.None);throw new Exception("bad release accepted");}catch(ApiException){passed++;}}
+            await MirrorChecks();
+        }
+        static async Task MirrorChecks()
+        {
+            foreach(string value in new[]{"http://mirror.example","https://user:password@mirror.example","https://mirror.example/?token=secret","https://mirror.example/#fragment","https://mirror.example/https://github.com/o/r"})
+            {try{GitHubUpdates.MirrorPrefix(value);throw new Exception("invalid mirror accepted");}catch(InvalidOperationException){passed++;}}
+            var defaults=new PetSettings();Check(!defaults.UpdateUseMirror && !defaults.UpdateUseProxy,"network acceleration defaults to direct");
+            var cfg=defaults.Copy();cfg.UpdateUseMirror=true;cfg.UpdateMirrorAddress="https://mirror.example/prefix";cfg.UpdateUseProxy=true;cfg.Normalize();Check(!cfg.UpdateUseProxy && cfg.Copy().UpdateMirrorAddress==cfg.UpdateMirrorAddress && cfg.Copy().UpdateUseMirror,"mirror settings copy and enforce exclusive routing");
+            string folder=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mirror-tests",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);var store=new SettingsStore(Path.Combine(folder,"settings.json"));store.Save(cfg);Check(store.Load().UpdateUseMirror && store.Load().UpdateMirrorAddress==cfg.UpdateMirrorAddress,"mirror mode and custom address survive reload");
+            foreach(string mode in new[]{"success","failure","corrupt"})using(var handler=new MirrorHandler{Mode=mode})using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler))
+            {
+                var notices=new RouteCapture();updater.ConfigureMirror(true,"https://mirror.example/prefix",notices);
+                var release=await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,CancellationToken.None);
+                Check(handler.Requests[0].Host=="api.github.com","mirror keeps version and digest lookup on official API: "+mode);
+                string result=await updater.DownloadAsync(release,Path.Combine(folder,mode),false,null,CancellationToken.None);
+                Check(File.ReadAllBytes(result).SequenceEqual(MirrorHandler.Bytes) && !Directory.GetFiles(Path.GetDirectoryName(result),"*.part").Any(),"verified final bytes and no partial files: "+mode);
+                Check(handler.Requests[1].AbsoluteUri=="https://mirror.example/prefix/"+release.AssetUrl && !handler.SentAuthorization,"mirror prefixes canonical asset URL without credentials: "+mode);
+                Check(mode=="success"?handler.Requests.Count==2:handler.Requests.Last().Host=="github.com" && notices.Last.Contains("回退"),"mirror routing and fallback are visible: "+mode);
+                if(mode=="success"){await updater.TestMirrorAsync("https://mirror.example/prefix",CancellationToken.None);Check(handler.SawRange,"connectivity probe requests only a small range and validates executable header");}
+            }
+            using(var cancellation=new CancellationTokenSource())using(var handler=new MirrorHandler{Cancel=cancellation})using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler))
+            {
+                updater.ConfigureMirror(true,"https://mirror.example",null);var release=await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,CancellationToken.None);
+                try{await updater.DownloadAsync(release,Path.Combine(folder,"cancel"),false,null,cancellation.Token);throw new Exception("cancel ignored");}catch(OperationCanceledException){}
+                Check(handler.Requests.Count==2,"explicit cancellation never falls back or starts another download");
+            }
+            using(var handler=new MirrorHandler())using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler))
+            {
+                updater.ConfigureMirror(true,"https://mirror.example",null);var release=await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,CancellationToken.None);release.Digest=null;
+                try{await updater.DownloadAsync(release,folder,false,null,CancellationToken.None);throw new Exception("unsigned mirror download accepted");}catch(ApiException){}
+                Check(handler.Requests.Count==1,"mirror refuses a package without an official SHA-256 digest");
+            }
+        }
+        sealed class RouteCapture:IProgress<string>{public string Last;public void Report(string value){Last=value;}}
+        sealed class MirrorHandler:HttpMessageHandler
+        {
+            public static readonly byte[] Bytes={77,90,3,4};public string Mode="success";public CancellationTokenSource Cancel;public bool SentAuthorization,SawRange;public readonly List<Uri> Requests=new List<Uri>();
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
+            {
+                Requests.Add(request.RequestUri);SentAuthorization|=request.Headers.Authorization!=null;SawRange|=request.Headers.Range!=null;
+                if(request.RequestUri.Host=="api.github.com")
+                {
+                    string digest;using(var sha=SHA256.Create())digest=BitConverter.ToString(sha.ComputeHash(Bytes)).Replace("-","").ToLowerInvariant();
+                    string json="{\"tag_name\":\"v0.5.2\",\"html_url\":\"https://github.com/Eason4869/deskpet/releases/tag/v0.5.2\",\"assets\":[{\"name\":\"DeskPet-Setup-0.5.2.exe\",\"size\":4,\"digest\":\"sha256:"+digest+"\",\"browser_download_url\":\"https://github.com/Eason4869/deskpet/releases/download/v0.5.2/DeskPet-Setup-0.5.2.exe\"}]}";
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(json)});
+                }
+                bool mirrored=request.RequestUri.Host=="mirror.example";
+                if(mirrored && Cancel!=null){Cancel.Cancel();token.ThrowIfCancellationRequested();}
+                return Task.FromResult(new HttpResponseMessage(mirrored && Mode=="failure"?HttpStatusCode.ServiceUnavailable:HttpStatusCode.OK){Content=new ByteArrayContent(mirrored && Mode=="corrupt"?new byte[]{9,9,9,9}:Bytes)});
+            }
         }
         static void Check(bool result,string text){if(!result)throw new Exception(text);passed++;Console.WriteLine("PASS "+text);}
     }

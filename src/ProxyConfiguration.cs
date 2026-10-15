@@ -6,8 +6,9 @@ namespace Dafeiyu
 {
     public static class ProxyConfiguration
     {
-        public const string DefaultAddress="127.0.0.1:7890";
+        public const string DefaultAddress="http://127.0.0.1:7890";
         public static string Normalize(string address){return String.IsNullOrWhiteSpace(address)?DefaultAddress:address.Trim();}
+        public static string DisplayAddress(string address){string value=Normalize(address);return value.Contains("://")?value:"http://"+value;}
         public static Uri Endpoint(string address)
         {
             string value=Normalize(address);if(!value.Contains("://"))value="http://"+value;

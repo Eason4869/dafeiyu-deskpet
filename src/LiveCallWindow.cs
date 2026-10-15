@@ -96,7 +96,10 @@ namespace Dafeiyu
         {
             Point center=new Point(ActualWidth/2,ActualHeight/2);double size=Math.Min(ActualWidth,ActualHeight),radius=size*.30,gap=size*.07;
             drawing.DrawEllipse(Ui.Pale,null,center,radius,radius);drawing.DrawEllipse(null,outline,center,radius+gap*.45,radius+gap*.45);
-            for(int i=0;i<64;i++){double angle=i*Math.PI/32;double envelope=.35+.65*Math.Abs(Math.Sin(angle*3+level*5));double length=size*(.02+level*.08*envelope);
+            // Make ordinary speech visibly expressive without increasing audio gain.
+            // Reserve space for the stroke even at full volume in the compact view.
+            double response=Math.Pow(level,.6),maxLength=Math.Max(0,size/2-2.5-radius-gap);
+            for(int i=0;i<64;i++){double angle=i*Math.PI/32;double envelope=.35+.65*Math.Abs(Math.Sin(angle*3+level*5));double length=Math.Min(maxLength,size*(.02+response*.10*envelope));
                 drawing.DrawLine(i<32?blue:mint,new Point(center.X+Math.Cos(angle)*(radius+gap),center.Y+Math.Sin(angle)*(radius+gap)),new Point(center.X+Math.Cos(angle)*(radius+gap+length),center.Y+Math.Sin(angle)*(radius+gap+length)));}
         }
     }

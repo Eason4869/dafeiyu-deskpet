@@ -16,6 +16,9 @@ namespace Dafeiyu
                 name=="expand"?"M14,4 L20,4 20,10 M20,4 L11,13 M10,5 L5,5 5,19 19,19 19,14":
                 name=="send"?"M12,19 L12,5 M6,11 L12,5 18,11":
                 name=="back"?"M19,12 L5,12 M11,6 L5,12 11,18":
+                name=="edit"?"M4,20 L5,15 16,4 C18,2 22,6 20,8 L9,19 Z M14,6 L18,10":
+                name=="down"?"M6,9 L12,15 18,9":
+                name=="steer"?"M4,5 L4,10 Q4,13 8,13 L20,13 M15,8 L20,13 15,18":
                 name=="mic"?"M9,6 C9,2 15,2 15,6 L15,12 C15,16 9,16 9,12 Z M5,11 L5,12 C5,21 19,21 19,12 L19,11 M12,19 L12,22":
                 name=="trash"?"M4,6 L20,6 M9,6 L9,3 15,3 15,6 M6,6 L7,21 17,21 18,6 M10,10 L10,17 M14,10 L14,17":
                 name=="settings"?"M4,7 L20,7 M4,17 L20,17 M9,4 L9,10 M15,14 L15,20":
@@ -23,7 +26,10 @@ namespace Dafeiyu
             // Keep every glyph on the same 24-unit canvas. Stretching the path
             // itself made small shapes (especially stop/expand) look oversized.
             var canvas=new Canvas {Width=24,Height=24};
-            Geometry geometry=name=="stop"?new RectangleGeometry(new Rect(5,5,14,14),2,2):Geometry.Parse(shape);
+            // The arrowhead carries more visual weight than the stem. A small
+            // optical correction centers the send glyph in both circular buttons.
+            if(name=="send")canvas.RenderTransform=new TranslateTransform(0,1);
+            Geometry geometry=name=="stop" || name=="stop-solid"?new RectangleGeometry(new Rect(6,6,12,12),1.5,1.5):Geometry.Parse(shape);
             if(name=="stop")ink=Ui.Brush("#CC4055");
             if(name=="settings")
             {
@@ -40,7 +46,7 @@ namespace Dafeiyu
                 var group=new GeometryGroup();group.Children.Add(gear);group.Children.Add(new EllipseGeometry(new Point(12,12),3,3));geometry=group;
             }
             geometry.Freeze();
-            canvas.Children.Add(new Path {Data=geometry,Stroke=ink,Fill=name=="phone"?ink:null,StrokeThickness=1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,StrokeLineJoin=PenLineJoin.Round});
+            canvas.Children.Add(new Path {Data=geometry,Stroke=ink,Fill=name=="phone" || name=="stop-solid"?ink:null,StrokeThickness=1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,StrokeLineJoin=PenLineJoin.Round});
             return new Viewbox {Width=18,Height=18,Child=canvas};
         }
         public static Button Button(string icon,string label,bool primary=false)

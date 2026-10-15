@@ -22,6 +22,16 @@ namespace Dafeiyu
         }
     }
 
+    public sealed class HoverInteraction
+    {
+        public bool Active {get;private set;}
+        public bool Update(bool overBody,bool insideWindow,bool allowed)
+        {
+            if(!insideWindow){Active=false;return false;}
+            if(Active || !overBody)return false;
+            Active=true;return allowed;
+        }
+    }
     public sealed class GazeController
     {
         // Continuous clockwise direction, in sixteenths of a full turn.

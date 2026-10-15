@@ -46,12 +46,13 @@ namespace Dafeiyu.Tests
                 Check(Find<Button>(settings,"CheckUpdates").IsEnabled && Find<Button>(settings,"DownloadUpdate")==null,"checking updates starts the automatic download and apply flow");
                 Check(Find<CheckBox>(settings,"AutoUpdate").IsChecked==true,"startup automatic updates are enabled and configurable");
                 Check(All<TextBlock>(settings).Any(item=>item.Text.Contains("彧晟Eason")),"author attribution is present");
-                var network=Find<Expander>(settings,"UpdateNetwork");Check(network!=null && (string)network.Header=="网络代理" && !network.IsExpanded,"network proxy is collapsed by default");
+                var network=Find<Expander>(settings,"UpdateNetwork");Check(network!=null && (string)network.Header=="网络加速" && !network.IsExpanded,"network acceleration is collapsed by default");
                 Check(Find<Button>(settings,"CopyRepository")==null,"clickable repository has no redundant copy button");
                 Save(settings,Path.Combine(folder,"about-collapsed.png"));network.IsExpanded=true;Pump();
+                Find<RadioButton>(settings,"UpdateProxy").IsChecked=true;Pump();
                 var updateProxy=Find<TextBox>(settings,"UpdateProxyAddress");Check(updateProxy!=null && updateProxy.IsEnabled && updateProxy.Text=="127.0.0.1:7890","update proxy is editable and defaults to 127.0.0.1:7890");
-                updateProxy.Text="localhost:17894";updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Check(pet.Store.Load().UpdateProxyAddress=="localhost:17894","edited update proxy persists through the settings UI");
-                updateProxy.Text="socks5://localhost:17894";updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Check(pet.Store.Load().UpdateProxyAddress=="localhost:17894" && Find<TextBlock>(settings,"UpdateStatus").Text.Contains("HTTP 代理"),"invalid update proxy shows a clear error without overwriting the saved address");
+                updateProxy.Text="localhost:17894";updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Check(pet.Store.Load().UpdateProxyAddress=="http://localhost:17894","edited update proxy persists through the settings UI");
+                updateProxy.Text="socks5://localhost:17894";updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Check(pet.Store.Load().UpdateProxyAddress=="http://localhost:17894" && Find<TextBlock>(settings,"UpdateNetworkNotice").Text.Contains("HTTP 代理"),"invalid update proxy shows a clear error without overwriting the saved address");
                 updateProxy.Text=ProxyConfiguration.DefaultAddress;updateProxy.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));Save(settings,Path.Combine(folder,"about.png"));
                 Console.WriteLine("Release UI: "+passed+" passed, "+failed+" failed");return failed==0?0:1;
             }

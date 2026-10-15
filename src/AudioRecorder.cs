@@ -101,7 +101,7 @@ namespace Dafeiyu
                 var header = (WaveHeader)Marshal.PtrToStructure(buffer.Header, typeof(WaveHeader));
                 if ((header.Flags & 1) == 0 || buffer.Collected) break;
                 int count = streaming ? (int)header.BytesRecorded : Math.Min((int)header.BytesRecorded, MaximumPcm - (int)pcm.Length);
-                if (count > 0) { byte[] bytes = new byte[count]; Marshal.Copy(buffer.Data, bytes, 0, count); if(streaming) { if(!stopping && PcmAvailable!=null) PcmAvailable(bytes); } else pcm.Write(bytes, 0, bytes.Length); }
+                if (count > 0) { byte[] bytes = new byte[count]; Marshal.Copy(buffer.Data, bytes, 0, count); if(!streaming)pcm.Write(bytes,0,bytes.Length);if(!stopping && PcmAvailable!=null)PcmAvailable(bytes); }
                 buffer.Collected = true;
                 nextBufferIndex=(nextBufferIndex+1)%buffers.Count;
                 lock(deviceGate)

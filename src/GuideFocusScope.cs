@@ -11,9 +11,21 @@ namespace Dafeiyu
     {
         readonly List<Action> restore=new List<Action>();
         GuideFocusScope(){}
-        public static GuideFocusScope BlockChildren(UIElement root)
+        public static GuideFocusScope BlockMenuActions(System.Windows.Controls.ItemsControl menu)
         {
-            var scope=new GuideFocusScope();for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)scope.Apply(VisualTreeHelper.GetChild(root,i),new HashSet<DependencyObject>(),new HashSet<DependencyObject>());return scope;
+            var scope=new GuideFocusScope();scope.BlockMenuItems(menu);return scope;
+        }
+        void BlockMenuItems(System.Windows.Controls.ItemsControl menu)
+        {
+            // The popup's input surface must stay enabled: WPF owns mouse capture
+            // there, including the normal click-outside-to-dismiss behavior.
+            // Keep categories browsable and disable only actions during the lesson.
+            foreach(object entry in menu.Items)
+            {
+                var item=entry as System.Windows.Controls.MenuItem;if(item==null)continue;
+                if(item.HasItems)BlockMenuItems(item);
+                else Apply(item,new HashSet<DependencyObject>(),new HashSet<DependencyObject>());
+            }
         }
         public GuideFocusScope(UIElement root,params FrameworkElement[] allowed)
         {

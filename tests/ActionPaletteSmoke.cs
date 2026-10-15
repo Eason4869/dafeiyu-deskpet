@@ -31,7 +31,10 @@ namespace Dafeiyu.Tests
                 foreach(string skin in new[]{"e-bao","dafeiyu","marfu"})
                 {
                     Check(pet.SelectSkin(pet.Catalog.Find(skin)),"select "+skin);
-                    palette=new ActionPaletteWindow(pet);palette.ShowForPet();Pump();
+                    palette=new ActionPaletteWindow(pet);palette.SourceInitialized+=delegate{Check(palette.Opacity==0,"palette remains transparent until native placement completes");};palette.ShowForPet();Pump();
+                    var petBounds=DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);var paletteBounds=DesktopInterop.Bounds(new WindowInteropHelper(palette).Handle);var workArea=DesktopInterop.WorkArea(new WindowInteropHelper(pet).Handle);
+                    var expected=PetMath.ClampPosition(petBounds.Left+(petBounds.Width-paletteBounds.Width)/2,petBounds.Top-paletteBounds.Height-12,paletteBounds.Width,paletteBounds.Height,workArea);
+                    Check((paletteBounds.TopLeft-expected).Length<2 && palette.Opacity==1,"palette appears above pet and clamps only at screen edge");
                     Check(palette.IsVisible && palette.Owner==pet && !palette.ShowInTaskbar,"owned compact palette "+skin);
                     Check(Actions(palette).Count()==3,"three skill choices "+skin);
                     Check(All(palette).OfType<Image>().Count(i=>i.Source!=null)==3,"three actual pet previews "+skin);

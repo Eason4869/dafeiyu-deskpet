@@ -63,8 +63,8 @@ namespace Dafeiyu
         public void ShowForPet()
         {
             if(closed || pet.DialogueBusy)return;
-            if(!IsVisible)Show();
-            UpdateLayout();PlaceNearPet();Activate();
+            if(!IsVisible){Opacity=0;new WindowInteropHelper(this).EnsureHandle();UpdateLayout();PlaceNearPet();Show();}
+            UpdateLayout();PlaceNearPet();Opacity=1;Activate();
             if(actionButtons.Count>0)actionButtons[0].Focus();
             availability.Start();
         }
@@ -173,7 +173,11 @@ namespace Dafeiyu
         void PlaceNearPet()
         {
             var mine=new WindowInteropHelper(this).Handle;var owner=new WindowInteropHelper(pet).Handle;
-            if(mine!=IntPtr.Zero && owner!=IntPtr.Zero)DesktopInterop.PlaceBeside(mine,owner);
+            if(mine!=IntPtr.Zero && owner!=IntPtr.Zero)
+            {
+                Rect bounds=DesktopInterop.Bounds(mine),companion=DesktopInterop.Bounds(owner),area=DesktopInterop.WorkArea(owner);
+                DesktopInterop.Move(mine,PetMath.ClampPosition(companion.Left+(companion.Width-bounds.Width)/2,companion.Top-bounds.Height-12,bounds.Width,bounds.Height,area));
+            }
         }
     }
 }

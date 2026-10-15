@@ -76,6 +76,7 @@ namespace Dafeiyu.Tests
                 pet.ReturnHome();
                 Check(!State(pet).Active, "return home clears sleep");
                 ConversationPriority(pet);
+                NativeHover(pet);
                 NativeGestures(pet);
                 string legacy = Path.Combine(folder, "legacy.png");
                 using (var input = typeof(SpriteAtlas).Assembly.GetManifestResourceStream("Dafeiyu.Atlas")) using (var output = File.Create(legacy)) input.CopyTo(output);
@@ -100,6 +101,20 @@ namespace Dafeiyu.Tests
             }
         }
 
+        private static void NativeHover(PetWindow pet)
+        {
+            pet.SelectSkin(pet.Catalog.Find("e-bao"));pet.Settings.FollowCursor=true;pet.PlayAction("idle",0);
+            var bounds=DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);var area=DesktopInterop.WorkArea(new WindowInteropHelper(pet).Handle);
+            SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.15);
+            var point=OpaquePoint(pet,false);SetCursorPos((int)point.X,(int)point.Y);Pump(.15);
+            Check(pet.Animation.State=="jumping","native hover starts a single jump");Pump(1.1);
+            Check(pet.Animation.State=="idle" && !(bool)Field(pet,"gazeActive"),"stationary hover returns to idle without repeating or following gaze");
+            SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.15);
+            Check((bool)Field(pet,"gazeActive"),"leaving pet resumes configured gaze following");
+            pet.Settings.FollowCursor=false;pet.PlayAction("idle",0);point=OpaquePoint(pet,false);SetCursorPos((int)point.X,(int)point.Y);Pump(.15);
+            Check(pet.Animation.State=="jumping","reentering triggers jump even with gaze disabled");Pump(.8);
+            SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.1);pet.PlayAction("idle",0);
+        }
         private static void NativeGestures(PetWindow pet)
         {
             pet.PlayAction("idle", 0); Pump(.1);

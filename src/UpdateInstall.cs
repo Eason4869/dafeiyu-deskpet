@@ -39,6 +39,8 @@ namespace Dafeiyu
         static string Full(string path){if(String.IsNullOrWhiteSpace(path))throw new InvalidOperationException("更新路径无效。");return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);}
         static bool Same(string left,string right){return String.Equals(Full(left),Full(right),StringComparison.OrdinalIgnoreCase);}
         public static bool IsInstalledDirectory(string directory)
+        {return GetUninstallerPath(directory)!=null;}
+        public static string GetUninstallerPath(string directory)
         {
             foreach(var view in new[]{RegistryView.Registry64,RegistryView.Registry32})
                 using(var root=RegistryKey.OpenBaseKey(RegistryHive.CurrentUser,view))using(var key=root.OpenSubKey(UninstallKey,false))
@@ -54,11 +56,11 @@ namespace Dafeiyu
                         string uninstallDirectory=Path.GetDirectoryName(uninstaller);
                         if(Path.IsPathRooted(uninstaller) && !String.IsNullOrWhiteSpace(uninstallDirectory) && Same(value,directory) && Same(uninstallDirectory,directory) &&
                             Regex.IsMatch(Path.GetFileName(uninstaller),@"^unins[0-9]+\.exe$",RegexOptions.IgnoreCase) &&
-                            File.Exists(uninstaller) && File.Exists(Path.ChangeExtension(uninstaller,".dat")))return true;
+                            File.Exists(uninstaller) && File.Exists(Path.ChangeExtension(uninstaller,".dat")))return uninstaller;
                     }
                     catch(ArgumentException){}catch(NotSupportedException){}catch(PathTooLongException){}
                 }
-            return false;
+            return null;
         }
         public static string Hash(string path)
         {using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").ToLowerInvariant();}

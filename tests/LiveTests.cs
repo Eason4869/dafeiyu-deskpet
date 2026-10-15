@@ -27,6 +27,9 @@ namespace Dafeiyu.Tests
             socket.Push("{\"serverContent\":{\"turnComplete\":true}}");await Eventually(()=>reply.Length>0);Check(user=="你好" && reply=="在呢","Live turn commits input and output subtitles together");
             socket.Push("{\"serverContent\":{\"interrupted\":true}}");await Eventually(()=>speaker.Interruptions>0);Check(speaker.Interruptions==1,"barge-in clears queued playback");
             await session.StopAsync();Check(session.InputLevel==0 && session.OutputLevel==0,"stopping clears audio meters");Check(!session.IsActive && mic.Disposed && speaker.Disposed && socket.Disposed,"stop releases socket, microphone and speaker");session.Dispose();
+            socket=new FakeSocket();mic=new FakeMic();speaker=new FakeOutput();session=new GeminiLiveSession(()=>socket,()=>mic,()=>speaker);socket.Push("{\"setupComplete\":{}}");await session.StartAsync(cfg,"角色");
+            speaker.ReportFailure("Live 输出设备没有播放进展。");await Eventually(()=>!session.IsActive);
+            Check(session.Status=="Live 输出设备没有播放进展。" && mic.Disposed && speaker.Disposed,"asynchronous output failure ends the call with its device error and releases the microphone");session.Dispose();
             socket=new FakeSocket();mic=new FakeMic();speaker=new FakeOutput();session=new GeminiLiveSession(()=>socket,()=>mic,()=>speaker);socket.Push("{\"error\":{\"code\":401,\"message\":\"dummy-key provider private details\"}}");
             try{await session.StartAsync(cfg,"角色");throw new Exception("server failure accepted");}catch(ApiException e){Check(!e.Message.Contains("dummy-key") && !e.Message.Contains("private") && e.Message.Contains("Live"),"Live service error is actionable without leaking response details");}
             await session.StopAsync();Check(!mic.Started && socket.Disposed,"failed setup never starts a microphone");session.Dispose();
@@ -68,8 +71,8 @@ namespace Dafeiyu.Tests
         }
         sealed class FakeMic : IPcmMicrophone
         {public event Action<byte[]> PcmAvailable;public event Action<string> Failed;public bool Started,Disposed;public void Start(){Started=true;}public void Emit(byte[] bytes){PcmAvailable(bytes);}public void Dispose(){Disposed=true;}}
-        sealed class FakeOutput : ILiveAudioOutput
-        {public int Chunks,Rate,Volume,Interruptions;public bool Disposed;public void Enqueue(byte[] bytes,int rate){Chunks++;Rate=rate;}public void Interrupt(){Interruptions++;}public void SetVolume(int value){Volume=value;}public void Dispose(){Disposed=true;}}
+        sealed class FakeOutput : ILiveAudioOutput,ILiveAudioFailureSource
+        {public event Action<string> Failed;public void ReportFailure(string message){if(Failed!=null)Failed(message);}public int Chunks,Rate,Volume,Interruptions;public bool Disposed;public void Enqueue(byte[] bytes,int rate){Chunks++;Rate=rate;}public void Interrupt(){Interruptions++;}public void SetVolume(int value){Volume=value;}public void Dispose(){Disposed=true;}}
         sealed class NoopApi:IConversationApi
         {
             public Task<string> ChatAsync(ConnectionSettings c,IList<ChatMessage> messages,CancellationToken token){return Task.FromResult("unused");}

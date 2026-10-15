@@ -55,6 +55,11 @@ namespace Dafeiyu
             if(!choices.ContainsKey(key) && choices.Count>=8) {string remove=null;foreach(string item in choices.Keys){remove=item;break;}if(remove!=null)choices.Remove(remove);}
             if(value.Length<=512)choices[key]=value;
         }
+        public static void SaveVoiceChoice(PetSettings settings,string kind,string context,string voice)
+        {
+            PersonaVoiceProfile profile;if(!settings.VoiceProfiles.TryGetValue(settings.SkinId,out profile))settings.VoiceProfiles[settings.SkinId]=profile=new PersonaVoiceProfile();
+            StoreVoice(kind=="live"?profile.Live:profile.Speech,context,voice.Trim());
+        }
         public static string VoiceFor(PetSettings settings,string skinId,string kind,ConnectionSettings connection)
         {
             PersonaVoiceProfile profile;string value;

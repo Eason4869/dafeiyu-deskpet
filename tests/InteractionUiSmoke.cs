@@ -47,7 +47,8 @@ namespace Dafeiyu.Tests
                         pet.PlayInteraction(name);
                         var interaction = State(pet);
                         Check(interaction.Active && interaction.Name == name, id + " starts " + name);
-                        Check(Object.ReferenceEquals(((Image)pet.Content).Source, supplemental.GetFrame(interaction.Row, interaction.Frame)), id + " shows supplemental " + name);
+                        var clip=(MotionClip)Field(pet,"shownMotion");
+                        Check(clip!=null && Object.ReferenceEquals(((Image)pet.Content).Source,clip.Frame((int)Field(pet,"shownSample"))), id + " shows illustrated interaction " + name);
                         Check(((Image)pet.Content).RenderTransform.Value.IsIdentity, id + " supplemental pose has no inherited alignment or mirror");
                         Capture(pet, Path.Combine(folder, id + "-" + name + ".png"));
                     }
@@ -76,6 +77,7 @@ namespace Dafeiyu.Tests
                 pet.ReturnHome();
                 Check(!State(pet).Active, "return home clears sleep");
                 ConversationPriority(pet);
+                NativeHover(pet);
                 NativeGestures(pet);
                 string legacy = Path.Combine(folder, "legacy.png");
                 using (var input = typeof(SpriteAtlas).Assembly.GetManifestResourceStream("Dafeiyu.Atlas")) using (var output = File.Create(legacy)) input.CopyTo(output);
@@ -100,6 +102,20 @@ namespace Dafeiyu.Tests
             }
         }
 
+        private static void NativeHover(PetWindow pet)
+        {
+            pet.SelectSkin(pet.Catalog.Find("e-bao"));pet.Settings.FollowCursor=true;pet.PlayAction("idle",0);
+            var bounds=DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);var area=DesktopInterop.WorkArea(new WindowInteropHelper(pet).Handle);
+            SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.15);
+            var point=OpaquePoint(pet,false);SetCursorPos((int)point.X,(int)point.Y);Pump(.15);
+            Check(pet.Animation.State=="jumping","native hover starts a single jump");Pump(1.1);
+            Check(pet.Animation.State=="idle" && !(bool)Field(pet,"gazeActive"),"stationary hover returns to idle without repeating or following gaze");
+            SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.15);
+            Check((bool)Field(pet,"gazeActive"),"leaving pet resumes configured gaze following");
+            pet.Settings.FollowCursor=false;pet.PlayAction("idle",0);point=OpaquePoint(pet,false);SetCursorPos((int)point.X,(int)point.Y);Pump(.15);
+            Check(pet.Animation.State=="jumping","reentering triggers jump even with gaze disabled");Pump(.8);
+            SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.1);pet.PlayAction("idle",0);
+        }
         private static void NativeGestures(PetWindow pet)
         {
             pet.PlayAction("idle", 0); Pump(.1);
@@ -203,14 +219,16 @@ namespace Dafeiyu.Tests
             var atlas = (SpriteAtlas)Field(pet, "atlas");
             int row = (int)Field(pet, "shownRow"), col = (int)Field(pet, "shownCol");
             bool mirrored = (bool)Field(pet, "shownMirrored");
-            Point offset = SpriteAlignment.Offset(pet.Skin.Id, row, col, mirrored);
+            Point offset = (Point)Field(pet,"shownOffset");
+            var motion=(MotionClip)Field(pet,"shownMotion");int sample=(int)Field(pet,"shownSample");
+            int width=motion!=null?SmoothMotion.Width:atlas.CellWidth,height=motion!=null?SmoothMotion.Height:atlas.CellHeight;
             IntPtr handle = new WindowInteropHelper(pet).Handle; Rect bounds = DesktopInterop.Bounds(handle);
             bool checkedBody = false, checkedBackground = false;
             for (int y = 0; y < (int)bounds.Height; y += 3) for (int x = 0; x < (int)bounds.Width; x += 3)
             {
-                int sx = (int)Math.Floor(x / bounds.Width * atlas.CellWidth - offset.X), sy = (int)Math.Floor(y / bounds.Height * atlas.CellHeight - offset.Y);
-                if (mirrored) sx = atlas.CellWidth - 1 - sx;
-                bool expected = atlas.AlphaAt(row, col, sx, sy) >= 12;
+                int sx = (int)Math.Floor(x / bounds.Width * width - offset.X*width/480), sy = (int)Math.Floor(y / bounds.Height * height - offset.Y*height/520);
+                if (mirrored) sx = width - 1 - sx;
+                bool expected = (motion!=null?motion.AlphaAt(sample,sx,sy):atlas.AlphaAt(row, col, sx, sy)) >= 12;
                 if (expected ? checkedBody : checkedBackground) continue;
                 int px = (int)bounds.Left + x, py = (int)bounds.Top + y;
                 bool transparent = SendMessage(handle, 0x84, IntPtr.Zero, new IntPtr((py << 16) | (px & 0xffff))).ToInt32() == -1;
@@ -222,6 +240,14 @@ namespace Dafeiyu.Tests
 
         private static Point OpaquePoint(PetWindow pet, bool head)
         {
+            var motion=(MotionClip)Field(pet,"shownMotion");int sample=(int)Field(pet,"shownSample");
+            if(motion!=null) {
+                Rect b=DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);
+                for(int y=head?60:165;y<(head?130:225);y+=3)for(int x=85;x<155;x+=3) {
+                    bool solid=true;for(int dy=-5;dy<=5 && solid;dy+=2)for(int dx=-5;dx<=5;dx+=2)if(motion.AlphaAt(sample,x+dx,y+dy)<240)solid=false;
+                    if(solid)return new Point(b.Left+x/240d*b.Width,b.Top+y/260d*b.Height);
+                }
+            }
             var atlas = (SpriteAtlas)Field(pet, "atlas");
             int row = (int)Field(pet, "shownRow"), col = (int)Field(pet, "shownCol");
             Rect bounds = DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);

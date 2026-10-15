@@ -23,7 +23,9 @@ namespace Dafeiyu.Tests
             {
                 var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                 string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ui-smoke"); Directory.CreateDirectory(folder);
-                var settings = new PetSettings { FollowCursor=false };
+                // Foreground/fullscreen policy has its own tests; a lock screen
+                // must not hide the animation and settings fixture mid-check.
+                var settings = new PetSettings { FollowCursor=false, HideOnFullscreen=false };
                 var store = new SettingsStore(Path.Combine(folder,"settings.json"));
                 var atlas = new SpriteAtlas();
                 Require(atlas.CellWidth == 480 && atlas.CellHeight == 520,"HD source frames are 480 x 520");
@@ -45,7 +47,8 @@ namespace Dafeiyu.Tests
                 pet.RestorePet(); Pump(.2); Require(pet.IsVisible,"tray restore works");
                 pet.ShowSettings(); Pump(.3);
                 var preferences=app.Windows.OfType<SettingsWindow>().Single();
-                preferences.Width=700;preferences.Height=430;preferences.SelectPage(6);Pump(.15);var nav=Find<ListBox>(preferences,"SettingsNavigation");nav.ScrollIntoView(nav.Items[4]);Pump(.1);var about=(ListBoxItem)nav.Items[4];Rect navBounds=about.TransformToAncestor(preferences).TransformBounds(new Rect(about.RenderSize));Require(navBounds.Bottom<=preferences.ActualHeight,"About navigation remains reachable at minimum window height");preferences.Width=850;preferences.Height=790;preferences.SelectPage(0);Pump(.1);
+                preferences.Width=700;preferences.Height=430;preferences.SelectPage(6);Pump(.15);var nav=Find<ListBox>(preferences,"SettingsNavigation");nav.ScrollIntoView(nav.Items[3]);Pump(.1);var about=(ListBoxItem)nav.Items[3];Rect navBounds=about.TransformToAncestor(preferences).TransformBounds(new Rect(about.RenderSize));Require(navBounds.Bottom<=preferences.ActualHeight,"About navigation remains reachable at minimum window height");preferences.Width=850;preferences.Height=790;preferences.SelectPage(0);Pump(.1);
+                preferences.SelectCompanionSection(1);Pump(.1);
                 var slider=Find<Slider>(preferences,"SizeSlider");
                 Require(slider != null,"settings contains size control");
                 slider.Value=1.5; Pump(.2);
@@ -53,12 +56,14 @@ namespace Dafeiyu.Tests
                 var follow=Find<CheckBox>(preferences,"FollowCursor"); follow.IsChecked=true; Pump(.1);
                 Require(pet.Settings.FollowCursor && store.Load().FollowCursor,"cursor setting applies and persists");
                 follow.IsChecked=false;
-                Find<Button>(preferences,"ReturnHome").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(.2);
+                Require(Find<Button>(preferences,"ReturnHome")==null,"companion settings no longer duplicate tray actions");
+                pet.ReturnHome(); Pump(.2);
                 IntPtr handle=new WindowInteropHelper(pet).Handle;
                 Require(DesktopInterop.WorkArea(handle).Contains(DesktopInterop.Bounds(handle)),"return home keeps pet inside screen work area");
                 Rect nativeBounds=DesktopInterop.Bounds(handle);
                 Require(SendMessage(handle,0x84,IntPtr.Zero,ScreenPoint(nativeBounds.Left+2,nativeBounds.Top+2)).ToInt32()==-1,"transparent pixels pass native hit testing");
                 Save(preferences,Path.Combine(folder,"settings-window.png"));
+                preferences.SelectCompanionSection(0);Pump(.1);
                 var picker=Find<ComboBox>(preferences,"SkinPicker"); picker.SelectedItem=pet.Catalog.Find("e-bao"); Pump(.3);
                 Require(pet.Skin.Id=="e-bao" && store.Load().SkinId=="e-bao","E包 switches through the settings control and persists");
                 Require(pet.Catalog.Find("e-bao").Load().FrameMultiplier==1,"E包 uses original real-frame artwork");

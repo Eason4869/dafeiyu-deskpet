@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -50,6 +50,23 @@ namespace Dafeiyu
                     if(!visible || !transparent) throw new InvalidOperationException("每个动作帧应有人物和透明背景。");
                 }
             }
+        }
+        internal SpriteAtlas(string folder,SkinManifest manifest)
+        {
+            CellWidth=480;CellHeight=520;FrameMultiplier=1;HasGaze=true;
+            var image=IllustratedPack.ReadImage(IllustratedPack.AssetPath(folder,manifest.Gaze.File),1920,2080);
+            for(int row=0;row<11;row++) { int count=row<9?AnimationPlayer.Counts[row]:8;frames[row]=new BitmapSource[count];alpha[row]=new byte[count][]; }
+            for(int i=0;i<16;i++) {
+                var crop=new CroppedBitmap(image,new Int32Rect(i%4*480,i/4*520,480,520));
+                var bgra=new FormatConvertedBitmap(crop,PixelFormats.Bgra32,null,0);
+                byte[] pixels=new byte[480*520*4];bgra.CopyPixels(pixels,480*4,0);
+                int row=9+i/8,col=i%8;
+                frames[row][col]=BitmapSource.Create(480,520,96,96,PixelFormats.Bgra32,null,pixels,480*4);frames[row][col].Freeze();
+                alpha[row][col]=new byte[480*520];for(int p=0;p<alpha[row][col].Length;p++)alpha[row][col][p]=pixels[p*4+3];
+            }
+            // Legacy callers still have a valid fallback; v2 action rendering always
+            // uses the independent manifest clips, never these placeholder cells.
+            for(int row=0;row<9;row++)for(int col=0;col<frames[row].Length;col++){frames[row][col]=frames[10][0];alpha[row][col]=alpha[10][0];}
         }
         public static void ValidateDimensions(int width, int height)
         {

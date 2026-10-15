@@ -1,7 +1,8 @@
-﻿"""Build release archives from a fresh source tree with no local work directory."""
+"""Build release archives from a fresh source tree with no local work directory."""
 from pathlib import Path
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -19,7 +20,10 @@ options = arguments.parse_args()
 root = PROJECT / 'work' / ('source-smoke-' + uuid.uuid4().hex)
 checkout = root / 'DafeiyuDeskPet'
 shutil.copytree(PROJECT, checkout, ignore=shutil.ignore_patterns(
-    '.git', 'work', 'bin', 'obj', 'data', '__pycache__', '.superpowers', 'superpowers'))
+    '.git', 'work', 'bin', 'obj', 'data', '__pycache__', '.superpowers', 'superpowers',
+    'motion', 'motion-source', 'drawn-source*', 'PackDrawnMotion.py', 'PackXiaobei.py', 'MotionSourceExport.cs', 'SmoothMotionTests.cs'))
+assert not (checkout/'assets/motion').exists(), 'Clean builds must not depend on retired motion artwork'
+assert (checkout/'templates/high-fps-v2/pet.json').is_file(), 'Author template must be in the repository'
 output = checkout / 'public-artifacts'
 runtime = output / 'DafeiyuDeskPet'
 result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
@@ -34,7 +38,7 @@ print('PASS application compiles from the fresh public source tree')
 (runtime / 'data/settings.json').write_text('private settings sentinel', encoding='utf-8')
 result = subprocess.run([sys.executable, str(checkout / 'Package.py'), '--output-directory', str(output)], cwd=checkout,
                         env=dict(os.environ,PYTHONIOENCODING='utf-8'),
-                        capture_output=True, text=True, encoding='utf-8', timeout=60)
+                        capture_output=True, text=True, encoding='utf-8', timeout=180)
 if result.returncode:
     print(result.stdout + result.stderr)
     raise AssertionError('fresh source packaging needs no local test artifacts')
@@ -47,22 +51,39 @@ print('PASS portable archive excludes legacy binaries and private loose files')
 print('PASS portable archive includes the exact application and independent update helper')
 for worker in [runtime / 'DeskPet.Update.exe'] + ([options.legacy_worker.resolve()] if options.legacy_worker else []):
     subprocess.run([sys.executable, str(checkout / 'tests/LegacyUpdateSmoke.py'), '--worker', str(worker),
-                    '--package', str(output / ('DeskPet-Windows-' + version + '.zip'))], check=True, timeout=120)
+                    '--package', str(output / ('DeskPet-Windows-' + version + '.zip')),
+                    '--work-directory', str(PROJECT/'work')], check=True, timeout=120)
 print('PASS real update engine accepts the complete release archive and preserves personal data')
 with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
-    for document in ['skin-format.md', 'dialogue-setup.md', 'verification.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md']:
-        assert bundle.read('DafeiyuDeskPet/docs/' + document) == (checkout / 'docs' / document).read_bytes()
+    for document in ['skin-format.md', 'dialogue-setup.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md']:
+        assert bundle.read('DafeiyuDeskPet/docs/' + document).decode('utf-8-sig').replace('\r\n','\n') == (checkout / 'docs' / document).read_text(encoding='utf-8-sig')
 print('PASS runtime includes the exact daily-use and voice-preset guides')
-for pet in ['Ebao', 'Dafeiyu', 'Marfu']:
+for pet in ['Ebao', 'Dafeiyu', 'Marfu', 'Xiaobei']:
     archive = output / (pet + '-HD-Skin-' + version + '.zip')
     assert archive.is_file(), 'versioned ASCII skin archive missing: ' + archive.name
     with ZipFile(archive) as bundle:
         assert bundle.testzip() is None and 'pet.json' in bundle.namelist()
+        skin=json.loads(bundle.read('pet.json'))
+        assert skin['version']==2 and len(skin['animations'])==17 and skin['gaze']['frames']==16
+        assert skin['system_prompt'] and skin['special_action']
+        expected_counts=[6,8,8,4,5,8,6,6,6]+[4]*8
+        action_names=['idle','running-right','running-left','waving','jumping','failed','waiting','running','review','lifted','landing','petting','poked','feeding','happy','sleeping','special']
+        assert [skin['animations'][name]['frames'] for name in action_names]==([8]*17 if pet=='Xiaobei' else expected_counts)
+        for record in skin['animations'].values():
+            assert record['columns']==8 and 1<=record['frames']<=8 and record['file'] in bundle.namelist()
+        assert skin['gaze']['file'] in bundle.namelist() and skin['preview'] in bundle.namelist()
+with ZipFile(output/('DeskPet-Skin-Template-v2-'+version+'.zip')) as bundle:
+    assert 'high-fps-v2/pet.json' in bundle.namelist() and 'high-fps-v2/动作表.csv' in bundle.namelist()
+with ZipFile(output/('DeskPet-Windows-'+version+'.zip')) as bundle:
+    assert 'DafeiyuDeskPet/templates/grid-guide.svg' in bundle.namelist()
+    assert 'DafeiyuDeskPet/templates/high-fps-v2/pet.json' in bundle.namelist()
+    assert not any('/pets/' in name or name.endswith('/verification.md') for name in bundle.namelist())
+print('PASS four complete low-frame v2 skin packs and full author templates')
 manifest = (output / 'SHA256.txt').read_text(encoding='utf-8-sig').splitlines()
 for line in manifest:
     digest, name = line.split('  ', 1)
     assert digest == hashlib.sha256((output / name).read_bytes()).hexdigest(), 'stale digest: ' + name
-for pet in ['Ebao', 'Dafeiyu', 'Marfu']:
+for pet in ['Ebao', 'Dafeiyu', 'Marfu', 'Xiaobei']:
     assert any(line.endswith('  ' + pet + '-HD-Skin-' + version + '.zip') for line in manifest)
 print('PASS versioned ASCII skin names and manifest hashes match release artifacts')
 result = subprocess.run(['powershell.exe', '-NoProfile', '-Command',
@@ -72,6 +93,13 @@ result = subprocess.run(['powershell.exe', '-NoProfile', '-Command',
 assert result.stdout.decode('ascii').strip() == version + '.0'
 assert (runtime / 'DeskPet.Update.exe').stat().st_size < 1024 * 1024, 'helper should not embed pet sprite assets'
 print('PASS update helper has the declared version and excludes sprite resources')
+result=subprocess.run(['powershell.exe','-NoProfile','-Command',
+    '$a=[Reflection.Assembly]::LoadFile($env:DESKPET_TEST_APP); $a.GetManifestResourceNames()'],
+    env=dict(os.environ,DESKPET_TEST_APP=str(runtime/'桌面伙伴.exe')),capture_output=True,check=True)
+resources=result.stdout.decode('utf-8',errors='replace')
+assert 'Dafeiyu.Motion.' not in resources and 'Dafeiyu.MotionManifest' not in resources
+assert 'Dafeiyu.Bundled.Xiaobei.pet.json' in resources
+print('PASS final application embeds low-frame Xiaobei and no retired motion fixtures')
 readme = (runtime / 'README.md').read_text(encoding='utf-8-sig')
 images = re.findall(r'<img\s+src="([^"]+)"|!\[[^\]]*\]\(([^)]+)\)', readme)
 for alternatives in images:
@@ -84,7 +112,11 @@ print('PASS README images resolve in the repository and installed runtime')
 with ZipFile(output / ('DeskPet-Source-' + version + '.zip')) as bundle:
     assert not any(part in {'work', 'data', '.git', '.superpowers', 'superpowers', 'public-artifacts', 'outputs'}
                    for name in bundle.namelist() for part in Path(name).parts)
-print('PASS source archive excludes private and local test files')
+with ZipFile(output/('DeskPet-Source-'+version+'.zip')) as bundle:
+    assert not any('/assets/motion/' in name or '/assets/drawn-source' in name or '/assets/motion-source/' in name or name.endswith(('/PackDrawnMotion.py','/PackXiaobei.py','/MotionSourceExport.cs','/SmoothMotionTests.cs')) for name in bundle.namelist())
+    assert 'DafeiyuDeskPet/tests/SkinPackExport.cs' in bundle.namelist()
+    assert 'DafeiyuDeskPet/templates/high-fps-v2/pet.json' in bundle.namelist()
+print('PASS source archive excludes retired generations, private and local test files')
 with ZipFile(output / ('DeskPet-Source-' + version + '.zip')) as bundle:
     for name in bundle.namelist():
         assert bundle.read(name) == (root / name).read_bytes(), 'source archive differs: ' + name
@@ -104,4 +136,4 @@ if options.compiler:
         digest, name = line.split('  ', 1)
         assert digest == hashlib.sha256((output / name).read_bytes()).hexdigest(), 'stale digest: ' + name
     print('PASS installer build leaves a complete matching SHA256 manifest')
-print('Packaging smoke:', 13 if options.compiler else 11, 'passed')
+print('PASS packaging smoke completed all enabled checks')

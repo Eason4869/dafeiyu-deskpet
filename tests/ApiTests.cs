@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -15,6 +15,27 @@ namespace Dafeiyu.Tests
         private static int passed, failed;
         public static int Main()
         {
+            Run("model listing uses GET without requiring a selected model and preserves endpoint prefixes",async delegate {
+                using(var server=new Fixture("{\"data\":[{\"id\":\" z-model \"},{\"id\":\"a-model\"},{\"id\":\"a-model\"},{\"id\":\"\"},{\"id\":12}]}"))using(var api=new ApiClient())
+                {var cfg=Connection(server.Url+"/v1/chat/completions","");var result=await api.ListModelsAsync(cfg,CancellationToken.None);await server.Done;Equal("GET /v1/models HTTP/1.1",server.Headers.Split(new[]{"\r\n"},StringSplitOptions.None)[0]);Equal("Bearer dummy-key",server.Authorization);Equal("",server.Body);Equal(2,result.Count);Equal("a-model",result[0]);Equal("z-model",result[1]);Equal("",cfg.Model);}
+            });
+            Run("Anthropic model catalog uses its own authentication and version headers",async delegate {
+                using(var server=new Fixture("{\"data\":[{\"id\":\"claude-test\"}],\"has_more\":false}"))using(var api=new ApiClient())
+                {var cfg=Connection(server.Url+"/v1/messages","");cfg.Protocol="anthropic";var result=await api.ListModelsAsync(cfg,CancellationToken.None);await server.Done;Equal("claude-test",result[0]);Assert(server.Headers.Contains("x-api-key: dummy-key") && server.Headers.Contains("anthropic-version: 2023-06-01") && server.Authorization==null,"wrong model catalog authentication");}
+            });
+            Run("model catalog errors do not leak server response details",async delegate {
+                using(var server=new Fixture("private provider message and dummy-key",401))using(var api=new ApiClient())
+                {try{await api.ListModelsAsync(Connection(server.Url,""),CancellationToken.None);throw new Exception("unauthorized model catalog accepted");}catch(ApiException e){Assert(e.Message.Contains("401") && !e.Message.Contains("private") && !e.Message.Contains("dummy-key"),"unsafe model catalog error");}}
+            });
+            Run("incompatible model catalog and invalid pagination are rejected safely",async delegate {
+                foreach(string json in new[]{"{\"private\":\"dummy-key\"}","{\"data\":[],\"has_more\":true}"})
+                using(var server=new Fixture(json))using(var api=new ApiClient())
+                {try{await api.ListModelsAsync(Connection(server.Url,""),CancellationToken.None);throw new Exception("malformed catalog accepted");}catch(ApiException e){Assert(!e.Message.Contains("dummy-key") && e.Message.Contains("模型列表"),"unsafe malformed catalog error");}}
+            });
+            Run("model catalog fetch is cancellable while waiting for the response",async delegate {
+                using(var server=new Fixture("{\"data\":[]}"))using(var api=new ApiClient())using(var cancel=new CancellationTokenSource(100))
+                {server.DelayMilliseconds=2000;try{await api.ListModelsAsync(Connection(server.Url,""),cancel.Token);throw new Exception("model catalog cancellation ignored");}catch(OperationCanceledException){}}
+            });
             Run("proxy toggle actually routes HTTP through the selected local proxy",async delegate {
                 using(var proxy=new Fixture("",502))using(var api=new ApiClient(TimeSpan.FromSeconds(5)))
                 {var cfg=Connection("https://proxy-test.invalid/v1","chat");cfg.UseProxy=true;cfg.ProxyAddress=proxy.Url;try{await api.ChatAsync(cfg,Messages(),CancellationToken.None);throw new Exception("fixture's rejected CONNECT accepted");}catch(ApiException){}await proxy.Done;Equal("proxy-test.invalid:443",proxy.Path);Assert(proxy.Headers.StartsWith("CONNECT ") && proxy.Authorization==null,"HTTPS did not reach the proxy tunnel or leaked auth before TLS");}

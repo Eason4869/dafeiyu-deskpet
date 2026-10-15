@@ -105,7 +105,7 @@ namespace Dafeiyu.Tests
                 foreach(string id in new[]{"e-bao","dafeiyu","marfu"})
                 {
                     settings.SelectPage(0);Pump();((ComboBox)settings.FindControl("SkinPicker")).SelectedItem=pet.Catalog.Find(id);Pump();Equal(id,pet.Skin.Id);
-                    settings.SelectAiSection(2);Pump();((CheckBox)settings.FindControl("UseCloudVoice")).IsChecked=true;((CheckBox)settings.FindControl("ReuseTextForSpeech")).IsChecked=false;
+                    settings.SelectAiSection(2);Pump();((CheckBox)settings.FindControl("UseCloudVoice")).IsChecked=true;
                     ((ComboBox)settings.FindControl("SpeechPreset")).SelectedIndex=3;Pump();
                     var speech=(ComboBox)settings.FindControl("SpeechVoice");Assert(speech.Items.Cast<VoicePreset>().Any(v=>v.Id=="alloy"),"OpenAI catalog missing");
                     speech.SelectedItem=speech.Items.Cast<VoicePreset>().First(v=>v.Id=="alloy");Pump();Equal("alloy",Editable(speech).Text);

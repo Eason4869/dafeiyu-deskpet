@@ -16,7 +16,8 @@ AppPublisher=彧晟Eason
 AppPublisherURL={#RepositoryUrl}
 AppSupportURL={#RepositoryUrl}/issues
 AppUpdatesURL={#RepositoryUrl}/releases/latest
-DefaultDirName={localappdata}\Programs\DafeiyuDeskPet
+DefaultDirName={localappdata}\Programs\EbaoDeskPet
+UsePreviousAppDir=yes
 DefaultGroupName=桌面伙伴
 UsePreviousGroup=no
 DisableProgramGroupPage=auto
@@ -55,9 +56,20 @@ Source: "{#RuntimeDir}\DeskPet.Update.exe"; DestDir: "{app}"; Flags: ignoreversi
 Source: "{#RuntimeDir}\DeskPet.Update.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RuntimeDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RuntimeDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#RuntimeDir}\templates\*"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#RuntimeDir}\previews\*"; DestDir: "{app}\previews"; Excludes: "*.gif"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#RuntimeDir}\docs\skin-format.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\dialogue-setup.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\installation.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\daily-use.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\voice-presets.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\sources.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\templates\*.png"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\templates\*.json"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\templates\*.md"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\templates\*.svg"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\previews\*.png"; DestDir: "{app}\previews"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\previews\*.jpg"; DestDir: "{app}\previews"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\previews\*.webp"; DestDir: "{app}\previews"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#RuntimeDir}\previews\*.svg"; DestDir: "{app}\previews"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [InstallDelete]
 Type: files; Name: "{app}\大肥鱼桌宠.exe"

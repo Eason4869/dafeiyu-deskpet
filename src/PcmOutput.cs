@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 namespace Dafeiyu
@@ -10,12 +11,22 @@ namespace Dafeiyu
         void Interrupt();
         void SetVolume(int value);
     }
+    public interface ILiveAudioFailureSource
+    {
+        event Action<string> Failed;
+    }
     // WinMM accepts raw PCM directly; queued headers remain pinned until WHDR_DONE.
-    public sealed class PcmOutput : ILiveAudioOutput, IAudioLevelSource
+    public sealed class PcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveAudioFailureSource
     {
         readonly object gate=new object(); readonly Queue<Buffer> buffers=new Queue<Buffer>();
         readonly AutoResetEvent ready=new AutoResetEvent(false); readonly Thread worker;
+        readonly Stopwatch progress=new Stopwatch();
+        // Live can generate faster than real-time playback. Bound memory separately
+        // from the time the output device has actually stopped making progress.
+        const int MaximumBufferedSeconds=120,StallSeconds=10;
         IntPtr device; int rate,volume=50,queued; bool disposed; volatile bool stopping;
+        string failure;
+        public event Action<string> Failed;
         public PcmOutput(){worker=new Thread(Drain){IsBackground=true,Name="DeskPet Live playback"};worker.Start();}
         public double AudioLevel {get{lock(gate){return disposed || buffers.Count==0?0:buffers.Peek().Level*volume/100.0;}}}
         public void Enqueue(byte[] bytes,int sampleRate)
@@ -24,7 +35,8 @@ namespace Dafeiyu
             lock(gate)
             {
                 if(disposed)return; Collect();
-                if(bytes.Length+queued>sampleRate*2*10) throw new ApiException("Live 播放缓冲超过 10 秒，请重新连接或检查音频输出。");
+                if(failure!=null)throw new InvalidOperationException(failure);
+                if((long)bytes.Length+queued>sampleRate*2*MaximumBufferedSeconds) throw new ApiException("Live 回复音频积压过多，请打断当前回复后重新连接。");
                 if(device!=IntPtr.Zero && sampleRate!=rate)
                 { if(buffers.Count>0) throw new ApiException("Live 音频采样率在播放中发生变化，请重连。"); Check(waveOutClose(device)); device=IntPtr.Zero; }
                 if(device==IntPtr.Zero)
@@ -33,22 +45,48 @@ namespace Dafeiyu
                     uint result=waveOutOpen(out device,UInt32.MaxValue,ref format,ready.SafeWaitHandle.DangerousGetHandle(),IntPtr.Zero,0x50000);
                     if(result!=0){device=IntPtr.Zero;throw new InvalidOperationException("Live 无法打开默认音频输出设备。");}rate=sampleRate;ApplyVolume();
                 }
-                var buffer=new Buffer(bytes);
-                try {Check(waveOutPrepareHeader(device,buffer.Header,HeaderSize));buffer.Prepared=true;Check(waveOutWrite(device,buffer.Header,HeaderSize));buffers.Enqueue(buffer);queued+=bytes.Length;}
-                catch {if(buffer.Prepared)waveOutUnprepareHeader(device,buffer.Header,HeaderSize);buffer.Dispose();throw;}
+                if(buffers.Count==0)progress.Restart();
+                // Short headers let completion measure real playback progress even
+                // when the service sends a whole long reply in a single message.
+                double level=Dafeiyu.AudioLevel.Pcm16(bytes);
+                for(int offset=0;offset<bytes.Length;)
+                {
+                    int length=Math.Min(sampleRate*2/5,bytes.Length-offset);
+                    var buffer=new Buffer(bytes,offset,length,level);
+                    try {Check(waveOutPrepareHeader(device,buffer.Header,HeaderSize));buffer.Prepared=true;Check(waveOutWrite(device,buffer.Header,HeaderSize));buffers.Enqueue(buffer);queued+=length;}
+                    catch {if(buffer.Prepared)waveOutUnprepareHeader(device,buffer.Header,HeaderSize);buffer.Dispose();throw;}
+                    offset+=length;
+                }
             }
         }
         public void SetVolume(int value){lock(gate){volume=Math.Max(0,Math.Min(100,value));if(device!=IntPtr.Zero)ApplyVolume();}}
         void ApplyVolume(){uint channel=(uint)Math.Round(volume*65535.0/100);waveOutSetVolume(device,channel|(channel<<16));}
-        void Drain(){while(!stopping){ready.WaitOne(100);lock(gate)if(device!=IntPtr.Zero)Collect();}}
+        void Drain()
+        {
+            while(!stopping)
+            {
+                ready.WaitOne(100);string stalled=null;
+                lock(gate)
+                {
+                    if(stopping)return;
+                    if(device!=IntPtr.Zero)Collect();
+                    if(buffers.Count>0 && progress.Elapsed.TotalSeconds>=StallSeconds)
+                        stalled=failure="Live 音频输出已连续 10 秒没有播放进展，请检查输出设备后重新连接。";
+                }
+                // A failure handler can stop the session and dispose this output;
+                // notify off the playback worker so Dispose never joins itself.
+                if(stalled!=null){var handler=Failed;if(handler!=null)ThreadPool.QueueUserWorkItem(delegate{handler(stalled);});return;}
+            }
+        }
         void Collect()
         {
             while(buffers.Count>0)
             {
                 Buffer buffer=buffers.Peek();var header=(WaveHeader)Marshal.PtrToStructure(buffer.Header,typeof(WaveHeader));if((header.Flags&1)==0)break;
                 if(waveOutUnprepareHeader(device,buffer.Header,HeaderSize)!=0)break;
-                buffers.Dequeue();queued-=buffer.Length;buffer.Dispose();
+                buffers.Dequeue();queued-=buffer.Length;buffer.Dispose();progress.Restart();
             }
+            if(buffers.Count==0)progress.Reset();
         }
         public void Interrupt(){lock(gate){if(device!=IntPtr.Zero){waveOutReset(device);Collect();}}}
         public void Dispose()
@@ -61,7 +99,7 @@ namespace Dafeiyu
         sealed class Buffer : IDisposable
         {
             public IntPtr Data,Header;public int Length;public bool Prepared;public readonly double Level;
-            public Buffer(byte[] bytes){Level=Dafeiyu.AudioLevel.Pcm16(bytes);Length=bytes.Length;Data=Marshal.AllocHGlobal(Length);Header=Marshal.AllocHGlobal((int)HeaderSize);Marshal.Copy(bytes,0,Data,Length);Marshal.StructureToPtr(new WaveHeader{Data=Data,BufferLength=(uint)Length},Header,false);}
+            public Buffer(byte[] bytes,int offset,int length,double level){Level=level;Length=length;Data=Marshal.AllocHGlobal(Length);Header=Marshal.AllocHGlobal((int)HeaderSize);Marshal.Copy(bytes,offset,Data,Length);Marshal.StructureToPtr(new WaveHeader{Data=Data,BufferLength=(uint)Length},Header,false);}
             public void Dispose(){Marshal.FreeHGlobal(Header);Marshal.FreeHGlobal(Data);}
         }
         [StructLayout(LayoutKind.Sequential,Pack=2)] struct WaveFormat{public ushort FormatTag,Channels;public uint SamplesPerSec,AvgBytesPerSec;public ushort BlockAlign,BitsPerSample,Size;}

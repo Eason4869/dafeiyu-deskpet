@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -22,6 +22,16 @@ namespace Dafeiyu
         }
     }
 
+    public sealed class HoverInteraction
+    {
+        public bool Active {get;private set;}
+        public bool Update(bool overBody,bool insideWindow,bool allowed)
+        {
+            if(!insideWindow){Active=false;return false;}
+            if(Active || !overBody)return false;
+            Active=true;return allowed;
+        }
+    }
     public sealed class GazeController
     {
         // Continuous clockwise direction, in sixteenths of a full turn.
@@ -45,22 +55,26 @@ namespace Dafeiyu
         private static readonly double[] Periods = { .17, .11, .11, .16, .13, .16, .19, .18, .18 };
         private double elapsed;
         private double duration;
+        public double Elapsed {get{return elapsed;}}
         private readonly double runningFramePeriod;
+        private readonly double[] naturalDurations;
         public int FrameMultiplier { get; private set; }
         public string State { get; private set; }
         public int Frame { get; private set; }
         public int Row { get { return Array.IndexOf(States, State); } }
-        public AnimationPlayer(int frameMultiplier=1,double runningFramePeriod=.11)
+        public AnimationPlayer(int frameMultiplier=1,double runningFramePeriod=.11,double[] naturalDurations=null)
         {
             if(frameMultiplier!=1 && frameMultiplier!=8) throw new ArgumentOutOfRangeException("frameMultiplier");
             if(runningFramePeriod<=0 || Double.IsNaN(runningFramePeriod) || Double.IsInfinity(runningFramePeriod)) throw new ArgumentOutOfRangeException("runningFramePeriod");
             this.runningFramePeriod=runningFramePeriod;
+            if(naturalDurations!=null && (naturalDurations.Length!=States.Length || naturalDurations.Any(v=>v<0 || Double.IsNaN(v) || Double.IsInfinity(v))))throw new ArgumentException("Invalid action durations.");
+            this.naturalDurations=naturalDurations==null?null:(double[])naturalDurations.Clone();
             FrameMultiplier=frameMultiplier; Play("idle", 0);
         }
         public void Play(string state, double seconds)
         {
             if (Array.IndexOf(States, state) < 0) throw new ArgumentException("Unknown animation state.");
-            State = state; Frame = 0; elapsed = 0; duration = Math.Max(0, seconds);
+            State = state; Frame = 0; elapsed = 0; duration = naturalDurations!=null && naturalDurations[Row]>0 ? naturalDurations[Row] : Math.Max(0, seconds);
         }
         public void Advance(double seconds)
         {
@@ -68,7 +82,11 @@ namespace Dafeiyu
             elapsed += seconds;
             if (duration > 0 && elapsed >= duration) { Play("idle", 0); return; }
             double period=Row==1 || Row==2 ? runningFramePeriod : Periods[Row];
-            Frame = (int)((elapsed / period * FrameMultiplier) % (Counts[Row]*FrameMultiplier));
+            double phase=elapsed / period * FrameMultiplier;
+            int count=Counts[Row]*FrameMultiplier;
+            // A timed jump lands once. Its requested duration can extend beyond
+            // the source cycle, so hold the landing pose until returning to idle.
+            Frame = State=="jumping" && duration>0 ? (int)Math.Min(count-1,phase) : (int)(phase%count);
         }
     }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -21,7 +21,7 @@ namespace Dafeiyu
             RowDefinitions.Add(new RowDefinition());
             var heading=new StackPanel { Margin=new Thickness(0,0,0,18) };
             var title=Ui.Text("AI 配置",25);title.FontWeight=FontWeights.SemiBold;heading.Children.Add(title);
-            heading.Children.Add(Ui.Text("为伙伴连接对话与声音。可以先配置文字，语音随时补充。",12,Ui.Muted));
+            heading.Children.Add(Ui.Text("把常用服务与模型收在一起，为伙伴连接对话与声音。",12,Ui.Muted));
             Children.Add(heading);
             var strip=new UniformGrid { Rows=1,Columns=4 };
             string[] labels={"文字模型","语音识别","声音与朗读","Live 实时语音"};
@@ -33,7 +33,7 @@ namespace Dafeiyu
                 button.Padding=new Thickness(4,8,4,8);button.Margin=new Thickness(2);button.MinHeight=38;
                 button.Click+=delegate {SelectSection(section);};tabs[index]=button;strip.Children.Add(button);
             }
-            var rail=new Border { Background=Ui.Pale,CornerRadius=new CornerRadius(12),Padding=new Thickness(3),Child=strip,Margin=new Thickness(0,0,0,20) };
+            var rail=new Border { Background=new LinearGradientBrush(Ui.Brush("#F2F7FF").Color,Ui.Brush("#FDFEFF").Color,90),BorderBrush=Ui.Brush("#E0E9FA"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(14),Padding=new Thickness(4),Child=strip,Margin=new Thickness(0,0,0,20) };
             Grid.SetRow(rail,1);Children.Add(rail);
             connections.Margin=new Thickness(0);Grid.SetRow(connections,2);Children.Add(connections);
             SelectSection(0);

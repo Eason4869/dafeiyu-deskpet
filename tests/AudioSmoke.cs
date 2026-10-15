@@ -20,6 +20,8 @@ namespace Dafeiyu.Tests
             try
             {
                 new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
+                CheckLiveBurst();
+                CheckLiveStall();
                 CheckRingOrder();
                 using(var recorder=new AudioRecorder())
                 {
@@ -68,6 +70,47 @@ namespace Dafeiyu.Tests
             catch(Exception e){Console.WriteLine("FAIL Audio smoke: "+e);return 1;}
         }
         private static void Check(bool value,string message){if(!value)throw new Exception(message);passed++;Console.WriteLine("PASS "+message);}
+        private static void CheckLiveBurst()
+        {
+            using(var playback=new PcmOutput())
+            {
+                playback.SetVolume(0);
+                playback.Enqueue(new byte[576000],24000);
+                Check(QueuedBytes(playback)>480000,"a twelve-second Live response can arrive at once without disconnecting or dropping audio");
+                DateTime until=DateTime.UtcNow.AddSeconds(15);
+                while(QueuedBytes(playback)>0 && DateTime.UtcNow<until)Pump(.05);
+                Check(QueuedBytes(playback)==0,"a burst longer than ten seconds drains completely on the real output device");
+                for(int i=0;i<70;i++)playback.Enqueue(new byte[9600],24000);
+                Check(QueuedBytes(playback)>480000,"rapid streamed chunks retain the complete long response");
+                var elapsed=System.Diagnostics.Stopwatch.StartNew();playback.Interrupt();
+                Check(QueuedBytes(playback)==0 && elapsed.ElapsedMilliseconds<1000,"barge-in promptly clears a long reply");
+                playback.Enqueue(new byte[9600],48000);Pump(.3);
+                Check(QueuedBytes(playback)==0,"playback restarts at a new sample rate after interruption");
+                bool rejected=false;try{playback.Enqueue(new byte[11616000],48000);}catch(ApiException){rejected=true;}
+                Check(rejected && QueuedBytes(playback)==0,"oversized responses remain bounded and are rejected before partial playback");
+            }
+        }
+        private static int QueuedBytes(PcmOutput playback)
+        {
+            var flags=BindingFlags.Instance|BindingFlags.NonPublic;
+            object gate=typeof(PcmOutput).GetField("gate",flags).GetValue(playback);
+            lock(gate)return (int)typeof(PcmOutput).GetField("queued",flags).GetValue(playback);
+        }
+        [DllImport("winmm.dll")] static extern uint waveOutPause(IntPtr device);
+        private static void CheckLiveStall()
+        {
+            using(var playback=new PcmOutput())
+            {
+                string failure=null;int reports=0;
+                playback.Failed+=delegate(string message){failure=message;playback.Dispose();Interlocked.Increment(ref reports);};
+                playback.SetVolume(0);playback.Enqueue(new byte[96000],24000);
+                var device=(IntPtr)typeof(PcmOutput).GetField("device",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(playback);
+                Check(waveOutPause(device)==0,"native output can be paused to reproduce a stalled device");
+                DateTime until=DateTime.UtcNow.AddSeconds(13);
+                while(Volatile.Read(ref reports)==0 && DateTime.UtcNow<until)Pump(.05);
+                Check(Volatile.Read(ref reports)==1 && failure.Contains("没有播放进展"),"a stalled device reports once and its failure handler can safely release playback");
+            }
+        }
         private static void CheckRingOrder()
         {
             using(var recorder=new AudioRecorder())

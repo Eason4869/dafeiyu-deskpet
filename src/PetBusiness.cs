@@ -180,7 +180,7 @@ namespace Dafeiyu
                 int first=request.FindIndex(m=>m.Role!="system");
                 if(first<0 || first>=request.Count-1)throw new ApiException("当前消息与附件超过请求预算，请减少附件后重试。");
                 string turn=request[first].TurnId;request.RemoveAt(first);
-                if(first<request.Count-1 && request[first].Role=="assistant" && request[first].TurnId==turn)request.RemoveAt(first);
+                if(first<request.Count-1 && request[first].Role=="assistant")request.RemoveAt(first);
             }
         }
         public void Clear() { lock(gate)messages.Clear(); }

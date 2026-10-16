@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -25,7 +25,7 @@ namespace Dafeiyu
 
     // Restricted mode grants authority only to Root; full mode follows the user's OS permissions.
     // No shell commands or file deletion are exposed. Explorer opens directories only.
-    public sealed class AgentWorkspace
+    public sealed partial class AgentWorkspace
     {
         private const int MaxFileBytes = 1024 * 1024;
         private const int MaxResultChars = 24000;
@@ -87,7 +87,7 @@ namespace Dafeiyu
                 try
                 {
                     token.ThrowIfCancellationRequested();
-                    if(readOnly && name!="list_files" && name!="read_file" && name!="search_files")return "错误：当前为计划模式，只能读取和分析文件，不能创建、修改或打开目录。";
+                    if(readOnly && !AgentToolCatalog.IsReadOnly(name))return "错误：当前为计划模式，只能读取和分析文件，不能创建、修改或打开目录。";
                     if (++calls > 256) return "错误：本工作区已达到 256 次工具调用上限，请重新选择工作目录。";
                     if (argumentsJson == null || argumentsJson.Length > MaxFileBytes * 2 + 4096)
                         return "错误：工具参数缺失或过长。";
@@ -95,9 +95,11 @@ namespace Dafeiyu
                     var args = serializer.DeserializeObject(argumentsJson) as Dictionary<string, object>;
                     if (args == null) return "错误：工具参数必须是 JSON 对象。";
                     string path = Resolve(GetString(args, "path", "."));
-                    if (name == "list_files") return ListFiles(path, token);
+                    if (name == "list_files") return ListPage(path, GetInt(args,"offset",0,0,1000000), GetInt(args,"limit",200,1,200), token);
+                    if (name == "find_files") return FindFiles(path,GetString(args,"pattern",null),GetInt(args,"offset",0,0,1500),GetInt(args,"limit",100,1,200),token);
+                    if (name == "read_files") return ReadFiles(args,token);
                     if (name == "read_file") return ReadFile(path, GetInt(args, "offset", 0, 0, 1000000), GetInt(args, "limit", 200, 1, 1000), token);
-                    if (name == "search_files") return Search(path, GetString(args, "query", null), token);
+                    if (name == "search_files") return Search(path, GetString(args, "query", null), GetString(args,"pattern",""), token);
                     if (name == "create_directory")
                     {
                         token.ThrowIfCancellationRequested();
@@ -193,26 +195,6 @@ namespace Dafeiyu
         private static bool IsWithin(string path, string root) { return path.StartsWith(root.TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase); }
         private string Relative(string path) { return String.Equals(path, Root, StringComparison.OrdinalIgnoreCase) ? "." : IsWithin(path, Root) ? path.Substring(prefix.Length).Replace('\\', '/') : path; }
 
-        private string ListFiles(string path, CancellationToken token)
-        {
-            using (LockDirectories(path, false))
-            {
-                var output = new StringBuilder();
-                int count = 0;
-                foreach (string entry in Directory.EnumerateFileSystemEntries(path))
-                {
-                    token.ThrowIfCancellationRequested();
-                    if (++count > 200) { output.AppendLine("[已截断：最多列出 200 项]"); break; }
-                    string leaf = Path.GetFileName(entry);
-                    if ((RestrictToRoot && leaf.Equals(".git", StringComparison.OrdinalIgnoreCase)) || leaf.Equals(BackupFolder, StringComparison.OrdinalIgnoreCase)) continue;
-                    FileAttributes attributes = File.GetAttributes(entry);
-                    if ((attributes & FileAttributes.ReparsePoint) != 0) { output.AppendLine("[跳过链接] " + leaf); continue; }
-                    output.AppendLine(((attributes & FileAttributes.Directory) != 0 ? "[目录] " : "[文件] ") + leaf);
-                }
-                return output.Length == 0 ? "目录为空。" : Clip(output.ToString());
-            }
-        }
-
         private string ReadFile(string path, int offset, int limit, CancellationToken token)
         {
             using (LockDirectories(Path.GetDirectoryName(path), false))
@@ -234,9 +216,10 @@ namespace Dafeiyu
             }
         }
 
-        private string Search(string path, string query, CancellationToken token)
+        private string Search(string path, string query, string pattern, CancellationToken token)
         {
             if (String.IsNullOrEmpty(query) || query.Length > 1000) throw new ArgumentException("query 应为 1 至 1000 个字符的普通文本。");
+            var filter=String.IsNullOrEmpty(pattern)?null:FilePattern(pattern);
             var queue = new Queue<KeyValuePair<string, int>>();
             queue.Enqueue(new KeyValuePair<string, int>(path, 0));
             var output = new StringBuilder(); int visited = 0, matches = 0;
@@ -256,9 +239,10 @@ namespace Dafeiyu
                         if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
                         if ((attributes & FileAttributes.Directory) != 0)
                         {
-                            if (item.Value < 12) queue.Enqueue(new KeyValuePair<string, int>(entry, item.Value + 1));
+                            if (item.Value < 12 && !IgnoredDirectories.Contains(leaf)) queue.Enqueue(new KeyValuePair<string, int>(entry, item.Value + 1));
                             continue;
                         }
+                        if(filter!=null && !filter.IsMatch(Relative(entry)))continue;
                         string content;
                         try { content = ReadText(entry, token); }
                         catch (IOException) { continue; }
@@ -512,26 +496,7 @@ namespace Dafeiyu
         private static string Clip(string value) { return value.Length <= MaxResultChars ? value : value.Substring(0, MaxResultChars - 20) + "\n[结果已截断]"; }
         private void BuildSchemas()
         {
-            var openai = new List<object>(); var anthropic = new List<object>();
-            AddSchema(openai, anthropic, "list_files", "列出工作目录中的文件和子目录，最多 200 项。", new Dictionary<string, object> { { "path", Property("string", "相对于工作目录的路径，默认 .") } }, new string[0]);
-            AddSchema(openai, anthropic, "read_file", "读取 UTF-8 文件，最多 1 MiB；返回行号。offset 从 0 开始，limit 默认为 200。", new Dictionary<string, object> { { "path", Property("string", "文件路径") }, { "offset", Property("integer", "跳过行数，0 至 1000000") }, { "limit", Property("integer", "读取行数，1 至 1000") } }, new[] { "path" });
-            AddSchema(openai, anthropic, "write_file", "创建或完整覆盖 UTF-8 文件，最多 1 MiB；根据备份设置保存原文件，自动创建子目录。", new Dictionary<string, object> { { "path", Property("string", "文件路径") }, { "content", Property("string", "完整文件内容") } }, new[] { "path", "content" });
-            AddSchema(openai, anthropic, "edit_file", "将文件中唯一一次出现的 old_text 替换为 new_text；根据备份设置保存原文件。", new Dictionary<string, object> { { "path", Property("string", "文件路径") }, { "old_text", Property("string", "唯一匹配的旧文本，包含必要上下文") }, { "new_text", Property("string", "替换文本") } }, new[] { "path", "old_text", "new_text" });
-            AddSchema(openai, anthropic, "search_files", "递归搜索 UTF-8 文本（忽略大小写的普通文本），最多 1500 项、12 层、100 处结果；跳过链接和自动备份目录。", new Dictionary<string, object> { { "path", Property("string", "搜索目录，默认 .") }, { "query", Property("string", "搜索文本，最多 1000 字符") } }, new[] { "query" });
-            if(readOnly){openai.RemoveAt(3);openai.RemoveAt(2);anthropic.RemoveAt(3);anthropic.RemoveAt(2);}
-            else
-            {
-                AddSchema(openai, anthropic, "create_directory", "创建目录及所需父目录，不删除任何文件。", new Dictionary<string, object> { { "path", Property("string", "目录路径") } }, new[] { "path" });
-                AddSchema(openai, anthropic, "open_directory", "在 Windows 资源管理器中打开现有目录，只接受目录。", new Dictionary<string, object> { { "path", Property("string", "已有目录路径") } }, new[] { "path" });
-            }
-            OpenAITools = openai.ToArray(); AnthropicTools = anthropic.ToArray();
-        }
-        private static object Property(string type, string description) { return new { type = type, description = description }; }
-        private static void AddSchema(List<object> openai, List<object> anthropic, string name, string description, Dictionary<string, object> properties, string[] required)
-        {
-            var schema = new { type = "object", properties = properties, required = required, additionalProperties = false };
-            openai.Add(new { type = "function", function = new { name = name, description = description, parameters = schema } });
-            anthropic.Add(new { name = name, description = description, input_schema = schema });
+            object[] a,b;AgentToolCatalog.Schemas(readOnly,out a,out b);OpenAITools=a;AnthropicTools=b;
         }
     }
 }

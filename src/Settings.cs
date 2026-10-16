@@ -135,6 +135,7 @@ namespace Dafeiyu
         [DataMember] public string OnboardingState { get; set; }
         [DataMember] public int OnboardingStep { get; set; }
         [DataMember] public int OnboardingVersion { get; set; }
+        [DataMember] public string LastOnboardingSeries { get; set; }
         [DataMember] public bool SaveChatHistory { get; set; }
         [DataMember] public bool QuietMode { get; set; }
         [DataMember] public bool HideOnFullscreen { get; set; }
@@ -184,10 +185,10 @@ namespace Dafeiyu
         [DataMember] public ConnectionSettings Transcription { get; set; }
         [DataMember] public ConnectionSettings Speech { get; set; }
         public PetSettings() { Defaults(); }
-        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingVersion=0;OnboardingState="legacy";LiveVoice="Kore"; }
+        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingVersion=0;OnboardingState="legacy";LastOnboardingSeries=OnboardingUpgrade.LegacySeries;LiveVoice="Kore"; }
         private void Defaults()
         {
-            OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;
+            OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;LastOnboardingSeries="";
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
             Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false; StumbleEnabled=true;AutoSleepEnabled=true;
@@ -299,7 +300,7 @@ namespace Dafeiyu
             if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles)if(pair.Value!=null)voiceProfiles[pair.Key]=pair.Value.Copy();
             var providers=new List<TextProviderSettings>();if(TextProviders!=null)foreach(var provider in TextProviders)if(provider!=null)providers.Add(provider.Copy());
             var audioProviders=new Dictionary<string,ServiceProviderSettings>();if(AudioProviders!=null)foreach(var pair in AudioProviders)if(pair.Value!=null)audioProviders[pair.Key]=pair.Value.Copy();
-            return new PetSettings { AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
+            return new PetSettings { AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,LastOnboardingSeries=LastOnboardingSeries,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
                 AutoSleepEnabled=AutoSleepEnabled,StumbleEnabled=StumbleEnabled,GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,

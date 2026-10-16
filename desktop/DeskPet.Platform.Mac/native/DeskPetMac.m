@@ -5,18 +5,21 @@
 #import <ServiceManagement/ServiceManagement.h>
 #include <math.h>
 #include <string.h>
+#include "DeskPetMac.h"
 
 // This library has no initializers that request permissions or open audio devices.
 static void MainSync(dispatch_block_t block) {
     if ([NSThread isMainThread]) block(); else dispatch_sync(dispatch_get_main_queue(), block);
 }
 
-int dp_keychain_key(uint8_t *bytes, int length) {
+int dp_keychain_key_in_store(const void *store, uint8_t *bytes, int length) {
     @autoreleasepool {
-        if (!bytes || length != 32) return errSecParam;
+        if (!store || !bytes || length != 32) return errSecParam;
+        SecKeychainRef keychain = (SecKeychainRef)store;
         NSMutableDictionary *query = [@{(__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
             (__bridge id)kSecAttrService:@"com.deskpet.desktop.data-key.v1",
             (__bridge id)kSecAttrAccount:@"data-encryption-key",
+            (__bridge id)kSecMatchSearchList:@[(__bridge id)keychain],
             (__bridge id)kSecReturnData:@YES,
             (__bridge id)kSecMatchLimit:(__bridge id)kSecMatchLimitOne} mutableCopy];
         CFTypeRef result = NULL;
@@ -26,14 +29,20 @@ int dp_keychain_key(uint8_t *bytes, int length) {
             if (status != errSecSuccess) return status;
             [query removeObjectForKey:(__bridge id)kSecReturnData];
             [query removeObjectForKey:(__bridge id)kSecMatchLimit];
+            [query removeObjectForKey:(__bridge id)kSecMatchSearchList];
             query[(__bridge id)kSecValueData] = [NSData dataWithBytes:generated length:32];
-            query[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+            // macOS file-based Keychain uses the creating application's default ACL.
+            // kSecAttrAccessible is a data-protection-Keychain attribute, not a file ACL.
+            query[(__bridge id)kSecUseKeychain] = (__bridge id)keychain;
+            query[(__bridge id)kSecAttrLabel] = @"DeskPet private data encryption key";
             status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
             memset_s(generated, sizeof(generated), 0, sizeof(generated));
             if (status != errSecSuccess && status != errSecDuplicateItem) return status;
             // A concurrent process may have won creation. Always read the stored winner.
             [query removeObjectForKey:(__bridge id)kSecValueData];
-            [query removeObjectForKey:(__bridge id)kSecAttrAccessible];
+            [query removeObjectForKey:(__bridge id)kSecUseKeychain];
+            [query removeObjectForKey:(__bridge id)kSecAttrLabel];
+            query[(__bridge id)kSecMatchSearchList] = @[(__bridge id)keychain];
             query[(__bridge id)kSecReturnData] = @YES;
             query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
             status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
@@ -44,9 +53,19 @@ int dp_keychain_key(uint8_t *bytes, int length) {
         memcpy(bytes, data.bytes, 32); return 0;
     }
 }
+int dp_keychain_key(uint8_t *bytes, int length) {
+    if (!bytes || length != 32) return errSecParam;
+    // Search the same store we write to, never another matching item on the search list.
+    SecKeychainRef store = NULL;
+    OSStatus status = SecKeychainCopyDefault(&store);
+    if (status == errSecSuccess) status = dp_keychain_key_in_store(store, bytes, length);
+    if (store) CFRelease(store);
+    return status;
+}
 
 int dp_microphone_status(void) { return (int)[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]; }
 void dp_microphone_request(void (*completion)(int)) {
+    if (!completion) return;
     [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) { completion(granted ? 1 : 0); }];
 }
 
@@ -57,15 +76,26 @@ void dp_microphone_request(void (*completion)(int)) {
 @property(strong) NSMutableData *pending;
 @property(strong) id observer;
 @property BOOL failed;
+@property BOOL tapInstalled;
+- (void)stop;
 @end
 @implementation DPMicrophone
 - (instancetype)init { if ((self = [super init])) { _lock = [NSLock new]; _pending = [NSMutableData new]; } return self; }
+- (void)stop {
+    [_engine stop];
+    if (_tapInstalled) { [_engine.inputNode removeTapOnBus:0]; _tapInstalled = NO; }
+    if (_observer) { [[NSNotificationCenter defaultCenter] removeObserver:_observer]; _observer = nil; }
+    [_lock lock]; [_pending resetBytesInRange:NSMakeRange(0, _pending.length)]; [_pending setLength:0]; [_lock unlock];
+}
 @end
 
 void *dp_microphone_start(int *error) {
-    @autoreleasepool { @try {
+    if (!error) return NULL;
+    @autoreleasepool {
+        DPMicrophone *mic = [DPMicrophone new];
+        @try {
         if (dp_microphone_status() != AVAuthorizationStatusAuthorized) { *error = -1; return NULL; }
-        DPMicrophone *mic = [DPMicrophone new]; mic.engine = [AVAudioEngine new];
+        mic.engine = [AVAudioEngine new];
         AVAudioInputNode *input = mic.engine.inputNode;
         AVAudioFormat *source = [input outputFormatForBus:0];
         if (source.channelCount == 0 || source.sampleRate == 0) { *error = -2; return NULL; }
@@ -73,9 +103,6 @@ void *dp_microphone_start(int *error) {
         mic.converter = [[AVAudioConverter alloc] initFromFormat:source toFormat:target];
         if (!mic.converter) { *error = -3; return NULL; }
         __weak DPMicrophone *weakMic = mic;
-        mic.observer = [[NSNotificationCenter defaultCenter] addObserverForName:AVAudioEngineConfigurationChangeNotification object:mic.engine queue:nil usingBlock:^(NSNotification *note) {
-            DPMicrophone *strongMic = weakMic; [strongMic.lock lock]; strongMic.failed = YES; [strongMic.lock unlock];
-        }];
         [input installTapOnBus:0 bufferSize:2048 format:source block:^(AVAudioPCMBuffer *buffer, AVAudioTime *time) {
             DPMicrophone *strongMic = weakMic; if (!strongMic) return;
             @autoreleasepool {
@@ -93,13 +120,17 @@ void *dp_microphone_start(int *error) {
                 [strongMic.lock unlock];
             }
         }];
+        mic.tapInstalled = YES;
         NSError *startError = nil; [mic.engine prepare];
         if (![mic.engine startAndReturnError:&startError]) {
-            [input removeTapOnBus:0]; [[NSNotificationCenter defaultCenter] removeObserver:mic.observer];
+            [mic stop];
             *error = (int)(startError.code ?: -4); return NULL;
         }
+        mic.observer = [[NSNotificationCenter defaultCenter] addObserverForName:AVAudioEngineConfigurationChangeNotification object:mic.engine queue:nil usingBlock:^(NSNotification *note) {
+            DPMicrophone *strongMic = weakMic; [strongMic.lock lock]; strongMic.failed = YES; [strongMic.lock unlock];
+        }];
         *error = 0; return (__bridge_retained void *)mic;
-    } @catch (NSException *exception) { *error = -5; return NULL; } }
+    } @catch (NSException *exception) { [mic stop]; *error = -5; return NULL; } }
 }
 int dp_microphone_read(void *handle, uint8_t *data, int capacity) {
     @autoreleasepool {
@@ -115,9 +146,7 @@ int dp_microphone_read(void *handle, uint8_t *data, int capacity) {
 void dp_microphone_stop(void *handle) {
     if (!handle) return;
     @autoreleasepool { DPMicrophone *mic = CFBridgingRelease(handle);
-        [mic.engine stop]; [mic.engine.inputNode removeTapOnBus:0];
-        if (mic.observer) [[NSNotificationCenter defaultCenter] removeObserver:mic.observer];
-        [mic.lock lock]; [mic.pending resetBytesInRange:NSMakeRange(0, mic.pending.length)]; [mic.pending setLength:0]; [mic.lock unlock];
+        [mic stop];
     }
 }
 
@@ -127,11 +156,13 @@ void dp_microphone_stop(void *handle) {
 @property(strong) AVAudioFormat *format;
 @property(strong) NSLock *lock;
 @property int64_t pending;
+@property int64_t completed;
 @property NSUInteger generation;
 @end
 @implementation DPOutput
 @end
 void *dp_output_start(int rate, int *error) {
+    if (!error) return NULL;
     @autoreleasepool { @try {
         if (rate != 16000 && rate != 24000 && rate != 48000) { *error = -1; return NULL; }
         DPOutput *output = [DPOutput new]; output.lock = [NSLock new]; output.engine = [AVAudioEngine new]; output.player = [AVAudioPlayerNode new];
@@ -146,7 +177,7 @@ void *dp_output_start(int rate, int *error) {
 int dp_output_enqueue(void *handle, const uint8_t *data, int length) {
     @autoreleasepool { @try {
         DPOutput *output = (__bridge DPOutput *)handle;
-        if (!output || !output.engine.isRunning || length < 2 || length % 2) return -1;
+        if (!output || !data || !output.engine.isRunning || length < 2 || length % 2) return -1;
         AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:output.format frameCapacity:length / 2]; buffer.frameLength = length / 2;
         float *samples = buffer.floatChannelData[0];
         for (int i = 0; i < length / 2; ++i) { int16_t sample = (int16_t)((uint16_t)data[i * 2] | ((uint16_t)data[i * 2 + 1] << 8)); samples[i] = sample / 32768.0f; }
@@ -154,7 +185,12 @@ int dp_output_enqueue(void *handle, const uint8_t *data, int length) {
         __weak DPOutput *weakOutput = output;
         [output.player scheduleBuffer:buffer completionCallbackType:AVAudioPlayerNodeCompletionDataPlayedBack completionHandler:^(AVAudioPlayerNodeCompletionCallbackType type) {
             DPOutput *strongOutput = weakOutput; if (!strongOutput) return;
-            [strongOutput.lock lock]; if (generation == strongOutput.generation) strongOutput.pending = MAX(0, strongOutput.pending - length); [strongOutput.lock unlock];
+            [strongOutput.lock lock];
+            if (generation == strongOutput.generation) {
+                strongOutput.pending = MAX((int64_t)0, strongOutput.pending - length);
+                strongOutput.completed += length;
+            }
+            [strongOutput.lock unlock];
         }];
         return 0;
     } @catch (NSException *exception) { return -2; } }
@@ -163,48 +199,85 @@ int64_t dp_output_pending(void *handle) {
     DPOutput *output = (__bridge DPOutput *)handle; if (!output || !output.engine.isRunning) return -1;
     [output.lock lock]; int64_t result = output.pending; [output.lock unlock]; return result;
 }
+int64_t dp_output_completed(void *handle) {
+    DPOutput *output = (__bridge DPOutput *)handle; if (!output) return -1;
+    [output.lock lock]; int64_t result = output.completed; [output.lock unlock]; return result;
+}
 void dp_output_volume(void *handle, float volume) { DPOutput *output = (__bridge DPOutput *)handle; output.player.volume = volume; }
-void dp_output_interrupt(void *handle) {
-    DPOutput *output = (__bridge DPOutput *)handle;
-    [output.lock lock]; output.generation++; output.pending = 0; [output.lock unlock];
-    [output.player stop]; [output.player play];
+int dp_output_interrupt(void *handle) {
+    if (!handle) return -1;
+    @try {
+        DPOutput *output = (__bridge DPOutput *)handle;
+        [output.lock lock]; output.generation++; output.pending = 0; [output.lock unlock];
+        [output.player stop];
+        if (!output.engine.isRunning) return -1;
+        [output.player play]; return 0;
+    } @catch (NSException *exception) { return -1; }
 }
 void dp_output_stop(void *handle) { if (!handle) return; @autoreleasepool { DPOutput *output = CFBridgingRelease(handle); [output.player stop]; [output.engine stop]; } }
 
 @interface DPWave : NSObject <AVAudioPlayerDelegate>
 @property(strong) AVAudioPlayer *player;
 @property(atomic) int status;
+@property(atomic) BOOL stopped;
+@property(atomic) float volume;
 @end
 @implementation DPWave
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag { self.status = flag ? 0 : -1; }
 - (void)audioPlayerDecodeErrorDidOccur:(AVAudioPlayer *)player error:(NSError *)error { self.status = -1; }
 @end
 void *dp_wave_start(const uint8_t *bytes, int length, float volume) {
-    @autoreleasepool { @try {
+    @autoreleasepool {
         if (!bytes || length < 1) return NULL;
-        DPWave *wave = [DPWave new]; NSError *error = nil;
-        wave.player = [[AVAudioPlayer alloc] initWithData:[NSData dataWithBytes:bytes length:length] error:&error];
-        if (!wave.player || error) return NULL;
-        wave.player.delegate = wave; wave.player.volume = volume; wave.status = 1;
-        if (![wave.player prepareToPlay] || ![wave.player play]) return NULL;
+        DPWave *wave = [DPWave new]; wave.volume = volume; wave.status = 1;
+        NSData *data = [NSData dataWithBytes:bytes length:length];
+        // AVAudioPlayer delegates require a live run loop. Do not create it on a managed
+        // pool thread, and do not synchronously dispatch while C# holds its lifecycle lock.
+        dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool { @try {
+            if (wave.stopped) return;
+            NSError *error = nil;
+            wave.player = [[AVAudioPlayer alloc] initWithData:data error:&error];
+            if (!wave.player || error) { wave.status = -1; return; }
+            wave.player.delegate = wave; wave.player.volume = wave.volume;
+            if (![wave.player prepareToPlay] || ![wave.player play]) wave.status = -1;
+        } @catch (NSException *exception) { wave.status = -1; } } });
         return (__bridge_retained void *)wave;
-    } @catch (NSException *exception) { return NULL; } }
+    }
 }
 int dp_wave_status(void *handle) {
     DPWave *wave = (__bridge DPWave *)handle;
-    if (!wave || wave.status < 0) return -1;
-    if (wave.player.isPlaying) return 1;
-    // Poll as well: a managed pool thread need not run an NSRunLoop for delegates.
-    return wave.status == 0 || wave.player.currentTime >= wave.player.duration - 0.1 ? 0 : -1;
+    return wave ? wave.status : -1;
 }
-void dp_wave_volume(void *handle, float volume) { DPWave *wave = (__bridge DPWave *)handle; wave.player.volume = volume; }
-void dp_wave_stop(void *handle) { if (!handle) return; @autoreleasepool { DPWave *wave = CFBridgingRelease(handle); [wave.player stop]; wave.player.delegate = nil; } }
+void dp_wave_volume(void *handle, float volume) {
+    if (!handle) return;
+    DPWave *wave = (__bridge DPWave *)handle; wave.volume = volume;
+    dispatch_async(dispatch_get_main_queue(), ^{ if (!wave.stopped) wave.player.volume = wave.volume; });
+}
+void dp_wave_stop(void *handle) {
+    if (!handle) return;
+    @autoreleasepool { DPWave *wave = CFBridgingRelease(handle); wave.stopped = YES; wave.status = 0;
+        dispatch_async(dispatch_get_main_queue(), ^{ [wave.player stop]; wave.player.delegate = nil; wave.player = nil; });
+    }
+}
 
 double dp_idle_seconds(void) { return CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateCombinedSessionState, kCGAnyInputEventType); }
 void dp_pointer(double *x, double *y) { CGEventRef event = CGEventCreate(NULL); CGPoint point = event ? CGEventGetLocation(event) : CGPointZero; if (event) CFRelease(event); *x = point.x; *y = point.y; }
-typedef struct { double x,y,width,height,workX,workY,workWidth,workHeight,scale; } DPDisplay;
+int dp_pointer_relative(void *handle, double *x, double *y) {
+    if (!handle || !x || !y) return 0;
+    __block int result = 0;
+    MainSync(^{
+        id object = (__bridge id)handle;
+        NSView *view = [object isKindOfClass:NSView.class] ? object : ([object isKindOfClass:NSWindow.class] ? ((NSWindow *)object).contentView : nil);
+        if (!view.window) return;
+        NSPoint point = [view convertPoint:[view.window convertPointFromScreen:NSEvent.mouseLocation] fromView:nil];
+        *x = point.x - NSMinX(view.bounds);
+        *y = view.isFlipped ? point.y - NSMinY(view.bounds) : NSMaxY(view.bounds) - point.y;
+        result = 1;
+    }); return result;
+}
 int dp_display_count(void) { __block int count; MainSync(^{ count = (int)NSScreen.screens.count; }); return count; }
 int dp_display(int index, DPDisplay *result) {
+    if (!result) return 0;
     __block int found = 0;
     MainSync(^{ NSArray<NSScreen *> *screens = NSScreen.screens;
         if (index < 0 || index >= (int)screens.count) return;
@@ -214,12 +287,15 @@ int dp_display(int index, DPDisplay *result) {
     }); return found;
 }
 int dp_window(void *handle, int topmost, int ignoreMouse, int allSpaces) {
+    if (!handle) return 0;
     __block int result = 0;
-    MainSync(^{ id object = (__bridge id)handle; if (![object isKindOfClass:[NSWindow class]]) return;
+    MainSync(^{ id object = (__bridge id)handle;
+        if ([object isKindOfClass:[NSView class]]) object = ((NSView *)object).window;
+        if (![object isKindOfClass:[NSWindow class]]) return;
         NSWindow *window = object; window.level = topmost ? NSFloatingWindowLevel : NSNormalWindowLevel; window.ignoresMouseEvents = ignoreMouse != 0;
         NSWindowCollectionBehavior flags = window.collectionBehavior;
         flags &= ~(NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorMoveToActiveSpace | NSWindowCollectionBehaviorFullScreenAuxiliary);
-        if (allSpaces) flags |= NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+        if (allSpaces) { flags &= ~NSWindowCollectionBehaviorFullScreenPrimary; flags |= NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary; }
         window.collectionBehavior = flags; result = 1;
     }); return result;
 }
@@ -239,29 +315,48 @@ int dp_fullscreen_front(void) {
     }
 }
 
-typedef struct { EventHotKeyRef hotkey; EventHandlerRef handler; void (*callback)(void); UInt32 identifier; } DPHotKey;
+typedef struct { EventHotKeyRef hotkey; EventHandlerRef handler; void (*callback)(void); UInt32 identifier; uint64_t combination; } DPHotKey;
+static NSMutableSet<NSNumber *> *HotKeyCombinations(void) {
+    static NSMutableSet<NSNumber *> *combinations; static dispatch_once_t once;
+    dispatch_once(&once, ^{ combinations = [NSMutableSet new]; }); return combinations;
+}
 static OSStatus HotKeyEvent(EventHandlerCallRef next, EventRef event, void *context) {
     DPHotKey *hotkey = context; EventHotKeyID identifier;
     if (GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof(identifier), NULL, &identifier) == noErr && identifier.signature == 'DPet' && identifier.id == hotkey->identifier) { hotkey->callback(); return noErr; }
     return eventNotHandledErr;
 }
 void *dp_hotkey_register(uint32_t key, uint32_t modifiers, void (*callback)(void), int *error) {
+    if (!error) return NULL;
+    if (!callback || key > 127 || modifiers == 0 || (modifiers & ~(cmdKey | shiftKey | optionKey | controlKey))) { *error = paramErr; return NULL; }
     __block DPHotKey *hotkey = NULL;
     MainSync(^{
         static UInt32 nextId = 1;
-        DPHotKey *entry = calloc(1, sizeof(DPHotKey)); entry->callback = callback; entry->identifier = nextId++;
+        uint64_t combination = ((uint64_t)modifiers << 32) | key;
+        if ([HotKeyCombinations() containsObject:@(combination)]) { *error = eventHotKeyExistsErr; return; }
+        DPHotKey *entry = calloc(1, sizeof(DPHotKey));
+        if (!entry) { *error = memFullErr; return; }
+        entry->callback = callback; entry->identifier = nextId++; entry->combination = combination;
         EventTypeSpec type = {kEventClassKeyboard, kEventHotKeyPressed};
         *error = InstallApplicationEventHandler(HotKeyEvent, 1, &type, entry, &entry->handler);
-        if (*error == noErr) *error = RegisterEventHotKey(key, modifiers, (EventHotKeyID){'DPet', entry->identifier}, GetApplicationEventTarget(), 0, &entry->hotkey);
+        if (*error == noErr) *error = RegisterEventHotKey(key, modifiers, (EventHotKeyID){'DPet', entry->identifier}, GetApplicationEventTarget(), kEventHotKeyExclusive, &entry->hotkey);
         if (*error != noErr) { if (entry->handler) RemoveEventHandler(entry->handler); free(entry); }
-        else hotkey = entry;
+        else { hotkey = entry; [HotKeyCombinations() addObject:@(combination)]; }
     }); return hotkey;
 }
-void dp_hotkey_unregister(void *handle) { if (!handle) return; MainSync(^{ DPHotKey *entry = handle; UnregisterEventHotKey(entry->hotkey); RemoveEventHandler(entry->handler); free(entry); }); }
-int dp_login_status(void) { __block int status; MainSync(^{ status = (int)SMAppService.mainAppService.status; }); return status; }
+void dp_hotkey_unregister(void *handle) { if (!handle) return; MainSync(^{ DPHotKey *entry = handle; UnregisterEventHotKey(entry->hotkey); RemoveEventHandler(entry->handler); [HotKeyCombinations() removeObject:@(entry->combination)]; free(entry); }); }
+int dp_login_status(void) { __block int status = -1; MainSync(^{ @try { status = (int)SMAppService.mainAppService.status; } @catch (NSException *exception) { status = -1; } }); return status; }
 int dp_login_set(int enabled) {
     __block int result = 0;
-    MainSync(^{ NSError *error = nil; BOOL ok = enabled ? [SMAppService.mainAppService registerAndReturnError:&error] : [SMAppService.mainAppService unregisterAndReturnError:&error];
+    MainSync(^{ @try {
+        NSBundle *bundle = NSBundle.mainBundle;
+        if (!bundle.bundleIdentifier.length || ![bundle.bundleURL.pathExtension.lowercaseString isEqualToString:@"app"]) { result = -10001; return; }
+        SMAppService *service = SMAppService.mainAppService;
+        if ((enabled && service.status == SMAppServiceStatusEnabled) || (!enabled && service.status == SMAppServiceStatusNotRegistered)) return;
+        if (enabled && service.status == SMAppServiceStatusRequiresApproval) { result = -10002; return; }
+        NSError *error = nil;
+        BOOL ok = enabled ? [service registerAndReturnError:&error] : [service unregisterAndReturnError:&error];
         if (!ok) result = (int)(error.code ?: -1);
+        else if (enabled && service.status == SMAppServiceStatusRequiresApproval) result = -10002;
+    } @catch (NSException *exception) { result = -10003; }
     }); return result;
 }

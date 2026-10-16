@@ -33,7 +33,7 @@ if ($Target -eq 'App') {
     $options = @('/target:exe',('/main:Dafeiyu.Tests.' + $Target))
 }
 # Shared business/interfaces are also needed by the small legacy test targets.
-foreach ($sharedSource in @('PetBusiness.cs','AudioContracts.cs','SecretProtection.cs')) {
+foreach ($sharedSource in @('PetBusiness.cs','AudioContracts.cs','SecretProtection.cs','OnboardingUpgrade.cs')) {
     $sharedPath = Join-Path $projectRoot ('src\' + $sharedSource)
     if ((Test-Path -LiteralPath $sharedPath) -and $sources -notcontains $sharedPath) { $sources += $sharedPath }
 }

@@ -13,10 +13,10 @@ public sealed class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var controller = new DesktopController(desktop);
+            var controller = new DesktopController(desktop, SmokeRun.Options is { } smoke ? new SmokeRuntime(smoke.DataDirectory) : null);
             desktop.MainWindow = controller.Pet;
             desktop.Exit += (_, _) => controller.Dispose();
-            controller.Start();
+            if (SmokeRun.Options != null) SmokeRun.Start(controller); else controller.Start();
         }
         base.OnFrameworkInitializationCompleted();
     }

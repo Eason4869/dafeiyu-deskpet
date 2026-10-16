@@ -41,8 +41,11 @@ namespace Dafeiyu
                             args.Handled = true; app.Shutdown(1);
                         };
                         var store = new SettingsStore(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "settings.json"));
-                        var pet = new PetWindow(null, store.Load(), store, wake);
-                        pet.Loaded+=delegate {pet.Updates.StartAutomaticChecks();if(pet.Settings.OnboardingState=="new")pet.Dispatcher.BeginInvoke(new Action(pet.ShowOnboarding));};
+                        var settings = store.Load();
+                        var onboarding = OnboardingUpgrade.Prepare(settings, ReleaseInfo.DisplayVersion);
+                        if(onboarding.Changed)store.Save(settings);
+                        var pet = new PetWindow(null, settings, store, wake);
+                        pet.Loaded+=delegate {pet.Updates.StartAutomaticChecks();if(onboarding.ShowGuide)pet.Dispatcher.BeginInvoke(new Action(pet.ShowOnboarding));};
                         pet.Closed += delegate { app.Shutdown(); }; app.Run(pet);
                     }
                     catch (Exception)

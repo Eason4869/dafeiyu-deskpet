@@ -11,7 +11,7 @@ internal sealed class MacPcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveA
     private readonly Stopwatch progress = new();
     private IntPtr device;
     private int rate, volume = 50;
-    private long previousPending;
+    private long previousCompleted;
     private double level;
     private bool disposed;
     private string? failure;
@@ -38,6 +38,7 @@ internal sealed class MacPcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveA
                 device = Native.OutputStart(sampleRate, out var error);
                 if (device == IntPtr.Zero) throw new InvalidOperationException($"无法打开默认音频输出设备（状态 {error}）。");
                 rate = sampleRate; Native.OutputVolume(device, volume / 100f);
+                previousCompleted = 0;
             }
             if (pending == 0) progress.Restart();
             level = Dafeiyu.AudioLevel.Pcm16(bytes);
@@ -48,7 +49,6 @@ internal sealed class MacPcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveA
                 if (Native.OutputEnqueue(device, chunk, chunk.Length) != 0) throw new InvalidOperationException("Live 音频输出失败，请检查输出设备。");
                 offset += chunk.Length;
             }
-            previousPending = Native.OutputPending(device);
         }
     }
     private async Task Monitor()
@@ -64,12 +64,13 @@ internal sealed class MacPcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveA
                     if (disposed) return;
                     if (device == IntPtr.Zero) continue;
                     var pending = Native.OutputPending(device);
+                    var completed = Native.OutputCompleted(device);
                     if (pending < 0) error = "Live 音频输出设备已中断，请重连。";
                     else if (pending == 0) progress.Reset();
-                    else if (pending < previousPending) progress.Restart();
+                    else if (completed > previousCompleted) progress.Restart();
                     else if (progress.Elapsed > TimeSpan.FromSeconds(10)) error = "Live 音频输出连续 10 秒没有播放进展，请检查输出设备后重连。";
-                    previousPending = pending;
-                    if (error != null) failure = error;
+                    previousCompleted = completed;
+                    if (error != null) { failure = error; Native.OutputStop(device); device = IntPtr.Zero; level = 0; }
                 }
                 if (error != null) { var handler = Failed; if (handler != null) ThreadPool.QueueUserWorkItem(_ => handler(error)); return; }
             }
@@ -77,7 +78,7 @@ internal sealed class MacPcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveA
         catch (OperationCanceledException) { }
     }
     public void SetVolume(int value) { lock (gate) { volume = Math.Clamp(value, 0, 100); if (device != IntPtr.Zero) Native.OutputVolume(device, volume / 100f); } }
-    public void Interrupt() { lock (gate) { if (device != IntPtr.Zero) Native.OutputInterrupt(device); previousPending = 0; progress.Reset(); level = 0; } }
+    public void Interrupt() { lock (gate) { if (device != IntPtr.Zero && Native.OutputInterrupt(device) != 0) throw new InvalidOperationException("音频输出设备已中断，请重连。"); progress.Reset(); level = 0; } }
     public void Dispose()
     {
         lock (gate) { if (disposed) return; disposed = true; stop.Cancel(); if (device != IntPtr.Zero) { Native.OutputStop(device); device = IntPtr.Zero; } }

@@ -40,6 +40,13 @@ public static class MacServices
     public static TimeSpan GetIdleTime() { EnsureMac(); return TimeSpan.FromSeconds(Math.Clamp(Native.IdleSeconds(), 0, TimeSpan.MaxValue.TotalSeconds - 1)); }
     // Quartz global coordinates: origin at main display's upper left, consistent across displays.
     public static (double X, double Y) GetPointerPosition() { EnsureMac(); Native.Pointer(out var x, out var y); return (x, y); }
+    /// <summary>Pointer in logical points relative to the NSView/NSWindow content's upper-left, including outside points.</summary>
+    public static (double X, double Y) GetPointerRelativeToWindow(IntPtr handle)
+    {
+        EnsureMac();
+        if (handle == IntPtr.Zero || Native.PointerRelative(handle, out var x, out var y) == 0) throw new ArgumentException("需要已连接到窗口的 NSView 或 NSWindow 句柄。", nameof(handle));
+        return (x, y);
+    }
     public static MacDisplay[] GetDisplays()
     {
         EnsureMac(); var list = new List<MacDisplay>();
@@ -62,6 +69,7 @@ public static class MacServices
     public static void SetLoginAtStartup(bool enabled)
     {
         EnsureMac(); var status = Native.LoginSet(enabled ? 1 : 0);
+        if (status == -10002) throw new InvalidOperationException("登录项需要批准，请在系统设置 > 通用 > 登录项中允许 DeskPet。");
         if (status != 0) throw new InvalidOperationException($"无法修改登录项（状态 {status}），请在系统设置 > 通用 > 登录项中检查；应用必须从 .app 包运行。");
     }
     private sealed class HotKeyRegistration : IDisposable

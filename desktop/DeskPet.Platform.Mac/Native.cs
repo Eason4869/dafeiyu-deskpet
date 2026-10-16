@@ -16,8 +16,9 @@ internal static class Native
     [DllImport(Library, EntryPoint="dp_output_start")] internal static extern IntPtr OutputStart(int rate, out int error);
     [DllImport(Library, EntryPoint="dp_output_enqueue")] internal static extern int OutputEnqueue(IntPtr handle, byte[] bytes, int length);
     [DllImport(Library, EntryPoint="dp_output_pending")] internal static extern long OutputPending(IntPtr handle);
+    [DllImport(Library, EntryPoint="dp_output_completed")] internal static extern long OutputCompleted(IntPtr handle);
     [DllImport(Library, EntryPoint="dp_output_volume")] internal static extern void OutputVolume(IntPtr handle, float volume);
-    [DllImport(Library, EntryPoint="dp_output_interrupt")] internal static extern void OutputInterrupt(IntPtr handle);
+    [DllImport(Library, EntryPoint="dp_output_interrupt")] internal static extern int OutputInterrupt(IntPtr handle);
     [DllImport(Library, EntryPoint="dp_output_stop")] internal static extern void OutputStop(IntPtr handle);
     [DllImport(Library, EntryPoint="dp_wave_start")] internal static extern IntPtr WaveStart(byte[] bytes, int length, float volume);
     [DllImport(Library, EntryPoint="dp_wave_status")] internal static extern int WaveStatus(IntPtr handle);
@@ -25,6 +26,7 @@ internal static class Native
     [DllImport(Library, EntryPoint="dp_wave_stop")] internal static extern void WaveStop(IntPtr handle);
     [DllImport(Library, EntryPoint="dp_idle_seconds")] internal static extern double IdleSeconds();
     [DllImport(Library, EntryPoint="dp_pointer")] internal static extern void Pointer(out double x, out double y);
+    [DllImport(Library, EntryPoint="dp_pointer_relative")] internal static extern int PointerRelative(IntPtr handle, out double x, out double y);
     [DllImport(Library, EntryPoint="dp_display_count")] internal static extern int DisplayCount();
     [DllImport(Library, EntryPoint="dp_display")] internal static extern int Display(int index, out MacDisplay display);
     [DllImport(Library, EntryPoint="dp_window")] internal static extern int Window(IntPtr handle, int topmost, int ignoreMouse, int allSpaces);

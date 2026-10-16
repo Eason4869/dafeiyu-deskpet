@@ -1,0 +1,113 @@
+name: macOS preview checks
+on:
+  push:
+    branches: [main, dev, codex/macos-0.5.7]
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'installer/macos/**'
+      - 'tools/mac_package.py'
+      - 'tests/MacPackagingTests.py'
+      - '.github/workflows/macos.yml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  packaging-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tests/MacPackagingTests.py
+  preview:
+    needs: packaging-contract
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+      REPORT_ROOT: work/macos-reports-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: desktop/global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify host architecture and SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == '${{ matrix.arch }}' ]]
+          mkdir -p "$REPORT_ROOT"
+          dotnet --info | tee "$REPORT_ROOT/dotnet-info.log"
+      - name: Shared business regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build desktop/DeskPet.Tests/DeskPet.Tests.csproj -c Release -p:BuildInParallel=false -m:1 -nr:false
+          dotnet desktop/DeskPet.Tests/bin/Release/net10.0/DeskPet.Tests.dll --report-json "$REPORT_ROOT/core-tests.json" | tee "$REPORT_ROOT/core-tests.log"
+      - name: Build and execute real native bridge tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash desktop/DeskPet.Platform.Mac/native/self-test.sh '${{ matrix.arch }}' | tee "$REPORT_ROOT/native-tests.log"
+          dotnet build desktop/DeskPet.Platform.Mac/Tests/DeskPet.Platform.Mac.Tests.csproj -c Release -p:BuildInParallel=false -m:1 -nr:false
+          dotnet desktop/DeskPet.Platform.Mac/Tests/bin/Release/net10.0/DeskPet.Platform.Mac.Tests.dll --native-smoke | tee "$REPORT_ROOT/platform-tests.log"
+      - name: Avalonia UI and resources regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build desktop/DeskPet.Desktop.Tests/DeskPet.Desktop.Tests.csproj -c Release -p:BuildInParallel=false -m:1 -nr:false
+          dotnet desktop/DeskPet.Desktop.Tests/bin/Release/net10.0/DeskPet.Desktop.Tests.dll | tee "$REPORT_ROOT/headless-ui.log"
+      - name: Build preview app and verify DMG and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash installer/macos/build.sh '${{ matrix.arch }}' preview 'work/macos-${{ matrix.arch }}' | tee "$REPORT_ROOT/packaging.log"
+      - name: Launch real bundled macOS UI in isolated smoke mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root=pathlib.Path.cwd()
+          report=root/os.environ['REPORT_ROOT']/'app-smoke.json'
+          data=root/'work'/'isolated-app-smoke'
+          exe=root/'work'/'macos-${{ matrix.arch }}'/'artifacts'/'DeskPet.app'/'Contents'/'MacOS'/'DeskPet'
+          subprocess.run([str(exe),'--smoke-ui','--data-dir',str(data),'--report',str(report)],check=True,timeout=90)
+          result=json.loads(report.read_text())
+          if result.get('success') is not True:
+              raise SystemExit('Native Avalonia smoke did not report success')
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+      - name: Preserve reports and preview disk image
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeskPet-macOS-${{ matrix.arch }}-preview-${{ github.sha }}
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: warn
+          path: |
+            work/macos-reports-${{ matrix.arch }}/
+            work/macos-${{ matrix.arch }}/artifacts/*.dmg
+            work/macos-${{ matrix.arch }}/artifacts/*report.json
+            work/macos-${{ matrix.arch }}/artifacts/SHA256SUMS.txt

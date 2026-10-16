@@ -9,9 +9,10 @@ namespace Dafeiyu
     {
         readonly IConversationApi api;readonly Func<IAudioRecorder> factory;readonly Func<PetSettings> settings;readonly object gate=new object();
         Operation active;bool disposed;double level;long levelAt;
-        sealed class Operation{public object Owner;public IAudioRecorder Recorder;public ConnectionSettings Connection;public CancellationTokenSource Cancel=new CancellationTokenSource();public bool Finishing;}
+        sealed class Operation{public object Owner;public IAudioRecorder Recorder;public ConnectionSettings Connection;public CancellationTokenSource Cancel=new CancellationTokenSource();public bool Finishing;public Action<string> Failure;}
         public event Action Changed;
         public DictationStage Stage {get;private set;}
+        public string LastNotice {get;private set;}
         public bool IsBusy{get{lock(gate)return active!=null;}}
         public double InputLevel{get{return DateTime.UtcNow.Ticks-Interlocked.Read(ref levelAt)>TimeSpan.TicksPerSecond/3?0:Volatile.Read(ref level);}}
         public DictationSession(IConversationApi api,Func<IAudioRecorder> factory,Func<PetSettings> settings){this.api=api;this.factory=factory;this.settings=settings;}
@@ -24,15 +25,26 @@ namespace Dafeiyu
             {
                 if(disposed)throw new ObjectDisposedException("DictationSession");if(active!=null)throw new InvalidOperationException("另一处正在听写，请先结束或取消。");
                 var connection=settings().Copy().TranscriptionConnection();ApiClient.ValidateConnection(connection,ApiClient.AsrPath(connection));
-                op=new Operation{Owner=owner,Connection=connection,Recorder=factory()};active=op;
+                op=new Operation{Owner=owner,Connection=connection,Recorder=factory()};active=op;LastNotice="";
             }
             try
             {
                 var pcm=op.Recorder as IPcmMicrophone;
-                if(pcm!=null)pcm.PcmAvailable+=delegate(byte[] data){if(op.Cancel.IsCancellationRequested)return;Volatile.Write(ref level,AudioLevel.Pcm16(data));Interlocked.Exchange(ref levelAt,DateTime.UtcNow.Ticks);};
-                op.Recorder.Start();Stage=DictationStage.Recording;Notify();
+                if(pcm!=null) {
+                    pcm.PcmAvailable+=delegate(byte[] data){if(op.Cancel.IsCancellationRequested)return;Volatile.Write(ref level,AudioLevel.Pcm16(data));Interlocked.Exchange(ref levelAt,DateTime.UtcNow.Ticks);};
+                    op.Failure=message=>RecordingFailed(op,message);pcm.Failed+=op.Failure;
+                }
+                op.Recorder.Start();lock(gate){if(active==op && !op.Finishing)Stage=DictationStage.Recording;}Notify();
             }
             catch{Release(op);throw;}
+        }
+        void RecordingFailed(Operation op,string message)
+        {
+            lock(gate) {
+                if(disposed || active!=op || op.Finishing)return;
+                op.Finishing=true;LastNotice=String.IsNullOrWhiteSpace(message)?"麦克风录音中断，请检查设备及权限。":message;op.Cancel.Cancel();
+            }
+            Task.Run(delegate {try{Release(op);}finally{op.Cancel.Dispose();}});
         }
         public async Task<string> FinishAsync(object owner)
         {
@@ -48,6 +60,7 @@ namespace Dafeiyu
         }
         void Release(Operation op)
         {
+            var pcm=op.Recorder as IPcmMicrophone;if(pcm!=null && op.Failure!=null)pcm.Failed-=op.Failure;
             op.Recorder.Dispose();lock(gate){if(active!=op)return;active=null;Stage=DictationStage.Idle;}Volatile.Write(ref level,0);Notify();
             // A cancelled provider may still be observing its token; dispose only
             // after FinishAsync exits, or when no recognition was started.

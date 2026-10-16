@@ -10,8 +10,41 @@ namespace Dafeiyu.Tests
 {
     public static class PortableTests
     {
-        public static int Main()
+        static int contractChecks;
+        public static int Main(string[] args)
         {
+            string report=null;
+            if(args.Length!=0) {
+                if(args.Length!=2 || args[0]!="--report-json"){Console.Error.WriteLine("Usage: DeskPet.Tests [--report-json <path>]");return 2;}
+                report=Path.GetFullPath(args[1]);
+            }
+            var original=Console.Out;using(var captured=new StringWriter())
+            {
+                int result;
+                using(var output=new TeeWriter(original,captured))
+                {
+                    Console.SetOut(output);
+                    try{result=Run();}finally{Console.SetOut(original);}
+                }
+                if(report!=null) {
+                    var lines=captured.ToString().Split(new[]{'\r','\n'},StringSplitOptions.RemoveEmptyEntries);
+                    var summaries=lines.Select(line=>System.Text.RegularExpressions.Regex.Match(line,"^(?:.* tests|ProviderTests|AI greetings): ([0-9]+) passed",System.Text.RegularExpressions.RegexOptions.IgnoreCase)).Where(match=>match.Success).ToArray();
+                    Directory.CreateDirectory(Path.GetDirectoryName(report));
+                    File.WriteAllText(report,System.Text.Json.JsonSerializer.Serialize(new{
+                        schemaVersion=1,success=result==0,exitCode=result,
+                        passedChecks=contractChecks+summaries.Sum(match=>Int32.Parse(match.Groups[1].Value,System.Globalization.CultureInfo.InvariantCulture)),
+                        failures=lines.Where(line=>line.StartsWith("FAIL ",StringComparison.Ordinal)).ToArray(),
+                        framework=System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+                        operatingSystem=System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+                        architecture=System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString()
+                    },new System.Text.Json.JsonSerializerOptions{WriteIndented=true}));
+                }
+                return result;
+            }
+        }
+        static int Run()
+        {
+            contractChecks=0;
             try
             {
                 // No production fallback may silently persist plaintext before platform bootstrap.
@@ -26,12 +59,12 @@ namespace Dafeiyu.Tests
                     int result=0;
                     foreach(var test in new Func<int>[] { ApiTests.Main, StreamingTests.Main, ProxyTests.Main,
                         ConversationTests.Main, HistoryTests.Main, QueueTests.Main, DictationTests.Main,
-                        ProviderTests.Main, LiveTests.Main, GreetingTests.Main, AiGreetingTests.Main })
+                        ProviderTests.Main, LiveTests.Main, GreetingTests.Main, AiGreetingTests.Main, RecorderFailureTests.Main, OnboardingUpgradeTests.Main })
                         result |= test();
                     return result;
                 }
             }
-            catch(Exception e) { Console.Error.WriteLine(e);return 1; }
+            catch(Exception e) { Console.WriteLine("FAIL portable contracts: "+e);return 1; }
         }
         static void Secrets()
         {
@@ -102,7 +135,16 @@ namespace Dafeiyu.Tests
             var references=typeof(PetSettings).Assembly.GetReferencedAssemblies().Select(a=>a.Name).ToArray();
             Check(!references.Any(name=>name=="PresentationFramework" || name=="PresentationCore" || name=="WindowsBase" || name=="System.Windows.Forms" || name=="System.Speech" || name=="System.Security.Cryptography.ProtectedData"),"portable business assembly has no Windows UI, speech or DPAPI references");
         }
-        static void Check(bool condition,string message){if(!condition)throw new Exception(message);Console.WriteLine("PASS "+message);}
+        static void Check(bool condition,string message){if(!condition)throw new Exception(message);contractChecks++;Console.WriteLine("PASS "+message);}
+        sealed class TeeWriter:TextWriter
+        {
+            readonly TextWriter original,captured;
+            public TeeWriter(TextWriter original,TextWriter captured){this.original=original;this.captured=captured;}
+            public override Encoding Encoding{get{return original.Encoding;}}
+            public override void Write(char value){original.Write(value);captured.Write(value);}
+            public override void Write(string value){original.Write(value);captured.Write(value);}
+            public override void WriteLine(string value){original.WriteLine(value);captured.WriteLine(value);}
+        }
         sealed class UnusedSpeech : IReplySpeech
         {
             public System.Threading.Tasks.Task SpeakAsync(string text,PetSettings settings,System.Threading.CancellationToken token){throw new InvalidOperationException("The corrupted queue must not send or speak.");}

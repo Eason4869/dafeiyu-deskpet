@@ -91,10 +91,9 @@ namespace Dafeiyu
         }
         static int Score(string name)
         {
-            string lower=(name??"").ToLowerInvariant();
-            if(lower.Contains("source") || lower.Contains("源码") || lower.Contains("arm64") || lower.Contains("外观") || lower.Contains("skin") ||
-                lower.Contains("mac") || lower.Contains("darwin") || lower.Contains("osx") || lower.Contains("dmg") || lower.Contains("template") || lower.Contains("模板"))return -1;
-            string ext=Path.GetExtension(lower);int score=ext==".msi"?40:ext==".exe"?30:ext==".zip"?10:-1;if(score<0)return -1;if(lower.Contains("setup") || lower.Contains("install") || lower.Contains("安装"))score+=20;if(Environment.Is64BitOperatingSystem && lower.Contains("x64"))score+=5;return score;
+            if(!ReleaseInfo.WindowsUpdateAsset(name))return -1;
+            string lower=name.ToLowerInvariant();
+            string ext=Path.GetExtension(lower);int score=ext==".msi"?40:ext==".exe"?30:ext==".zip"?10:-1;if(score<0)return -1;if(lower.Contains("setup"))score+=20;if(lower.StartsWith("deskpet-windows-setup",StringComparison.Ordinal))score+=25;return score;
         }
         bool SafeAsset(string address){Uri uri;if(!Uri.TryCreate(address,UriKind.Absolute,out uri) || uri.UserInfo.Length>0 || uri.Fragment.Length>0)return false;if(apiRoot.IsLoopback && uri.IsLoopback && uri.Scheme=="http")return true;return uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.Contains("/releases/download/");}
         public Task<string> DownloadAsync(UpdateRelease release,string folder,bool useProxy,IProgress<double> progress,CancellationToken cancel){return DownloadAsync(release,folder,useProxy,ProxyConfiguration.DefaultAddress,progress,cancel);}

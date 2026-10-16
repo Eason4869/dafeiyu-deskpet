@@ -49,7 +49,7 @@ namespace Dafeiyu
         internal void SetGuideInteraction(string action)
         {
             if(guideInteraction=="double-click" && quick!=null){quick.SetGuidePreview(false);quick.Hide();}
-            if(guideInteraction.Length>0){if(ContextMenu!=null)ContextMenu.IsOpen=false;if(palette!=null)palette.Close();SetPaused(guidePaused);if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,Settings.ClickThrough);}
+            if(guideInteraction.Length>0){if(ContextMenu!=null)ContextMenu.IsOpen=false;if(palette!=null)palette.Close();SetPaused(guidePaused);if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,Settings.ClickThrough || !petDisplayed);}
             guideInteraction=action??"";guideWheelOpened=false;
             if(guideInteraction.Length>0){guidePaused=Paused;SetPaused(false);RestorePet();if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,false);}
         }
@@ -118,6 +118,8 @@ namespace Dafeiyu
         public string HotkeyWarning {get;private set;}
         public bool UserVisible {get{return visibility.UserVisible;}}
         public bool AutoHidden {get{return visibility.AutoHidden;}}
+        private bool petDisplayed=true;
+        public bool IsPetVisible {get{return IsVisible && petDisplayed;}}
         private Forms.ToolStripMenuItem visibilityItem;
         private IntPtr handle;
         private bool dragging,moved,closing,walking;
@@ -204,7 +206,7 @@ namespace Dafeiyu
             Width=192*Settings.Scale; Height=208*Settings.Scale;
             image=new Image { Stretch=Stretch.Fill,Cursor=Cursors.Hand };
             clickTimer=new DispatcherTimer(DispatcherPriority.Input) {Interval=TimeSpan.FromMilliseconds(Forms.SystemInformation.DoubleClickTime)};
-            clickTimer.Tick+=delegate {clickTimer.Stop();if(!closing && IsVisible && !Paused && !dragging && !DialogueBusy){PlayInteraction(pendingHeadClick ? "petting" : "poked");NotifyGuideInteraction("click");}};
+            clickTimer.Tick+=delegate {clickTimer.Stop();if(!closing && IsPetVisible && !Paused && !dragging && !DialogueBusy){PlayInteraction(pendingHeadClick ? "petting" : "poked");NotifyGuideInteraction("click");}};
             RenderOptions.SetBitmapScalingMode(image,BitmapScalingMode.HighQuality); Content=image;
             image.MouseLeftButtonDown+=BeginDrag; image.MouseMove+=Drag; image.MouseLeftButtonUp+=EndDrag;
             image.PreviewMouseDown+=delegate(object sender,MouseButtonEventArgs args){if(args.ChangedButton==MouseButton.Middle){args.Handled=true;if(!dragging)ShowActionPalette();}};
@@ -225,7 +227,7 @@ namespace Dafeiyu
             {
                 handle=new WindowInteropHelper(this).Handle;
                 HwndSource.FromHwnd(handle).AddHook(WindowMessage);
-                DesktopInterop.MakeToolWindow(handle);DesktopInterop.SetClickThrough(handle,Settings.ClickThrough);
+                DesktopInterop.MakeToolWindow(handle);DesktopInterop.SetClickThrough(handle,Settings.ClickThrough || !petDisplayed);
                 hotkeys=new HotkeyRegistry(handle);
                 foreach(var pair in Settings.Hotkeys){string error;if(!hotkeys.TryBind(pair.Key,pair.Value,out error))HotkeyWarning=Notice=error+"（"+pair.Value+"）";}
             };
@@ -249,11 +251,13 @@ namespace Dafeiyu
             tray.DoubleClick+=delegate { Dispatcher.BeginInvoke(new Action(delegate { RestorePet(); ShowSettings(); })); };
             timer=new DispatcherTimer(DispatcherPriority.Background) { Interval=TimeSpan.FromMilliseconds(250) };
             timer.Tick+=Tick; Closing+=OnClosing; UpdateFrame();
-            IsVisibleChanged+=delegate {
-                CompositionTarget.Rendering-=RenderFrame;
-                if(IsVisible && !closing) { previousTick=watch.Elapsed.TotalSeconds; nextRender=previousTick; CompositionTarget.Rendering+=RenderFrame; }
-                else CancelInteraction();
-            };
+            IsVisibleChanged+=delegate { RefreshRendering(); };
+        }
+        private void RefreshRendering()
+        {
+            CompositionTarget.Rendering-=RenderFrame;
+            if(IsPetVisible && !closing) { previousTick=watch.Elapsed.TotalSeconds;nextRender=previousTick;CompositionTarget.Rendering+=RenderFrame; }
+            else CancelInteraction();
         }
         private void AddTray(string text,Action action)
         { trayMenu.Items.Add(text,null,delegate { Dispatcher.BeginInvoke(action); }); }
@@ -332,7 +336,7 @@ namespace Dafeiyu
         private void RecordPetInteraction(){if(idleSleep!=null)idleSleep.Touch(watch.Elapsed.TotalSeconds);}
         internal bool ProbeAutoSleep(double now,double systemIdle)
         {
-            bool allowed=!closing && IsVisible && !Paused && !dragging && !walking && !interaction.Active && Animation.State=="idle" &&
+            bool allowed=!closing && IsPetVisible && !Paused && !dragging && !walking && !interaction.Active && Animation.State=="idle" &&
                 !DialogueBusy && !DictationActive && !HasQueuedMessages && !GuideActive && !sessionLocked &&
                 !clickTimer.IsEnabled && (ContextMenu==null || !ContextMenu.IsOpen) && !trayMenu.Visible && (palette==null || !palette.IsVisible) &&
                 !WindowInUse(quick) && !WindowInUse(chat) && !WindowInUse(preferences) && (updates==null || !updates.HasRestartCountdown) && greetingRequest==null;
@@ -341,14 +345,14 @@ namespace Dafeiyu
         }
         private bool GreetingAllowed(bool fullscreen,bool preview)
         {
-            return !closing && !Settings.QuietMode && (preview || Settings.GreetingEnabled) && IsVisible && !Paused && !dragging && !walking && !interaction.Active && !clickTimer.IsEnabled && !sessionLocked && !DialogueBusy && !DictationActive && !HasQueuedMessages && (!GuideActive || (preview && guide.TargetName=="GreetingEnabled")) && (updates==null || !updates.HasRestartCountdown) &&
+            return !closing && !Settings.QuietMode && (preview || Settings.GreetingEnabled) && IsPetVisible && !Paused && !dragging && !walking && !interaction.Active && !clickTimer.IsEnabled && !sessionLocked && !DialogueBusy && !DictationActive && !HasQueuedMessages && (!GuideActive || (preview && guide.TargetName=="GreetingEnabled")) && (updates==null || !updates.HasRestartCountdown) &&
                 (ContextMenu==null || !ContextMenu.IsOpen) && !trayMenu.Visible && (palette==null || !palette.IsVisible) &&
                 !WindowInUse(quick) && !WindowInUse(chat) && (preview || !WindowInUse(preferences)) && !fullscreen;
         }
         private static bool WindowInUse(Window window){return window!=null && window.IsVisible && window.WindowState!=WindowState.Minimized;}
         private void RenderFrame(object sender,EventArgs args)
         {
-            if(closing || !IsVisible) return;
+            if(closing || !IsPetVisible) return;
             double now=watch.Elapsed.TotalSeconds;
             if(now+.002<nextRender) return;
             // Fixed deadlines avoid falling to 48 Hz on a 144 Hz monitor.
@@ -521,6 +525,7 @@ namespace Dafeiyu
             if(message==0x21) { handled=true; return new IntPtr(3); }
             if(message==0x84 && !dragging)
             {
+                if(!IsPetVisible){handled=true;return new IntPtr(-1);}
                 long p=lParam.ToInt64(); int x=(short)(p&0xffff),y=(short)((p>>16)&0xffff); Rect b=DesktopInterop.Bounds(hwnd);
                 if(b.Width<=0 || b.Height<=0)return IntPtr.Zero;
                 int width=shownMotion!=null?shownMotion.Width:shownSupplemental ? interactionAtlas.FrameWidth : atlas.CellWidth,height=shownMotion!=null?shownMotion.Height:shownSupplemental ? interactionAtlas.FrameHeight : atlas.CellHeight;
@@ -596,7 +601,7 @@ namespace Dafeiyu
         public void ApplySettings()
         {
             RecordPetInteraction();
-            Settings.Normalize();if((Settings.LockPosition || Settings.ClickThrough) && dragging){CancelInteraction();SavePosition();}if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,Settings.ClickThrough);if((Settings.QuietMode || Settings.LockPosition) && walking){walking=false;Animation.Play("idle",0);}PollVisibility(); Rect before=handle==IntPtr.Zero ? Rect.Empty : DesktopInterop.Bounds(handle);
+            Settings.Normalize();if((Settings.LockPosition || Settings.ClickThrough) && dragging){CancelInteraction();SavePosition();}if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,Settings.ClickThrough || !petDisplayed);if((Settings.QuietMode || Settings.LockPosition) && walking){walking=false;Animation.Play("idle",0);}PollVisibility(); Rect before=handle==IntPtr.Zero ? Rect.Empty : DesktopInterop.Bounds(handle);
             Width=192*Settings.Scale; Height=208*Settings.Scale; Topmost=Settings.Topmost;
             if(!Settings.Wander && walking) { walking=false; Animation.Play("idle",0); }
             if(handle!=IntPtr.Zero) Dispatcher.BeginInvoke(DispatcherPriority.Loaded,new Action(delegate
@@ -675,7 +680,7 @@ namespace Dafeiyu
         private void CancelPendingGreeting(bool retry=true)
         {greetingGeneration++;var pending=greetingRequest;greetingRequest=null;if(pending!=null){pending.Cancel();if(retry && !greetingPreview && !closing && greetingSchedule!=null)greetingSchedule.Defer(DateTime.UtcNow);}}
         private void DismissGreeting(bool restartTimer=false){CancelPendingGreeting(!restartTimer);if(greeting!=null)greeting.Hide();if(restartTimer)ResetGreetingSchedule();}
-        public void PreviewGreeting(){if(!closing && IsVisible)RunGreeting(true);}
+        public void PreviewGreeting(){if(!closing && IsPetVisible)RunGreeting(true);}
         private void ShowGreeting(){RunGreeting(false);}
         private async void RunGreeting(bool preview)
         {
@@ -731,7 +736,7 @@ namespace Dafeiyu
             if(DialogueBusy){CancelInteraction();UpdateFrame();}else if(interaction.Active)return;
             walking=false;if(Paused)return;var stage=conversation==null ? ConversationStage.Idle : conversation.Stage;string state=LiveActive ? "waiting" : stage==ConversationStage.Recording?"waiting":stage==ConversationStage.Recognizing?"review":stage==ConversationStage.Thinking?"running":stage==ConversationStage.Speaking?"waving":"idle";Animation.Play(state,0);UpdateFrame();
         }
-        public void HidePet() { if(palette!=null)palette.Close();if(call!=null)call.Close();CancelInteraction();visibility.UserVisible=false;visibility.OverrideFullscreen=false;DismissGreeting();walking=false;Animation.Play("idle",0);SavePosition();if(quick!=null)quick.Hide();ApplyVisibility(); }
+        public void HidePet() { if(ContextMenu!=null)ContextMenu.IsOpen=false;if(palette!=null)palette.Close();if(call!=null)call.Close();CancelInteraction();visibility.UserVisible=false;visibility.OverrideFullscreen=false;DismissGreeting();walking=false;Animation.Play("idle",0);SavePosition();if(quick!=null)quick.Hide();ApplyVisibility(); }
         public void RestorePet() {RecordPetInteraction();visibility.UserVisible=true;PollVisibility();DesktopInterop.ClampWindow(handle);previousTick=watch.Elapsed.TotalSeconds;}
         private void PollVisibility()
         {
@@ -744,14 +749,32 @@ namespace Dafeiyu
         }
         private void ApplyVisibility()
         {
-            if(visibility.Visible){if(!IsVisible){ResetGreetingSchedule();Show();previousTick=watch.Elapsed.TotalSeconds;}}
-            else if(IsVisible){if(palette!=null)palette.Close();if(call!=null)call.Close();CancelInteraction();DismissGreeting();walking=false;Animation.Play("idle",0);Hide();}
+            // Keep the per-pixel surface attached. On Windows 11, hiding and
+            // showing this layered HWND can leave its native alpha surface empty.
+            // Zero opacity plus native pass-through hides it without that cycle.
+            if(visibility.Visible)
+            {
+                if(!IsVisible)Show();
+                if(!petDisplayed)
+                {
+                    ResetGreetingSchedule();petDisplayed=true;IsHitTestVisible=true;
+                    Opacity=1;DesktopInterop.SetClickThrough(handle,Settings.ClickThrough);
+                    UpdateFrame();RefreshRendering();
+                }
+            }
+            else if(petDisplayed)
+            {
+                if(ContextMenu!=null)ContextMenu.IsOpen=false;
+                if(palette!=null)palette.Close();if(call!=null)call.Close();CancelInteraction();DismissGreeting();
+                walking=false;Animation.Play("idle",0);petDisplayed=false;IsHitTestVisible=false;
+                Opacity=0;if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,true);RefreshRendering();
+            }
             if(visibilityItem!=null)visibilityItem.Checked=visibility.UserVisible;
         }
         public void SetQuietMode(bool enabled)
         {Settings.QuietMode=enabled;DismissGreeting(true);if(enabled){StopReplySpeech();walking=false;if(!interaction.Active)Animation.Play("idle",0);}SaveSettings();if(quietItem!=null)quietItem.Checked=enabled;if(preferences!=null)preferences.RefreshState();}
         public void SetClickThrough(bool enabled)
-        {RecordPetInteraction();Settings.ClickThrough=enabled;if(enabled){CancelInteraction();UpdateFrame();}if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,enabled);SaveSettings();if(clickThroughItem!=null)clickThroughItem.Checked=enabled;if(preferences!=null)preferences.RefreshState();}
+        {RecordPetInteraction();Settings.ClickThrough=enabled;if(enabled){CancelInteraction();UpdateFrame();}if(handle!=IntPtr.Zero)DesktopInterop.SetClickThrough(handle,enabled || !petDisplayed);SaveSettings();if(clickThroughItem!=null)clickThroughItem.Checked=enabled;if(preferences!=null)preferences.RefreshState();}
         public bool UpdateHotkey(string action,string value,out string error)
         {error="";if(hotkeys!=null && !hotkeys.TryBind(action,value,out error))return false;Settings.Hotkeys[action]=(value ?? "").Trim();SaveSettings();return true;}
         public void ReturnHome()

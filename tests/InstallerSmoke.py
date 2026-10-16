@@ -8,17 +8,20 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import uuid
 import winreg
 
 PROJECT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(PROJECT))
+from tools.release_assets import installer_asset_name
 VERSION=re.search(r'DisplayVersion="([^"]+)"',(PROJECT/'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
 parser=argparse.ArgumentParser()
 parser.add_argument('--output-directory',type=Path,default=PROJECT.parent/'outputs')
 options=parser.parse_args()
 OUTPUT=options.output_directory.resolve()
-SETUP=OUTPUT/('DeskPet-Setup-'+VERSION+'.exe')
+SETUP=OUTPUT/installer_asset_name(VERSION)
 APP_KEY=r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{3B63C162-076E-4B2F-BDCC-2572664875A9}_is1'
 RUN_KEY=r'Software\Microsoft\Windows\CurrentVersion\Run'
 ENTRY='DafeiyuDeskPet'

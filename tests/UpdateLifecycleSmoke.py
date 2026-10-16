@@ -18,7 +18,13 @@ import uuid
 import winreg
 
 PROJECT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(PROJECT))
+from tools.release_assets import installer_asset_name
 VERSION = re.search(r'DisplayVersion="([^"]+)"', (PROJECT / 'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
+for argument in sys.argv[1:]:
+    if argument.startswith('--version='):
+        VERSION=argument.split('=',1)[1]
+installer_asset_name(VERSION)  # Reject malformed fixture overrides before any mutation.
 ROOT = PROJECT / 'work' / ('update-lifecycle-' + uuid.uuid4().hex)
 ROOT.mkdir(parents=True)
 CSC = Path(os.environ['WINDIR']) / 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
@@ -101,8 +107,9 @@ def setup(runtime, stage, version, fixture_id, mutex, group):
     script.write_text(text, encoding='utf-8-sig')
     shutil.copy2(PROJECT / 'installer/ChineseSimplified.isl', installer / 'ChineseSimplified.isl')
     run([INNO, '/Qp', '/DRuntimeDir=' + str(runtime), '/DOutputDir=' + str(stage), '/DProductVersion=' + version,
-        '/DAssemblyVersion=' + version + '.0', '/DRepositoryUrl=https://github.com/Eason4869/deskpet', script])
-    return stage / ('DeskPet-Setup-' + version + '.exe')
+        '/DAssemblyVersion=' + version + '.0', '/DRepositoryUrl=https://github.com/Eason4869/deskpet',
+        '/DInstallerBaseName=' + installer_asset_name(version)[:-4], script])
+    return stage / installer_asset_name(version)
 
 def scenario(mode, abandon=False, blocked_receipts=False, invalid_package=False):
     stage = ROOT / ('abandoned' if abandon else mode + ('-blocked' if blocked_receipts else '') + ('-invalid' if invalid_package else ''))
@@ -149,7 +156,7 @@ def scenario(mode, abandon=False, blocked_receipts=False, invalid_package=False)
         (runtime / 'README.md').write_text('updated readme', encoding='utf-8')
         if mode == 'installed':
             built = setup(runtime, stage, VERSION, fixture_id, mutex, group)
-            package = work / built.name
+            package = work / (('DeskPet-Setup-' + VERSION + '.exe') if '--legacy-installer-name' in sys.argv else built.name)
             shutil.copy2(built, package)
         else:
             package = work / ('DeskPet-Windows-' + VERSION + '.zip')
@@ -208,7 +215,11 @@ def scenario(mode, abandon=False, blocked_receipts=False, invalid_package=False)
             run([directory / 'unins000.exe', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])
             check((directory / 'data/settings.json').exists(), 'isolated uninstall preserves user-data fixture')
 
-if '--receipts-only' in sys.argv:
+if '--installed-only' in sys.argv:
+    if not INNO.is_file():
+        raise AssertionError('real Inno compiler is required for the installed lifecycle fixture')
+    scenario('installed')
+elif '--receipts-only' in sys.argv:
     scenario('portable', blocked_receipts=True)
     scenario('portable', blocked_receipts=True, invalid_package=True)
 else:

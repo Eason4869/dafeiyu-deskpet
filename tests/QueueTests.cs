@@ -26,7 +26,10 @@ namespace Dafeiyu.Tests
                 Check(api.Calls.Last()=="edited","resume sends edited text");
                 queue.Enqueue("stop without waiting items");await Task.Delay(20);await queue.PauseAsync();queue.Enqueue("explicit new send");await Until(()=>!queue.IsRunning && queue.Items.Count==0);
                 Check(api.Calls.Last()=="explicit new send","new send after stopping an empty queue starts normally");
-                queue.Enqueue("original question");queue.Enqueue("after");await Task.Delay(20);await queue.InterruptAsync("make it shorter");await Until(()=>!queue.IsRunning && queue.Items.Count==0);
+                // Keep the original request in flight even if a busy CI scheduler
+                // resumes this test after the fixture's normal 120ms response time.
+                api.WaitForCancellation="original question";queue.Enqueue("original question");await Until(()=>api.Calls.Last()=="original question");
+                queue.Enqueue("after");await Task.Delay(300);await queue.InterruptAsync("make it shorter");api.WaitForCancellation=null;await Until(()=>!queue.IsRunning && queue.Items.Count==0);
                 Check(String.Join(",",api.Calls.Skip(api.Calls.Count-3))=="original question,make it shorter,after","steering takes priority then resumes previous queue");
                 var request=api.Requests[api.Requests.Count-2];Check(request.Any(m=>m.Content=="original question") && request.Any(m=>m.Content.Contains("partial") && m.Content.Contains("未完成")),"steering includes original question and marked partial reply");
                 api.CancelRelease=new TaskCompletionSource<bool>();queue.Enqueue("cancel race");await Until(()=>api.Calls.Last()=="cancel race");queue.Enqueue("keep after race");
@@ -73,9 +76,9 @@ namespace Dafeiyu.Tests
         static async Task Until(Func<bool> condition){for(int i=0;i<300;i++){if(condition())return;await Task.Delay(10);}throw new Exception("Timed out");}
         sealed class Api:IConversationApi,IStreamingConversationApi
         {
-            public readonly List<string> Calls=new List<string>();public readonly List<IList<ChatMessage>> Requests=new List<IList<ChatMessage>>();public int Maximum;int active;public bool Fail;public TaskCompletionSource<bool> CancelRelease,Release;
+            public readonly List<string> Calls=new List<string>();public readonly List<IList<ChatMessage>> Requests=new List<IList<ChatMessage>>();public int Maximum;int active;public bool Fail;public string WaitForCancellation;public TaskCompletionSource<bool> CancelRelease,Release;
             public async Task<string> ChatStreamAsync(ConnectionSettings c,IList<ChatMessage> m,Action<string> delta,CancellationToken token)
-            {int count=Interlocked.Increment(ref active);Maximum=Math.Max(Maximum,count);Calls.Add(m.Last().Content);Requests.Add(m);try{delta("partial");if(Release!=null)await Release.Task;bool cancelled=false;try{await Task.Delay(120,token);}catch(OperationCanceledException){cancelled=true;}if(cancelled){if(CancelRelease!=null)await CancelRelease.Task;token.ThrowIfCancellationRequested();}if(Fail)throw new ApiException("fixture failure");return "partial done";}finally{Interlocked.Decrement(ref active);}}
+            {int count=Interlocked.Increment(ref active);Maximum=Math.Max(Maximum,count);Calls.Add(m.Last().Content);Requests.Add(m);try{delta("partial");if(Release!=null)await Release.Task;bool cancelled=false;try{await Task.Delay(m.Last().Content==WaitForCancellation?Timeout.Infinite:120,token);}catch(OperationCanceledException){cancelled=true;}if(cancelled){if(CancelRelease!=null)await CancelRelease.Task;token.ThrowIfCancellationRequested();}if(Fail)throw new ApiException("fixture failure");return "partial done";}finally{Interlocked.Decrement(ref active);}}
             public Task<string> ChatAsync(ConnectionSettings c,IList<ChatMessage> m,CancellationToken t){return ChatStreamAsync(c,m,_=>{},t);}
             public Task<string> TranscribeAsync(ConnectionSettings c,byte[] b,CancellationToken t){throw new NotSupportedException();}public Task<byte[]> SpeechAsync(ConnectionSettings c,string v,string s,CancellationToken t){throw new NotSupportedException();}public void Dispose(){}
         }

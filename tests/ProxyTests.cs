@@ -32,7 +32,7 @@ namespace Dafeiyu.Tests
             using(var proxy=new ApiTests.Fixture("",502))using(var updater=new GitHubUpdates())using(var cancel=new CancellationTokenSource(5000))
             {try{await updater.CheckAsync(ReleaseInfo.RepositoryUrl,true,proxy.Url,cancel.Token);throw new Exception("rejected update proxy accepted");}catch(ApiException){}catch(OperationCanceledException){}Check(proxy.Path=="api.github.com:443","release lookup uses the editable update proxy");}
             using(var proxy=new ApiTests.Fixture("",502))using(var updater=new GitHubUpdates())using(var cancel=new CancellationTokenSource(5000))
-            {try{await updater.DownloadAsync(new UpdateRelease{AssetName="Setup.exe",AssetUrl="https://github.com/test/pet/releases/download/v1/Setup.exe",Size=4},folder,true,proxy.Url,null,cancel.Token);throw new Exception("rejected download proxy accepted");}catch(ApiException){}catch(OperationCanceledException){}Check(proxy.Path=="github.com:443","installer downloads use the editable update proxy");}
+            {try{await updater.DownloadAsync(new UpdateRelease{AssetName="DeskPet-Setup.exe",AssetUrl="https://github.com/test/pet/releases/download/v1/DeskPet-Setup.exe",Size=4},folder,true,proxy.Url,null,cancel.Token);throw new Exception("rejected download proxy accepted");}catch(ApiException){}catch(OperationCanceledException){}Check(proxy.Path=="github.com:443","installer downloads use the editable update proxy");}
         }
         static void Check(bool value,string label){if(!value)throw new Exception(label);passed++;Console.WriteLine("PASS "+label);}
     }

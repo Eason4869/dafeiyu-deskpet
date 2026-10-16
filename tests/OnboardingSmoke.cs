@@ -57,11 +57,11 @@ namespace Dafeiyu.Tests
                 Point point=new Point();
                 if(simulated)pet.NotifyGuideInteraction("drag");else{PlacePetUncovered(pet);point=MoveToPet(pet);mouse_event(2,0,0,0,UIntPtr.Zero);Pump(.06);MoveCursor(new Point(point.X-70,point.Y-40));Pump(.15);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(.2);}
                 Check(Find<Button>(guide,"GuideNext").IsEnabled,"drag completion unlocks drag lesson");Press(guide,"GuideNext");
-                Check(guide.Step==4 && !Find<Button>(guide,"GuideNext").IsEnabled,"right menu lesson starts incomplete");if(simulated){pet.ContextMenu.IsOpen=true;Pump(.2);}else{WaitForInteraction(pet);point=MoveToPet(pet);mouse_event(8,0,0,0,UIntPtr.Zero);Pump(.25);mouse_event(16,0,0,0,UIntPtr.Zero);Pump(.25);}
+                Check(guide.Step==4 && !Find<Button>(guide,"GuideNext").IsEnabled,"right menu lesson starts incomplete");if(simulated){pet.ContextMenu.IsOpen=true;Pump(.2);}else{WaitForInteraction(pet);point=MoveToPet(pet);NativeClick(pet,System.Windows.Input.MouseButton.Right,8,16);}
                 Pump(.6);
                 Check(pet.ContextMenu.IsOpen && pet.ContextMenu.IsEnabled,"guide menu stays open long enough to inspect");
                 Check(Find<Button>(guide,"GuideNext").IsEnabled,"opening real menu completes menu lesson");pet.ContextMenu.IsOpen=false;Press(guide,"GuideNext");
-                Check(guide.Step==5 && !Find<Button>(guide,"GuideNext").IsEnabled,"wheel lesson requires selecting an action");if(simulated){pet.ShowActionPalette();Pump(.2);}else{point=MoveToPet(pet);mouse_event(32,0,0,0,UIntPtr.Zero);mouse_event(64,0,0,0,UIntPtr.Zero);Pump(.2);}
+                Check(guide.Step==5 && !Find<Button>(guide,"GuideNext").IsEnabled,"wheel lesson requires selecting an action");if(simulated){pet.ShowActionPalette();Pump(.2);}else{point=MoveToPet(pet);NativeClick(pet,System.Windows.Input.MouseButton.Middle,32,64);}
                 var wheel=app.Windows.OfType<ActionPaletteWindow>().Single();Check(wheel.IsVisible && !Find<Button>(guide,"GuideNext").IsEnabled,"opening wheel alone cannot complete lesson");Find<Button>(wheel,"PaletteInteraction_feeding").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.2);Check(Find<Button>(guide,"GuideNext").IsEnabled,"choosing wheel action completes lesson");Press(guide,"GuideNext");
                 Check(guide.Step==6 && !Find<Button>(guide,"GuideNext").IsEnabled,"click lesson starts incomplete");if(simulated)pet.NotifyGuideInteraction("click");else{WaitForInteraction(pet);point=MoveToPet(pet);mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);Pump(System.Windows.Forms.SystemInformation.DoubleClickTime/1000d+.3);}Check(Find<Button>(guide,"GuideNext").IsEnabled,"click completion unlocks interaction lesson");Press(guide,"GuideNext");
                 Check(guide.Step==7 && guide.TargetName=="GuidePet" && !Find<Button>(guide,"GuideNext").IsEnabled,"double click lesson follows single click and requires practice");
@@ -125,7 +125,23 @@ namespace Dafeiyu.Tests
 
             Point point=OpaquePoint(pet);MoveCursor(point);Pump(.03);
             if(!HitsPet(pet,point))throw new Exception("Native gesture aborted: opaque hit target is not the fixture");
-            Console.WriteLine("NATIVE verified current frame hit at "+point);return point;
+            uint foregroundProcess;GetWindowThreadProcessId(GetForegroundWindow(),out foregroundProcess);
+            Console.WriteLine("NATIVE verified current frame hit at "+point+" foregroundPid="+foregroundProcess+" fixturePid="+System.Diagnostics.Process.GetCurrentProcess().Id+" buttons="+System.Windows.Input.Mouse.LeftButton+"/"+System.Windows.Input.Mouse.RightButton);return point;
+        }
+        static void NativeClick(PetWindow pet,System.Windows.Input.MouseButton button,uint down,uint up)
+        {
+            bool received=false;
+            System.Windows.Input.MouseButtonEventHandler observe=(sender,args)=>{if(args.ChangedButton==button)received=true;};
+            pet.AddHandler(UIElement.PreviewMouseDownEvent,observe,true);
+            try {
+                mouse_event(down,0,0,0,UIntPtr.Zero);
+                var deadline=DateTime.UtcNow.AddSeconds(2);
+                while(!received && DateTime.UtcNow<deadline)Pump(.02);
+            } finally {
+                mouse_event(up,0,0,0,UIntPtr.Zero);
+                pet.RemoveHandler(UIElement.PreviewMouseDownEvent,observe);
+            }
+            Check(received,"native "+button+" down reaches fixture before release");Pump(.25);
         }
         static void PlacePetUncovered(PetWindow pet)
         {

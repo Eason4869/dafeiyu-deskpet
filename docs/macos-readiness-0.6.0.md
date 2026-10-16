@@ -2,13 +2,15 @@
 
 本版保留 Windows WPF 客户端，增加基于相同业务代码的 Avalonia macOS 适配。Mac 附件是 **ad-hoc 签名、未经 Apple 公证的 preview**；不具备 Developer ID 信任，不代表已通过全部人工设备验收。用户无需另装 .NET，也不需要 Docker。
 
+0.6.0 当前只建立开发标签，**不创建 GitHub Release，也不公开分发安装包**。CI 预览仅用于真实验证；本文件中的包名与发布清单描述后续可构建的产物，不代表已有公开下载页。
+
 ## 版本与附件
 
 - Windows 与 Mac 版本均为 `0.6.0`；最终 Windows 业务基线须在 `0.5.6` 完成后合入并再次回归。
 - Apple Silicon：`DeskPet-macOS-0.6.0-arm64-preview.dmg`、同名 `.zip`。
 - Intel：`DeskPet-macOS-0.6.0-x86_64-preview.dmg`、同名 `.zip`。
 - Mac 从“关于与更新”只能启用与本机 CPU 对应的 Mac 附件；Windows 安装包、另一 CPU、模板与未知命名不能成为更新入口。
-- 最终 GitHub Release 的 Windows、Mac、源码及素材共用根发布流程生成的版本化 SHA256 清单。每架构 CI 中的 `SHA256SUMS.txt` 仅供构建核验，不作为第二份公开发布清单。
+- 以后如另行授权 GitHub Release，Windows、Mac、源码及素材共用根发布流程生成的 SHA256 清单。每架构 CI 中的 `SHA256SUMS.txt` 仅供构建核验，不作为第二份公开发布清单。
 
 ## 已取得的本地证据
 
@@ -16,7 +18,7 @@
 
 | 检查 | 结果 | 覆盖边界 |
 | --- | --- | --- |
-| `tests/MacPackagingTests.py` | 13 项通过 | bundle 布局、版本、Mach-O 架构、私密文件拒绝、保留已有输出、preview 签名策略、托管文件签名顺序、正式 helper Hardened Runtime、正式凭据缺失拒绝 |
+| `tests/MacPackagingTests.py` | 14 项通过 | bundle 布局、版本、Mach-O 架构、私密文件拒绝、保留已有输出、preview 签名策略、托管文件签名顺序、正式 helper Hardened Runtime、正式凭据缺失拒绝、DMG busy 有界重试 |
 | `DeskPet.Tests.dll --report-json` | 291 项通过；报告 `success=true` | 共用协议、代理、流式、会话、历史、队列、听写、Live、问候、录音故障与引导升级 |
 | `DeskPet.Desktop.Tests.dll` | 1474 项通过 | 实际 Avalonia 控件、资源与动画、混合平台附件选择、0.5.6→0.6.0 引导升级；这是 Headless 渲染和可注入服务测试 |
 | `DeskPet.Platform.Mac.Tests.dll` | 23 项平台边界、10 项录音生命周期、4 项朗读进程检查通过 | 本机为 Windows；不把这些结果计作 Mac 原生执行 |
@@ -39,10 +41,22 @@
 
 ## 双架构 CI 与正式签名边界
 
-首次真实 CI [38846284163](https://github.com/Eason4869/deskpet/actions/runs/38846284163) 中，两架构共用业务通过，原生桥均编译成功；随后 `lipo -verify_arch` 把输入文件错误地识别为架构名。已修复为输入文件放前。
+真实 CI [38848283603](https://github.com/Eason4869/deskpet/actions/runs/38848283603) 对提交 `bf71a3c39ff60b38faea062274b4db0478cdfd09` 的 Ubuntu 包装契约、Apple Silicon 与 Intel 三个 job 全部通过。
 
-第二轮 [38846523644](https://github.com/Eason4869/deskpet/actions/runs/38846523644) 中，两架构分别通过原生自检 50 项、原生 P/Invoke 23 项、录音生命周期 10 项、朗读子进程 4 项和 Headless UI 1449 项。打包随后因 `codesign` 把 `Contents/MacOS` 中未签名的托管 DLL 识别为嵌套代码而失败。已按 Avalonia 官方部署方式显式签署全部 payload 文件，并增加 ZIP 解压后的严格签名验证；DMG staging 使用 `ditto` 保留签名元数据。最终 0.6.0 CI 尚待完成。
+| 验证 | arm64 / macOS 15.7.9 | x86_64 / macOS 15 |
+| --- | --- | --- |
+| 包装失败/签名策略契约 | 14 项通过（共享 Ubuntu job） | 14 项通过（共享 Ubuntu job） |
+| 共享业务 | 291 项通过 | 291 项通过 |
+| 隔离 Keychain、窗口、显示器、快捷键、音频原生自检 | 50 项通过 | 50 项通过 |
+| 原生 P/Invoke / 录音生命周期 / 朗读子进程 | 23 / 10 / 4 项通过 | 23 / 10 / 4 项通过 |
+| Avalonia Headless 控件、动画、更新选择、引导迁移 | 1474 项通过 | 1474 项通过 |
+| 自包含 publish / ad-hoc 签名 / ZIP 解压验签 / DMG 挂载验签 | 通过 | 通过 |
+| 真实 bundled Avalonia UI smoke | 0.6.0 / Arm64 / 7 窗口 / 64 组动画 | 0.6.0 / X64 / 7 窗口 / 64 组动画 |
 
-完整 CI 还会运行原生隔离 Keychain/窗口/快捷键/音频边界、自包含发布、签名完整性、DMG 挂载，以及隔离数据目录中的真实 Avalonia 应用启动。运行完成后应在本文件记录每架构结果和下载制品 SHA256；尚无结果的项不得标为通过。
+真实 UI smoke 使用全新隔离数据目录，不访问生产 Keychain、不申请麦克风权限。原生自检另在临时 Keychain 验证真实密钥持久性、损坏拒绝和锁定拒绝，并执行静音输出图的播放完成检查；这些结果仍不能代替表内人工设备验收。
+
+实际 CI 排查修复了 `lipo` 输入参数顺序、`Contents/MacOS` 内托管 DLL 的显式签名、`ditto` 保留归档签名元数据、`hdiutil` 瞬时 busy 的有界重试，以及队列测试对 20ms 调度恢复时间的不成立假设。后者以 300ms 调度延迟复现红灯，再改用原请求等待取消的夹具通过共享 291 项与 Windows QueueTests 24 项；没有改变生产队列行为。
+
+CI 内已经核验 ZIP/DMG 签名、架构、manifest 和实际启动。本机的下载后二次校验是补充证据，不是当前“只打开发标签”的额外交付门槛。合入最终 0.5.6 Windows 基线后须再运行集成检查，不能把当前分支的验证结果冒充最终标签的新检查。
 
 `release` 打包模式要求 Developer ID Application 身份、Keychain 中的公证 profile 和两架构人工验收证据。缺少凭据或证据直接失败；`release-evidence.example.json` 保持未通过的模板。preview 模式关闭 Hardened Runtime 以允许无 Team ID 的 ad-hoc 运行库加载；正式签名模式保留 Hardened Runtime 和 JIT entitlement，按原生库→app→app 公证/staple→归档→DMG 签名公证/staple 的顺序执行。

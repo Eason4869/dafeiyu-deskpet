@@ -2,6 +2,8 @@
 
 目标：macOS 14+；分别支持 Apple Silicon（arm64）与 Intel（x86_64）。当前用户没有 Apple Developer 签名证书，默认构建 **preview**：仅做 ad-hoc 完整性签名，不是 Developer ID 签名、不经过 Apple 公证、不自动发布 GitHub Release。
 
+0.6.0 当前仅建立开发标签、运行 CI 预览验证，尚不创建 GitHub Release 或提供公开下载包。功能与验证边界见 [0.6.0 就绪矩阵](../../docs/macos-readiness-0.6.0.md)。
+
 ## 在 Mac 构建预览
 
 需要 Xcode Command Line Tools、仓库 `desktop/global.json` 指定的 .NET SDK 和 Python 3。无需 Docker。

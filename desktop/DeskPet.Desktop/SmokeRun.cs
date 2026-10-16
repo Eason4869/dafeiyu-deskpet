@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Dafeiyu;
 
@@ -41,6 +43,27 @@ internal static class SmokeRun
                 }
                 timer.Stop();
                 if (!controller.Pet.IsVisible || windows.Any(w => !w.IsVisible || w.Bounds.Width <= 0)) throw new InvalidOperationException("A required native UI window did not open");
+                bool nativeCommandPaste = false;
+                if (OperatingSystem.IsMacOS())
+                {
+                    // Verify the real macOS Avalonia backend, not Headless's default
+                    // Control shortcuts. Intercept paste before any clipboard access.
+                    var pasteProbe = new TextBox();
+                    var pasteWindow = new Window { Content = pasteProbe, Width = 180, Height = 80 };
+                    bool pasteRequested = false;
+                    pasteProbe.PastingFromClipboard += (_, e) => { pasteRequested = true; e.Handled = true; };
+                    try
+                    {
+                        pasteWindow.Show();
+                        if (!pasteWindow.GetPlatformSettings()!.HotkeyConfiguration.Paste.Any(g => g.Key == Key.V && g.KeyModifiers == KeyModifiers.Meta)) throw new InvalidOperationException("Native Mac paste gesture is not Command+V");
+                        pasteProbe.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.V, KeyModifiers = KeyModifiers.Control });
+                        if (pasteRequested) throw new InvalidOperationException("Native Mac incorrectly accepts Control+V as paste");
+                        pasteProbe.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.V, KeyModifiers = KeyModifiers.Meta });
+                        if (!pasteRequested) throw new InvalidOperationException("Native Mac Command+V did not route to paste");
+                        nativeCommandPaste = true;
+                    }
+                    finally { pasteWindow.Close(); }
+                }
                 using var assets = new SpriteAssets(); var clips = 0;
                 foreach (var skin in controller.Skins.Where(s => s.BuiltIn)) foreach (var action in SpriteAssets.PairedActions) foreach (var original in new[] { false, true })
                 {
@@ -48,7 +71,7 @@ internal static class SmokeRun
                     if (SpriteAssets.Rect(clip, clip.Frames - 1).Bottom > bitmap.PixelSize.Height) throw new InvalidDataException("Invalid animation asset");
                     clips++;
                 }
-                Report(new { success = true, version = typeof(App).Assembly.GetName().Version?.ToString(3), os = System.Runtime.InteropServices.RuntimeInformation.OSDescription, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), windows = windows.Select(w => w.GetType().Name).Prepend(nameof(PetWindow)).ToArray(), validatedClips = clips, microphoneRequested = false, keychainAccessed = false, dataDirectory = controller.DataDirectory });
+                Report(new { success = true, version = typeof(App).Assembly.GetName().Version?.ToString(3), os = System.Runtime.InteropServices.RuntimeInformation.OSDescription, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), windows = windows.Select(w => w.GetType().Name).Prepend(nameof(PetWindow)).ToArray(), validatedClips = clips, nativeCommandPaste, microphoneRequested = false, keychainAccessed = false, dataDirectory = controller.DataDirectory });
                 controller.Run(controller.ExitAsync);
             }
             catch (Exception error) { timer.Stop(); Failure(error); (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown(1); }

@@ -447,7 +447,10 @@ try
         inputMenu.Single(i => i.Header as string == "全选").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); inputMenu.Single(i => i.Header as string == "复制").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Check(Result(clipboard.TryGetTextAsync()) == "测试", "Chinese select-all and copy retain native text semantics");
         Complete(clipboard.SetFilesAsync(new[] { StorageFile(uploadTextPath) })); uploadDraft.Text = "不应被文件粘贴覆盖";
-        var pasteKey = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.V, KeyModifiers = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control }; uploadDraft.RaiseEvent(pasteKey); Until(() => UploadCards() == 1);
+        // Headless has its own platform configuration, regardless of its host OS.
+        // Native macOS Command+V is covered separately by the real UI smoke run.
+        var pasteGesture = uploadWindow.GetPlatformSettings()!.HotkeyConfiguration.Paste.First();
+        var pasteKey = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = pasteGesture.Key, KeyModifiers = pasteGesture.KeyModifiers }; uploadDraft.RaiseEvent(pasteKey); Until(() => UploadCards() == 1);
         Check(uploadDraft.Text == "不应被文件粘贴覆盖", "native paste shortcut imports clipboard files without inserting their paths as text");
         using var clipboardImage = new Bitmap(Path.Combine(source, "spritesheet.png")); Complete(clipboard.SetBitmapAsync(clipboardImage));
         uploadDraft.ContextMenu.Open(uploadDraft); Dispatcher.UIThread.RunJobs();

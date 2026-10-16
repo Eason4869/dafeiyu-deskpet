@@ -9,7 +9,7 @@ xcrun clang -arch "$arch" -mmacosx-version-min=14.0 -fobjc-arc -fblocks -Wall -W
   native_library_self_test.m -o build/native_library_self_test \
   -L. -lDeskPetMac -Wl,-rpath,@loader_path/.. \
   -framework AppKit -framework AVFoundation -framework Carbon -framework Security
-lipo -verify_arch "$arch" build/native_library_self_test
+lipo build/native_library_self_test -verify_arch "$arch"
 # Bound CI waits without relying on GNU timeout, which is not bundled with macOS.
 python3 - "$PWD/build/native_library_self_test" <<'PY'
 import subprocess, sys

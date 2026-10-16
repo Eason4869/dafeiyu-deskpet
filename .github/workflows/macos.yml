@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash desktop/DeskPet.Platform.Mac/native/self-test.sh '${{ matrix.arch }}' | tee "$REPORT_ROOT/native-tests.log"
+          bash desktop/DeskPet.Platform.Mac/native/self-test.sh '${{ matrix.arch }}' 2>&1 | tee "$REPORT_ROOT/native-tests.log"
           dotnet build desktop/DeskPet.Platform.Mac/Tests/DeskPet.Platform.Mac.Tests.csproj -c Release -p:BuildInParallel=false -m:1 -nr:false
           dotnet desktop/DeskPet.Platform.Mac/Tests/bin/Release/net10.0/DeskPet.Platform.Mac.Tests.dll --native-smoke | tee "$REPORT_ROOT/platform-tests.log"
       - name: Avalonia UI and resources regression
@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash installer/macos/build.sh '${{ matrix.arch }}' preview 'work/macos-${{ matrix.arch }}' | tee "$REPORT_ROOT/packaging.log"
+          bash installer/macos/build.sh '${{ matrix.arch }}' preview 'work/macos-${{ matrix.arch }}' 2>&1 | tee "$REPORT_ROOT/packaging.log"
       - name: Launch real bundled macOS UI in isolated smoke mode
         shell: bash
         run: |
@@ -109,5 +109,6 @@ jobs:
           path: |
             work/macos-reports-${{ matrix.arch }}/
             work/macos-${{ matrix.arch }}/artifacts/*.dmg
+            work/macos-${{ matrix.arch }}/artifacts/*.zip
             work/macos-${{ matrix.arch }}/artifacts/*report.json
             work/macos-${{ matrix.arch }}/artifacts/SHA256SUMS.txt

@@ -5,9 +5,10 @@ on:
     paths:
       - 'desktop/**'
       - 'src/**'
+      - 'assets/**'
       - 'installer/macos/**'
       - 'tools/mac_package.py'
-      - 'tests/MacPackagingTests.py'
+      - 'tests/**'
       - '.github/workflows/macos.yml'
   pull_request:
   workflow_dispatch:

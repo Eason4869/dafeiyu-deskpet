@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -58,7 +58,9 @@ namespace Dafeiyu
         double inputLevel;long inputAt;
         public double InputLevel {get{return DateTime.UtcNow.Ticks-Interlocked.Read(ref inputAt)>TimeSpan.TicksPerSecond/3?0:Volatile.Read(ref inputLevel);}}
         public double OutputLevel {get{lock(gate){var meter=speaker as IAudioLevelSource;return meter==null?0:meter.AudioLevel;}}}
+#if !PORTABLE
         public GeminiLiveSession() : this(()=>new GeminiLiveSocket(),()=>new AudioRecorder(true),()=>new PcmOutput()){}
+#endif
         public GeminiLiveSession(Func<ILiveSocket> transport,Func<IPcmMicrophone> capture,Func<ILiveAudioOutput> output){sockets=transport;microphones=capture;speakers=output;Status="Live 尚未连接。";}
         public async Task StartAsync(PetSettings settings,string persona)
         {

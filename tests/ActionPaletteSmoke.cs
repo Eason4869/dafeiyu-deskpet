@@ -28,7 +28,7 @@ namespace Dafeiyu.Tests
                 var cfg=new PetSettings {FollowCursor=false,GreetingEnabled=false,HideOnFullscreen=false,Wander=false,AutoUpdate=false,QuietMode=true,ReadReplies=false,SaveChatHistory=false};
                 foreach(string key in cfg.Hotkeys.Keys.ToArray())cfg.Hotkeys[key]="";
                 pet=new PetWindow(null,cfg,new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump();
-                foreach(string skin in new[]{"e-bao","dafeiyu","marfu"})
+                foreach(string skin in new[]{"e-bao","dafeiyu","marfu","xiaobei"})
                 {
                     Check(pet.SelectSkin(pet.Catalog.Find(skin)),"select "+skin);
                     var pointer=DesktopInterop.Cursor();palette=new ActionPaletteWindow(pet);palette.SourceInitialized+=delegate{Check(palette.Opacity==0,"palette remains transparent until native placement completes");};palette.ShowForPet();Pump();
@@ -37,19 +37,27 @@ namespace Dafeiyu.Tests
                     Check((paletteBounds.TopLeft-expected).Length<2 && palette.Opacity==1,"wheel is centered at invocation cursor, with screen-edge clamping");
                     Check(palette.Width<=370 && palette.Height<=410,"wheel reduced by about twenty percent");
                     Check(palette.IsVisible && palette.Owner==pet && !palette.ShowInTaskbar,"owned compact palette "+skin);
-                    Check(Actions(palette).Count()==3,"three skill choices "+skin);
+                    Check(Actions(palette).Count()==4,"four skill choices "+skin);
                     Check(!Actions(palette).Any(b=>b.IsKeyboardFocused),"opening the wheel does not preselect the top skill "+skin);
                     Capture(palette,Path.Combine(folder,skin+"-neutral.png"));
                     var hoverTarget=Actions(palette).Last();var hoverPreview=All(hoverTarget).OfType<Image>().Single();
                     var hoverPoint=hoverPreview.PointToScreen(new Point(hoverPreview.ActualWidth/2,hoverPreview.ActualHeight/2));
-                    MovePointer((int)hoverPoint.X,(int)hoverPoint.Y);Pump();
+                    bool pointerMoved=MovePointer((int)hoverPoint.X,(int)hoverPoint.Y);Pump();
+                    var nativeTitle=new System.Text.StringBuilder(160);GetWindowText(GetForegroundWindow(),nativeTitle,nativeTitle.Capacity);
+                    Console.WriteLine("Hover diagnostic: requested="+hoverPoint+" actual="+DesktopInterop.Cursor()+" SetCursorPos="+pointerMoved+" target="+hoverTarget.Name+" mouseover="+hoverTarget.IsMouseOver+" nativePalette="+DesktopInterop.IsWindowAtPoint(new WindowInteropHelper(palette).Handle,hoverPoint)+" foreground="+nativeTitle);
                     Check(hoverTarget.IsMouseOver && Highlighted(hoverTarget) && !Highlighted(Actions(palette).First()),"only the hovered sector highlights after opening "+skin);
                     Capture(palette,Path.Combine(folder,skin+"-hover.png"));
                     var hubPoint=palette.PointToScreen(new Point(palette.ActualWidth/2,palette.ActualHeight*220/490));MovePointer((int)hubPoint.X,(int)hubPoint.Y);Pump();
                     Check(!Actions(palette).Any(Highlighted),"moving back to the hub clears all sector highlights "+skin);
                     palette.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(palette),0,Key.Right){RoutedEvent=Keyboard.PreviewKeyDownEvent});Pump();
                     Check(Actions(palette).First().IsKeyboardFocused && Highlighted(Actions(palette).First()),"arrow navigation still highlights the first skill "+skin);
-                    Check(All(palette).OfType<Image>().Count(i=>i.Source!=null)==3,"three actual pet previews "+skin);
+                    Check(All(palette).OfType<Image>().Count(i=>i.Source!=null)==4,"four actual pet previews "+skin);
+                    foreach(var button in Actions(palette))
+                    {
+                        var preview=All(button).OfType<Image>().Single();var p=preview.TransformToAncestor(palette).Transform(new Point(preview.ActualWidth/2,preview.ActualHeight/2));
+                        DependencyObject hit=palette.InputHitTest(p) as DependencyObject;while(hit!=null && !(hit is Button))hit=VisualTreeHelper.GetParent(hit);
+                        Check(ReferenceEquals(hit,button),"each quarter owns its preview hit target "+skin+button.Name);
+                    }
                     var previewPositions=All(palette).OfType<Image>().Select(i=>i.TransformToAncestor(palette).Transform(new Point(i.ActualWidth/2,i.ActualHeight/2))).ToArray();
                     Check(previewPositions.Max(p=>p.Y)-previewPositions.Min(p=>p.Y)>60,"skill choices are arranged around a wheel, not a grid");
                     Check(!Actions(palette).Any(b=>b.Name.Contains("petting") || b.Name.Contains("poked") || b.Name.Contains("happy") || b.Name.Contains("lifted") || b.Name.Contains("landing")),"gesture actions excluded "+skin);
@@ -70,6 +78,8 @@ namespace Dafeiyu.Tests
                     Click(palette,"PaletteAction_waving");Check(!palette.IsVisible && pet.Animation.State=="waving","base action plays and closes "+skin);
                     palette=new ActionPaletteWindow(pet);palette.ShowForPet();Pump();Click(palette,"PaletteInteraction_feeding");
                     Check(!palette.IsVisible && State(pet).Name=="feeding","interaction plays and closes "+skin);
+                    palette=new ActionPaletteWindow(pet);palette.ShowForPet();Pump();Click(palette,"PaletteInteraction_special2");
+                    Check(!palette.IsVisible && State(pet).Name=="special2","second unique action plays and closes "+skin);
                 }
                 pet.PlayInteraction("sleeping");palette=new ActionPaletteWindow(pet);palette.ShowForPet();Pump();
                 var wake=Find<Button>(palette,"PaletteInteraction_sleeping");Check(System.Windows.Automation.AutomationProperties.GetName(wake)=="叫醒","sleep action becomes wake");
@@ -108,6 +118,8 @@ namespace Dafeiyu.Tests
         sealed class SilentSpeech:IReplySpeech {public Task SpeakAsync(string text,PetSettings cfg,CancellationToken token){return Task.FromResult(0);}public void SetVolume(int v){}public void Stop(){}public void Dispose(){}}
         static InteractionAnimation State(PetWindow pet){return (InteractionAnimation)typeof(PetWindow).GetField("interaction",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet);}
         [System.Runtime.InteropServices.DllImport("user32.dll",EntryPoint="SetCursorPos")] static extern bool MovePointer(int x,int y);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetWindowText(IntPtr window,System.Text.StringBuilder text,int count);
         static bool Highlighted(Button button){var sector=(System.Windows.Shapes.Path)button.Template.FindName("sector",button);var stroke=sector.Stroke as SolidColorBrush;return stroke!=null && stroke.Color==(Color)ColorConverter.ConvertFromString("#456DE6");}
         static IEnumerable<Button> Actions(Window window){return All(window).OfType<Button>().Where(b=>b.Name.StartsWith("PaletteInteraction_") || b.Name.StartsWith("PaletteAction_"));}
         static bool BoundsInside(FrameworkElement element,Window window){Rect rect=element.TransformToAncestor(window).TransformBounds(new Rect(element.RenderSize));return rect.Left>=0 && rect.Top>=0 && rect.Right<=window.ActualWidth && rect.Bottom<=window.ActualHeight;}

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Speech.Synthesis;
@@ -9,8 +9,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 namespace Dafeiyu
 {
-    public interface IReplySpeech : IDisposable
-    { Task SpeakAsync(string reply,PetSettings settings,CancellationToken cancel);void SetVolume(int volume);void Stop(); }
     public sealed class SpeechOutput : IReplySpeech
     {
         private readonly ApiClient api;

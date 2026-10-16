@@ -26,6 +26,8 @@ Gemini Live：[WebSocket 入门](https://ai.google.dev/gemini-api/docs/live-api/
 
 ## 服务商 Logo
 
+本地开发互动优化：使用内置 imagegen，每次附四位伙伴各自的原版预览图，按 Pets create-pet 的逐行动作、组件提取和边缘去色流程重绘四技能、开心及拖放动作，另修复 E包跳跃。最终 33 条、264 帧位于 `assets/companion-animations`；精确提示与选定源条校验值见 [素材记录](../assets/companion-animations/README.md)。原有基础图集未改动。
+
 服务商标识采用 [Lobe Icons](https://github.com/lobehub/lobe-icons) 的单色矢量路径，固定来源提交 `8a1b2821bb768c484fe8da20c5e1838b6bf551a9`。小米 MiMo 使用 [Simple Icons 的 Xiaomi 图形](https://github.com/simple-icons/simple-icons/blob/develop/icons/xiaomi.svg) 中的 mi 标志，采用黑色圆底、白色字形；该路径使用 [CC0-1.0](https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md) 许可。标识仅用于辨识服务商，不表示合作或授权背书。图形与许可随程序离线提供，不从网络加载图标。
 
 模型获取依据：[OpenAI Models](https://developers.openai.com/api/reference/resources/models/methods/list)、[Anthropic Models](https://platform.claude.com/docs/en/api/models/list)。列表可见性、对话兼容性与调用权限以实际服务为准。

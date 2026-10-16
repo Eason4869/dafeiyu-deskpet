@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -8,38 +8,6 @@ using System.Threading.Tasks;
 
 namespace Dafeiyu
 {
-    public static class WaveData
-    {
-        public static byte[] EncodePcm(byte[] pcm)
-        {
-            if (pcm == null || pcm.Length % 2 != 0) throw new ArgumentException("16-bit PCM requires complete samples.");
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
-            {
-                writer.Write(Encoding.ASCII.GetBytes("RIFF")); writer.Write(36 + pcm.Length); writer.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
-                writer.Write(16); writer.Write((short)1); writer.Write((short)1); writer.Write(16000); writer.Write(32000);
-                writer.Write((short)2); writer.Write((short)16); writer.Write(Encoding.ASCII.GetBytes("data")); writer.Write(pcm.Length); writer.Write(pcm);
-                return stream.ToArray();
-            }
-        }
-        public static bool IsWave(byte[] bytes)
-        {
-            return bytes != null && bytes.Length >= 44 && Encoding.ASCII.GetString(bytes, 0, 4) == "RIFF" && Encoding.ASCII.GetString(bytes, 8, 4) == "WAVE";
-        }
-    }
-
-    public interface IAudioRecorder : IDisposable
-    {
-        bool IsRecording { get; }
-        void Start();
-        Task<byte[]> FinishAsync();
-    }
-    public interface IPcmMicrophone : IDisposable
-    {
-        event Action<byte[]> PcmAvailable;
-        event Action<string> Failed;
-        void Start();
-    }
     public sealed class AudioRecorder : IAudioRecorder,IPcmMicrophone
     {
         private const int BufferBytes = 8192;

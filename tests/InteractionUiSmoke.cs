@@ -33,22 +33,23 @@ namespace Dafeiyu.Tests
             Directory.CreateDirectory(folder);
             try
             {
-                var settings = new PetSettings { FollowCursor = false, GreetingEnabled = false, HideOnFullscreen = false, Wander = false, AutoUpdate = false, QuietMode = true };
+                var settings = new PetSettings { FollowCursor = false, GreetingEnabled = false, HideOnFullscreen = false, Wander = false, AutoUpdate = false, QuietMode = true, StumbleEnabled=false };
                 foreach (string key in settings.Hotkeys.Keys.ToArray()) settings.Hotkeys[key] = "";
                 pet = new PetWindow(null, settings, new SettingsStore(Path.Combine(folder, "settings.json")), null);
                 pet.Show(); Pump(.2);
-                foreach (string id in new[] { "e-bao", "dafeiyu", "marfu" })
+                foreach (string id in new[] { "e-bao", "dafeiyu", "marfu", "xiaobei" })
                 {
                     Check(pet.SelectSkin(pet.Catalog.Find(id)), "select " + id);
                     var supplemental = (InteractionAtlas)Field(pet, "interactionAtlas");
-                    Check(supplemental != null, id + " embedded interaction artwork available");
-                    foreach (string name in new[] { "lifted", "landing", "petting", "poked", "feeding", "happy", "sleeping", "special" })
+                    Check(supplemental != null || pet.Skin.Illustrated, id + " interaction artwork available");
+                    foreach (string name in new[] { "lifted", "landing", "petting", "poked", "feeding", "happy", "sleeping", "special", "stumble", "special2" })
                     {
                         pet.PlayInteraction(name);
                         var interaction = State(pet);
                         Check(interaction.Active && interaction.Name == name, id + " starts " + name);
                         var clip=(MotionClip)Field(pet,"shownMotion");
-                        Check(clip!=null && Object.ReferenceEquals(((Image)pet.Content).Source,clip.Frame((int)Field(pet,"shownSample"))), id + " shows illustrated interaction " + name);
+                        var expected=clip!=null?clip.Frame((int)Field(pet,"shownSample")):supplemental.GetFrame(interaction.Row,interaction.Frame);
+                        Check(Object.ReferenceEquals(((Image)pet.Content).Source,expected), id + " shows correct original interaction " + name);
                         Check(((Image)pet.Content).RenderTransform.Value.IsIdentity, id + " supplemental pose has no inherited alignment or mirror");
                         Capture(pet, Path.Combine(folder, id + "-" + name + ".png"));
                     }
@@ -67,7 +68,8 @@ namespace Dafeiyu.Tests
                     pet.RestorePet(); Pump(.05);
                 }
                 var interactionMenu = pet.ContextMenu.Items.OfType<MenuItem>().First(item => (string)item.Header == "互动");
-                Check(interactionMenu.Items.OfType<MenuItem>().Select(item => (string)item.Header).SequenceEqual(new[] { "摸摸头", "戳一戳", "喂零食", "小憩", "专属动作" }), "interaction menu uses agreed labels");
+                pet.ContextMenu.IsOpen=true;Pump(.04);pet.ContextMenu.IsOpen=false;
+                Check(interactionMenu.Items.OfType<MenuItem>().Select(item => (string)item.Header).SequenceEqual(new[] { "摸摸头", "戳一戳", "喂零食", "小憩", pet.Skin.SpecialAction,AdditionalInteractions.SpecialName(pet.Skin) }), "interaction menu uses concrete action names");
                 interactionMenu.Items.OfType<MenuItem>().First(item => (string)item.Header == "喂零食").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 Check(State(pet).Name == "feeding", "menu feeds pet");
                 pet.PlayInteraction("sleeping");
@@ -104,6 +106,7 @@ namespace Dafeiyu.Tests
 
         private static void NativeHover(PetWindow pet)
         {
+            var originalRandom=Field(pet,"random");typeof(PetWindow).GetField("random",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(pet,new JumpRandom());
             pet.SelectSkin(pet.Catalog.Find("e-bao"));pet.Settings.FollowCursor=true;pet.PlayAction("idle",0);
             var bounds=DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);var area=DesktopInterop.WorkArea(new WindowInteropHelper(pet).Handle);
             SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.15);
@@ -115,7 +118,9 @@ namespace Dafeiyu.Tests
             pet.Settings.FollowCursor=false;pet.PlayAction("idle",0);point=OpaquePoint(pet,false);SetCursorPos((int)point.X,(int)point.Y);Pump(.15);
             Check(pet.Animation.State=="jumping","reentering triggers jump even with gaze disabled");Pump(.8);
             SetCursorPos((int)area.Left+5,(int)area.Top+5);Pump(.1);pet.PlayAction("idle",0);
+            typeof(PetWindow).GetField("random",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(pet,originalRandom);
         }
+        private sealed class JumpRandom:Random{public override int Next(int maximum){return 0;}}
         private static void NativeGestures(PetWindow pet)
         {
             pet.PlayAction("idle", 0); Pump(.1);
@@ -137,7 +142,7 @@ namespace Dafeiyu.Tests
             Check(State(pet).Name == "lifted" && (bool)Field(pet, "moved"), "native drag enters lifted after threshold");
             mouse_event(4, 0, 0, 0, UIntPtr.Zero); Pump(.06);
             Check(State(pet).Name == "landing", "native drag release lands");
-            Pump(.8); Check(!State(pet).Active, "landing finishes without a deferred click");
+            Pump(1.15); Check(!State(pet).Active, "eight-pose landing finishes without a deferred click");
             pet.PlayAction("idle", 0); Pump(.1);
             head = OpaquePoint(pet, true);
             SetCursorPos((int)head.X, (int)head.Y); Pump(.05);
@@ -221,7 +226,7 @@ namespace Dafeiyu.Tests
             bool mirrored = (bool)Field(pet, "shownMirrored");
             Point offset = (Point)Field(pet,"shownOffset");
             var motion=(MotionClip)Field(pet,"shownMotion");int sample=(int)Field(pet,"shownSample");
-            int width=motion!=null?SmoothMotion.Width:atlas.CellWidth,height=motion!=null?SmoothMotion.Height:atlas.CellHeight;
+            int width=motion!=null?motion.Width:atlas.CellWidth,height=motion!=null?motion.Height:atlas.CellHeight;
             IntPtr handle = new WindowInteropHelper(pet).Handle; Rect bounds = DesktopInterop.Bounds(handle);
             bool checkedBody = false, checkedBackground = false;
             for (int y = 0; y < (int)bounds.Height; y += 3) for (int x = 0; x < (int)bounds.Width; x += 3)
@@ -244,7 +249,7 @@ namespace Dafeiyu.Tests
             if(motion!=null) {
                 Rect b=DesktopInterop.Bounds(new WindowInteropHelper(pet).Handle);
                 for(int y=head?60:165;y<(head?130:225);y+=3)for(int x=85;x<155;x+=3) {
-                    bool solid=true;for(int dy=-5;dy<=5 && solid;dy+=2)for(int dx=-5;dx<=5;dx+=2)if(motion.AlphaAt(sample,x+dx,y+dy)<240)solid=false;
+                    bool solid=true;for(int dy=-5;dy<=5 && solid;dy+=2)for(int dx=-5;dx<=5;dx+=2)if(motion.AlphaAt(sample,(x+dx)*motion.Width/240,(y+dy)*motion.Height/260)<240)solid=false;
                     if(solid)return new Point(b.Left+x/240d*b.Width,b.Top+y/260d*b.Height);
                 }
             }

@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests','InteractionTests','SpriteAlignmentTests','InteractionUiSmoke','ActionPaletteSmoke','SettingsNavigationSmoke','OnboardingSmoke','OnboardingModelSmoke','LiveCallSmoke','GuideMenuSmoke','QueueTests','ComposerSmoke','DictationTests','AboutSmoke','SteeringSmoke','FeedbackSmoke','ProviderTests','ProviderUiSmoke','ImportedSkinTests','XiaobeiUiSmoke','AiGreetingTests','AiGreetingUiSmoke','BundledSkinTests','SkinPackExport')][string]$Target = 'App', [string]$OutputDirectory = '', [string[]]$TestArguments = @())
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests','InteractionTests','SpriteAlignmentTests','InteractionUiSmoke','ActionPaletteSmoke','SettingsNavigationSmoke','OnboardingSmoke','OnboardingModelSmoke','LiveCallSmoke','GuideMenuSmoke','QueueTests','ComposerSmoke','DictationTests','AboutSmoke','SteeringSmoke','FeedbackSmoke','ProviderTests','ProviderUiSmoke','ImportedSkinTests','XiaobeiUiSmoke','AiGreetingTests','AiGreetingUiSmoke','BundledSkinTests','SkinPackExport','StumbleSmoke','HoverSleepSmoke')][string]$Target = 'App', [string]$OutputDirectory = '', [string[]]$TestArguments = @())
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -32,11 +32,29 @@ if ($Target -eq 'App') {
     }
     $options = @('/target:exe',('/main:Dafeiyu.Tests.' + $Target))
 }
+# Shared business/interfaces are also needed by the small legacy test targets.
+foreach ($sharedSource in @('PetBusiness.cs','AudioContracts.cs','SecretProtection.cs')) {
+    $sharedPath = Join-Path $projectRoot ('src\' + $sharedSource)
+    if ((Test-Path -LiteralPath $sharedPath) -and $sources -notcontains $sharedPath) { $sources += $sharedPath }
+}
 $assets = @('/resource:' + (Join-Path $projectRoot 'assets\provider-logos.json') + ',Dafeiyu.ProviderLogos')
 foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.Icon'),@('pet-preview-hd.png','Dafeiyu.Preview'),@('e-bao-spritesheet.png','Dafeiyu.EbaoAtlas'),@('e-bao-pet-preview-hd.png','Dafeiyu.EbaoPreview'),@('marfu-spritesheet.png','Dafeiyu.MarfuAtlas'),@('marfu-pet-preview-hd.png','Dafeiyu.MarfuPreview'),@('e-bao-interactions.png','Dafeiyu.EbaoInteractions'),@('dafeiyu-interactions.png','Dafeiyu.DafeiyuInteractions'),@('marfu-interactions.png','Dafeiyu.MarfuInteractions'))) {
     $assetPath = Join-Path $projectRoot ('assets\' + $asset[0])
     if (!(Test-Path -LiteralPath $assetPath)) { throw "Required artwork is missing: $assetPath" }
     $assets += '/resource:' + $assetPath + ',' + $asset[1]
+}
+# Reference-matched eight-pose actions are required for all four presets.
+foreach ($extraPet in @('e-bao','dafeiyu','marfu','xiaobei')) {
+    $originalExtraPath = Join-Path $projectRoot ('assets\additional\' + $extraPet + '.png')
+    if (!(Test-Path -LiteralPath $originalExtraPath)) { throw "Required original artwork is missing: $originalExtraPath" }
+    $assets += '/resource:' + $originalExtraPath + ',Dafeiyu.Additional.' + $extraPet
+    $extraActions = @('lifted','landing','feeding','happy','sleeping','special','special2','stumble')
+    if ($extraPet -eq 'e-bao') { $extraActions += 'jumping' }
+    foreach ($extraAction in $extraActions) {
+        $extraPath = Join-Path $projectRoot ('assets\companion-animations\' + $extraPet + '\' + $extraAction + '.png')
+        if (!(Test-Path -LiteralPath $extraPath)) { throw "Required companion artwork is missing: $extraPath" }
+        $assets += '/resource:' + $extraPath + ',Dafeiyu.Companion.' + $extraPet + '.' + $extraAction
+    }
 }
 # Bundled presets are embedded in the app and test executables, keeping the
 # portable ZIP compatible with old update workers that reject a pets directory.

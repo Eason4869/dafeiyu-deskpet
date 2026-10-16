@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeskPet 动作检查 · 0.5.4 开发版</title>
+<style>
+body{font:15px system-ui,sans-serif;background:#eef2f7;color:#223047;margin:30px auto;max-width:1100px;padding:0 20px}h1{font-size:24px}select,button,input{font:inherit;padding:8px;margin:4px;border:1px solid #c5cfdf;border-radius:8px}section{display:flex;flex-wrap:wrap;gap:18px;margin-top:20px}.panel{border-radius:16px;padding:18px;background:#fafafa}.dark{background:#20242c;color:#eee}.figures{display:flex;gap:20px}.figure{width:240px;height:260px;background-repeat:no-repeat;background-size:1920px 260px}.original{background-size:240px 260px}label{display:block;font-size:12px;text-align:center;margin-bottom:10px}.foot{color:#5d6f85;line-height:1.7}input{width:220px;vertical-align:middle}.frame{font-variant-numeric:tabular-nums}
+</style>
+<h1>四位伙伴 · 动作检查</h1>
+<p>基于 0.5.4；每条 8 帧，8 FPS。左侧原画，右侧新动作；不混帧、不插帧。</p>
+<select id="pet"><option value="e-bao">E包</option><option value="dafeiyu">大肥鱼</option><option value="marfu">马尔芙</option><option value="xiaobei">小贝</option></select>
+<select id="action"></select><button id="play">暂停</button><button id="prev">上一帧</button><button id="next">下一帧</button><input id="scrub" type="range" min="0" max="7" value="0"><span class="frame" id="counter"></span>
+<section><div class="panel"><div class="figures"><div><label>原画参考</label><div class="figure original"></div></div><div><label>浅色背景</label><div class="figure animated"></div></div></div></div><div class="panel dark"><div class="figures"><div><label>原画参考</label><div class="figure original"></div></div><div><label>深色背景</label><div class="figure animated"></div></div></div></div></section>
+<p class="foot">默认预览按“待机 → 动作 → 待机”循环，拎起和小憩持续循环。暂停后可逐帧检查发梢、轮廓和相邻姿态。窗口中的显示尺寸为 240×260，接近 125% 缩放下的桌宠。最终观感以实际程序为准。</p>
+<script>
+const names={'e-bao':['傲娇扭头','比心鼓励'],dafeiyu:['摇尾欢呼','泡泡环游'],marfu:['挥杖流光','荧光咒语'],xiaobei:['太极光环','全息键盘']};
+const labels={feeding:'喂零食',sleeping:'小憩',special:'专属动作1',special2:'专属动作2',happy:'投喂后开心',lifted:'拖起',landing:'普通落地',stumble:'踉跄落地',jumping:'跳跃'};
+const pet=document.querySelector('#pet'),action=document.querySelector('#action'),play=document.querySelector('#play'),scrub=document.querySelector('#scrub'),counter=document.querySelector('#counter');let frame=0,phase=0,playing=true;
+function original(){return `../previews/${pet.value}.png`;}
+function render(idle=false){document.querySelectorAll('.animated').forEach(e=>{e.style.backgroundImage=`url('${idle?original():`../assets/companion-animations/${pet.value}/${action.value}.png`}')`;e.style.backgroundSize=idle?'240px 260px':'1920px 260px';e.style.backgroundPosition=idle?'0 0':`${-frame*240}px 0`;});scrub.value=frame;counter.textContent=idle?'待机':`${frame+1} / 8`;}
+function changePet(){action.textContent='';for(const id of Object.keys(labels)){if(id==='jumping'&&pet.value!=='e-bao')continue;let o=document.createElement('option');o.value=id;o.textContent=id==='special'?names[pet.value][0]:id==='special2'?names[pet.value][1]:labels[id];action.append(o);}document.querySelectorAll('.original').forEach(e=>e.style.backgroundImage=`url('${original()}')`);reset();}
+function reset(){frame=0;phase=0;render();}function pause(){playing=false;play.textContent='播放';}
+pet.onchange=changePet;action.onchange=reset;play.onclick=()=>{playing=!playing;play.textContent=playing?'暂停':'播放';};scrub.oninput=()=>{pause();frame=Number(scrub.value);render();};document.querySelector('#prev').onclick=()=>{pause();frame=(frame+7)%8;render();};document.querySelector('#next').onclick=()=>{pause();frame=(frame+1)%8;render();};
+setInterval(()=>{if(!playing)return;if(['lifted','sleeping'].includes(action.value)){frame=(frame+1)%8;render();return;}phase=(phase+1)%16;frame=Math.max(0,Math.min(7,phase-4));render(phase<4||phase>=12);},125);changePet();
+</script></html>

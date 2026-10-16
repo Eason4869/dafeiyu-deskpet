@@ -35,7 +35,9 @@ namespace Dafeiyu
         {
             if(timeout<=TimeSpan.Zero) throw new ArgumentOutOfRangeException("timeout");
             requestTimeout=timeout;
+#if !PORTABLE
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+#endif
             http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy=false });
             http.Timeout = Timeout.InfiniteTimeSpan;
         }

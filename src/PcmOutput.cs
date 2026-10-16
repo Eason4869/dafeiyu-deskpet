@@ -1,20 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 namespace Dafeiyu
 {
-    public interface ILiveAudioOutput : IDisposable
-    {
-        void Enqueue(byte[] bytes,int rate);
-        void Interrupt();
-        void SetVolume(int value);
-    }
-    public interface ILiveAudioFailureSource
-    {
-        event Action<string> Failed;
-    }
     // WinMM accepts raw PCM directly; queued headers remain pinned until WHDR_DONE.
     public sealed class PcmOutput : ILiveAudioOutput, IAudioLevelSource, ILiveAudioFailureSource
     {

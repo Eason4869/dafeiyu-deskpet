@@ -44,14 +44,14 @@ namespace Dafeiyu
             get
             {
                 if (String.IsNullOrEmpty(EncryptedKey)) return "";
-                try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(EncryptedKey), null, DataProtectionScope.CurrentUser)); }
+                try { return Encoding.UTF8.GetString(SecretProtection.Unprotect(Convert.FromBase64String(EncryptedKey))); }
                 catch (CryptographicException) { return ""; }
                 catch (FormatException) { return ""; }
             }
             set
             {
                 string key = (value ?? "").Trim();
-                EncryptedKey = key.Length == 0 ? "" : Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(key), null, DataProtectionScope.CurrentUser));
+                EncryptedKey = key.Length == 0 ? "" : Convert.ToBase64String(SecretProtection.Protect(Encoding.UTF8.GetBytes(key)));
             }
         }
         public ConnectionSettings Copy()
@@ -146,6 +146,8 @@ namespace Dafeiyu
         [DataMember] public bool Topmost { get; set; }
         [DataMember] public bool FollowCursor { get; set; }
         [DataMember] public bool Wander { get; set; }
+        [DataMember] public bool StumbleEnabled { get; set; }
+        [DataMember] public bool AutoSleepEnabled { get; set; }
         [DataMember] public bool GreetingEnabled { get; set; }
         [DataMember] public bool AiGreetingEnabled { get; set; }
         [DataMember] public int GreetingMinMinutes { get; set; }
@@ -188,7 +190,7 @@ namespace Dafeiyu
             OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
-            Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false;
+            Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false; StumbleEnabled=true;AutoSleepEnabled=true;
             GreetingEnabled=true; AiGreetingEnabled=false; GreetingMinMinutes=30; GreetingMaxMinutes=60;
             SkinId = "e-bao";
             ReadReplies = true; UseCloudVoice = false; VoiceUsesTextService = false; VoiceName = "";
@@ -298,7 +300,7 @@ namespace Dafeiyu
             var providers=new List<TextProviderSettings>();if(TextProviders!=null)foreach(var provider in TextProviders)if(provider!=null)providers.Add(provider.Copy());
             var audioProviders=new Dictionary<string,ServiceProviderSettings>();if(AudioProviders!=null)foreach(var pair in AudioProviders)if(pair.Value!=null)audioProviders[pair.Key]=pair.Value.Copy();
             return new PetSettings { AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
-                GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
+                AutoSleepEnabled=AutoSleepEnabled,StumbleEnabled=StumbleEnabled,GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,
                 PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,UpdateUseMirror=UpdateUseMirror,UpdateMirrorAddress=UpdateMirrorAddress,AutoUpdate=AutoUpdate,LastUpdateCheckUtcTicks=LastUpdateCheckUtcTicks,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
@@ -327,8 +329,8 @@ namespace Dafeiyu
                         (!String.IsNullOrEmpty(settings.Transcription.EncryptedKey) && settings.Transcription.ApiKey.Length == 0) ||
                         (!String.IsNullOrEmpty(settings.Speech.EncryptedKey) && settings.Speech.ApiKey.Length == 0) ||
                         (!String.IsNullOrEmpty(settings.Live.EncryptedKey) && settings.Live.ApiKey.Length == 0))
-                        Warning = "已保存的密钥无法在当前 Windows 用户下解密，请重新填写。";
-                    foreach(var provider in settings.TextProviders)if(!String.IsNullOrEmpty(provider.Connection.EncryptedKey) && provider.Connection.ApiKey.Length==0)Warning="已保存的密钥无法在当前 Windows 用户下解密，请重新填写。";
+                        Warning = "已保存的密钥无法在当前系统账户下解密，请重新填写。";
+                    foreach(var provider in settings.TextProviders)if(!String.IsNullOrEmpty(provider.Connection.EncryptedKey) && provider.Connection.ApiKey.Length==0)Warning="已保存的密钥无法在当前系统账户下解密，请重新填写。";
                     return settings;
                 }
             }

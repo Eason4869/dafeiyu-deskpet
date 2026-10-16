@@ -40,7 +40,14 @@ namespace Dafeiyu
         public void ConfigureMirror(bool enabled,string address,IProgress<string> reporter){mirrorAddress=enabled?MirrorPrefix(address):null;useMirror=enabled;route=reporter;}
         void Route(string text){if(route!=null)route.Report(text);}
         public GitHubUpdates() : this(new Uri("https://api.github.com/")){}
-        public GitHubUpdates(Uri root){if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;apiRoot=root;direct=Create(false,null);}
+        public GitHubUpdates(Uri root)
+        {
+            if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");
+#if !PORTABLE
+            ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
+#endif
+            apiRoot=root;direct=Create(false,null);
+        }
         internal GitHubUpdates(Uri root,HttpMessageHandler handler):this(root){direct.Dispose();direct=new HttpClient(handler){Timeout=Timeout.InfiniteTimeSpan};direct.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/"+ReleaseInfo.DisplayVersion);}
         static HttpClient Create(bool useProxy,string address){var client=useProxy?ProxyConfiguration.CreateHttpClient(address,true):new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=true}){Timeout=Timeout.InfiniteTimeSpan};client.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/"+ReleaseInfo.DisplayVersion);return client;}
         public static string Repository(string address)

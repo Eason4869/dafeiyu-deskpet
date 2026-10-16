@@ -4,8 +4,10 @@
   <p>四位桌面伙伴，陪你工作，也陪你闲聊。</p>
   <p>原画动作与互动 · 多服务商 AI 对话 · 听写、朗读与 Live</p>
   <p><a href="https://github.com/Eason4869/deskpet/releases/latest">下载 Windows 版</a> · <a href="#开始使用">开始使用</a> · <a href="docs/dialogue-setup.md">模型配置指南</a> · <a href="CHANGELOG.md">更新日志</a></p>
-  <p>当前版本 <a href="https://github.com/Eason4869/deskpet/releases/tag/v0.5.4">0.5.4</a> · Windows 10/11 x64 · .NET Framework 4.8</p>
+  <p>当前开发版本 <a href="https://github.com/Eason4869/deskpet/tree/v0.5.5">0.5.5</a> · 正式下载仍为 0.5.4 · Windows 10/11 x64</p>
 </div>
+
+> 0.5.5 为 dev 快照，只有代码与标签，没有新版 Release 或安装包。包含四宠新旧随机互动、配对拖放与统一下落、四格技能轮盘、随机悬停、空闲小憩和降低频率的散步。macOS 仍在迁移，尚不能发布；完整状态见 [快照说明](docs/0.5.5-dev-checkpoint.md)。
 
 ## 选一位伙伴
 

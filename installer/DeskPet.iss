@@ -7,6 +7,9 @@
 #ifndef RepositoryUrl
   #error Missing RepositoryUrl
 #endif
+#ifndef InstallerBaseName
+  #error Missing InstallerBaseName
+#endif
 
 [Setup]
 AppId={{3B63C162-076E-4B2F-BDCC-2572664875A9}
@@ -29,7 +32,7 @@ AppMutex=Local\Dafeiyu.DeskPet.Installation
 CloseApplications=no
 RestartApplications=no
 OutputDir={#OutputDir}
-OutputBaseFilename=DeskPet-Setup-{#ProductVersion}
+OutputBaseFilename={#InstallerBaseName}
 SetupIconFile=..\assets\pet.ico
 UninstallDisplayIcon={app}\桌面伙伴.exe
 UninstallDisplayName=桌面伙伴
@@ -63,6 +66,8 @@ Source: "{#RuntimeDir}\docs\daily-use.md"; DestDir: "{app}\docs"; Flags: ignorev
 Source: "{#RuntimeDir}\docs\voice-presets.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\sources.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RuntimeDir}\docs\roadmap.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\release-naming.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RuntimeDir}\docs\interaction-extension.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RuntimeDir}\templates\*.png"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RuntimeDir}\templates\*.json"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RuntimeDir}\templates\*.md"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist

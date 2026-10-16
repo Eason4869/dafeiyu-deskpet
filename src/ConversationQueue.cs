@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,12 +35,12 @@ namespace Dafeiyu
             {
                 StoredQueue saved;using(var stream=File.OpenRead(path))saved=(StoredQueue)new DataContractJsonSerializer(typeof(StoredQueue)).ReadObject(stream);
                 if(saved==null || saved.Version!=1 || String.IsNullOrEmpty(saved.Payload))throw new SerializationException();
-                byte[] data=ProtectedData.Unprotect(Convert.FromBase64String(saved.Payload),null,DataProtectionScope.CurrentUser);
+                byte[] data=SecretProtection.Unprotect(Convert.FromBase64String(saved.Payload));
                 using(var stream=new MemoryStream(data))queues=(Dictionary<string,List<QueuedMessage>>)new DataContractJsonSerializer(typeof(Dictionary<string,List<QueuedMessage>>)).ReadObject(stream);
                 if(queues==null || queues.Any(p=>p.Value==null || p.Value.Count>20 || p.Value.Any(m=>m==null || String.IsNullOrEmpty(m.Id) || String.IsNullOrWhiteSpace(m.Text) || m.Text.Length>8000)))throw new SerializationException();
                 foreach(var pair in queues)paused.Add(pair.Key);
             }
-            catch(Exception e){if(!(e is IOException || e is UnauthorizedAccessException || e is SerializationException || e is CryptographicException || e is FormatException))throw;queues=new Dictionary<string,List<QueuedMessage>>();loadFailed=true;Notice="排队内容读取失败，原文件已保留。请检查数据目录及 Windows 账户后重启。";}
+            catch(Exception e){if(!(e is IOException || e is UnauthorizedAccessException || e is SerializationException || e is CryptographicException || e is FormatException))throw;queues=new Dictionary<string,List<QueuedMessage>>();loadFailed=true;Notice="排队内容读取失败，原文件已保留。请检查数据目录及系统账户后重启。";}
             session.StateChanged+=SessionChanged;session.HistoryChanged+=SessionChanged;
         }
         List<QueuedMessage> Current{get{List<QueuedMessage> list;string id=session.PersonaId;if(!queues.TryGetValue(id,out list))queues[id]=list=new List<QueuedMessage>();return list;}}
@@ -54,7 +54,7 @@ namespace Dafeiyu
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));string temp=path+".tmp";
             byte[] data;using(var memory=new MemoryStream()){new DataContractJsonSerializer(typeof(Dictionary<string,List<QueuedMessage>>)).WriteObject(memory,queues);data=memory.ToArray();}
-            var saved=new StoredQueue{Payload=Convert.ToBase64String(ProtectedData.Protect(data,null,DataProtectionScope.CurrentUser))};
+            var saved=new StoredQueue{Payload=Convert.ToBase64String(SecretProtection.Protect(data))};
             using(var stream=File.Create(temp))new DataContractJsonSerializer(typeof(StoredQueue)).WriteObject(stream,saved);
             for(int attempt=0;;attempt++)try
             {

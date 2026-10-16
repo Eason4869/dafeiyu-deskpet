@@ -84,6 +84,7 @@ namespace Dafeiyu
             {
                 AddAction("喂零食","feeding",true);
                 AddAction(pet.IsSleeping?"叫醒":"小憩","sleeping",true);AddAction(pet.Skin.SpecialAction,"special",true);
+                if(AdditionalInteractions.Supports(pet.Skin))AddAction(AdditionalInteractions.SpecialName(pet.Skin),"special2",true);
             }
             selection.Text=basic?"选择一个动作":"选择一个技能";hint.Text="点选播放 · 滚轮切换分类 · Esc 收起";
             RefreshAvailability();
@@ -99,7 +100,7 @@ namespace Dafeiyu
 
         void AddAction(string label,string action,bool interaction)
         {
-            int count=basic?AnimationPlayer.States.Length:3,index=actionButtons.Count;
+            int count=basic?AnimationPlayer.States.Length:AdditionalInteractions.Supports(pet.Skin)?4:3,index=actionButtons.Count;
             double angle=-90+index*360.0/count,radians=angle*Math.PI/180;
             var tile=new StackPanel {Width=76,HorizontalAlignment=HorizontalAlignment.Center,IsHitTestVisible=false};
             var image=new Image {Name="PalettePreview_"+action.Replace('-','_'),Source=pet.GetActionPreview(action,interaction),Width=basic?48:64,Height=basic?52:70,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,0,3)};
@@ -152,7 +153,8 @@ namespace Dafeiyu
                 case "feeding":return "请伙伴吃份零食，吃完会开心一下。";
                 case "happy":return "让伙伴做个开心的小表情。";
                 case "sleeping":return pet.IsSleeping?"叫醒正在小憩的伙伴。":"让伙伴安静地小憩，再点一次叫醒。";
-                case "special":return "看看这位伙伴独有的招牌动作。";
+                case "special":return pet.Skin.SpecialAction+"：看看伙伴的反应。";
+                case "special2":return AdditionalInteractions.SpecialName(pet.Skin)+"：看看伙伴的新花样。";
                 case "idle":return "回到平静的待机姿态。";
                 case "running-right":return "原地演示向右奔跑的动作。";
                 case "running-left":return "原地演示向左奔跑的动作。";

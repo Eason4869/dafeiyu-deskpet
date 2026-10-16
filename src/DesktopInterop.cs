@@ -7,6 +7,13 @@ namespace Dafeiyu
 {
     public static class DesktopInterop
     {
+        [StructLayout(LayoutKind.Sequential)] private struct LastInput {public uint Size,Tick;}
+        [DllImport("user32.dll")]private static extern bool GetLastInputInfo(ref LastInput input);
+        public static double UserIdleSeconds()
+        {
+            var input=new LastInput{Size=(uint)Marshal.SizeOf(typeof(LastInput))};
+            return GetLastInputInfo(ref input)?unchecked((uint)Environment.TickCount-input.Tick)/1000.0:Double.NaN;
+        }
         [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X, Y; }
         [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativePoint point);

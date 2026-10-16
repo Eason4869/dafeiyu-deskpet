@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,6 +22,7 @@ namespace Dafeiyu.Tests
             Check(typeof(GitHubUpdates).GetMethod("CheckAsync",new[]{typeof(string),typeof(bool),typeof(string),typeof(bool),typeof(CancellationToken)})!=null,"便携版可选择运行包，不改变其他安装记录");
             Check(!new UpdateRelease{VersionTag="v1.2.0.0"}.IsNewerThan(new Version(1,2,0,0)) && !new UpdateRelease{VersionTag="v1.2.0"}.IsNewerThan(new Version(1,2,0,0)) && new UpdateRelease{VersionTag="v1.2.0.1"}.IsNewerThan(new Version(1,2,0,0)),"three- and four-part release versions compare consistently");
             foreach(string url in new[]{"https://github.com/OWNER/REPO","https://example.com/o/r","https://user:pass@github.com/o/r","https://github.com/o/r/releases","https://github.com/o/r?key=secret"}){try{GitHubUpdates.Repository(url);throw new Exception("invalid repo accepted");}catch(ApiException){passed++;}}
+            await TransitionAssetChecks();
             await PlatformAssetChecks();
             string json="{\"tag_name\":\"v1.3.0\",\"html_url\":\"https://github.com/test/pet/releases/tag/v1.3.0\",\"assets\":[{\"name\":\"deskpet-source.zip\",\"size\":10,\"browser_download_url\":\"https://github.com/test/pet/releases/download/v1.3.0/deskpet-source.zip\"},{\"name\":\"DeskPet-Setup.exe\",\"size\":4,\"browser_download_url\":\"https://github.com/test/pet/releases/download/v1.3.0/DeskPet-Setup.exe\"}]}";
             using(var server=new ApiTests.Fixture(json))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
@@ -30,19 +31,38 @@ namespace Dafeiyu.Tests
             using(var server=new ApiTests.Fixture(portableJson))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
             {var release=await updater.CheckAsync("https://github.com/test/pet",false,ProxyConfiguration.DefaultAddress,true,CancellationToken.None);Check(release.AssetName=="DeskPet-Windows.zip","portable installation selects the runtime ZIP instead of running an installer");}
             string root=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"update-tests",Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(root);string sentinel=Path.Combine(root,"existing.zip.part");File.WriteAllText(sentinel,"previous owner's bytes");
+            Directory.CreateDirectory(root);string sentinel=Path.Combine(root,"DeskPet-Windows-1.3.0.zip.part");File.WriteAllText(sentinel,"previous owner's bytes");
             using(var server=new ApiTests.Fixture("",500))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
-            {try{await updater.DownloadAsync(new UpdateRelease{AssetName="existing.zip",AssetUrl=server.Url+"/failure",Size=4},root,false,null,CancellationToken.None);throw new Exception("failed request accepted");}catch(ApiException){}Check(File.Exists(sentinel) && File.ReadAllText(sentinel)=="previous owner's bytes","failed download preserves a pre-existing unowned partial file");}
+            {try{await updater.DownloadAsync(new UpdateRelease{AssetName="DeskPet-Windows-1.3.0.zip",AssetUrl=server.Url+"/failure",Size=4},root,false,null,CancellationToken.None);throw new Exception("failed request accepted");}catch(ApiException){}Check(File.Exists(sentinel) && File.ReadAllText(sentinel)=="previous owner's bytes","failed download preserves a pre-existing unowned partial file");}
             using(var server=new ApiTests.Fixture(new byte[]{1,2,3,4},"application/octet-stream"))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
             {var release=new UpdateRelease{VersionTag="v1.3.0",AssetName="DeskPet-Setup.exe",AssetUrl=server.Url+"/setup",Size=4};string path=await updater.DownloadAsync(release,root,false,null,CancellationToken.None);Check(File.ReadAllBytes(path).Length==4 && Directory.GetFiles(root,"DeskPet-Setup.exe*.part").Length==0,"download is complete before atomic publication");}
             using(var server=new ApiTests.Fixture(new byte[]{1,2,3,4},"application/octet-stream"))using(var updater=new GitHubUpdates(new Uri(server.Url+"/")))
-            {server.DelayBodyMilliseconds=1000;using(var cancel=new CancellationTokenSource()){var task=updater.DownloadAsync(new UpdateRelease{AssetName="cancel.zip",AssetUrl=server.Url+"/cancel",Size=4},root,false,null,cancel.Token);await server.HeadersSent;cancel.Cancel();try{await task;throw new Exception("cancel ignored");}catch(OperationCanceledException){}Check(!File.Exists(Path.Combine(root,"cancel.zip")) && Directory.GetFiles(root,"cancel.zip*.part").Length==0,"canceled download removes the partial file");}}
+            {server.DelayBodyMilliseconds=1000;using(var cancel=new CancellationTokenSource()){var task=updater.DownloadAsync(new UpdateRelease{AssetName="DeskPet-Windows-1.3.1.zip",AssetUrl=server.Url+"/cancel",Size=4},root,false,null,cancel.Token);await server.HeadersSent;cancel.Cancel();try{await task;throw new Exception("cancel ignored");}catch(OperationCanceledException){}Check(!File.Exists(Path.Combine(root,"DeskPet-Windows-1.3.1.zip")) && Directory.GetFiles(root,"DeskPet-Windows-1.3.1.zip*.part").Length==0,"canceled download removes the partial file");}}
             using(var server=new ApiTests.Fixture("null"))using(var updater=new GitHubUpdates(new Uri(server.Url+"/"))){try{await updater.CheckAsync("https://github.com/test/pet",false,CancellationToken.None);throw new Exception("bad release accepted");}catch(ApiException){passed++;}}
             await MirrorChecks();
         }
+        static async Task TransitionAssetChecks()
+        {
+            foreach(var pair in new[]{new[]{"0.5.6","DeskPet-Setup-0.5.6.exe"},new[]{"0.5.11","DeskPet-Setup-0.5.11.exe"},new[]{"0.6.0","DeskPet-Windows-Setup-0.6.0.exe"},new[]{"1.0.0","DeskPet-Windows-Setup-1.0.0.exe"}})
+                Check(ReleaseInfo.InstallerAssetName(pair[0])==pair[1],"numeric installer naming contract: "+pair[0]);
+            foreach(string name in new[]{"DeskPet-Setup-0.6.0.exe","DeskPet-Windows-Setup-0.6.0.exe"})
+                Check(ReleaseInfo.WindowsUpdateAsset(name) && ReleaseInfo.WindowsUpdateAsset(name,"0.6.0",false),"runtime accepts old and new installed package names: "+name);
+            Check(ReleaseInfo.PortableAssetName("0.6.0")=="DeskPet-Windows-0.6.0.zip" && ReleaseInfo.WindowsUpdateAsset("DeskPet-Windows-0.6.0.zip","0.6.0",true),"portable package name stays unchanged");
+            foreach(string name in new[]{"DeskPet-Windows-Setup-0.6.0.zip","DeskPet-Windows-0.6.0.exe","DeskPet-macOS-Setup-0.6.0.exe","DeskPet-Linux-Setup-0.6.0.exe","../DeskPet-Windows-Setup-0.6.0.exe","DeskPet-Windows-Setup-0.6.0.exe\n","DeskPet-Windows-Setup-0.6.0.exe.zip"})
+                Check(!ReleaseInfo.WindowsUpdateAsset(name),"shared Windows contract rejects foreign or disguised names: "+name.Replace("\n","\\n"));
+            Check(!ReleaseInfo.WindowsUpdateAsset("DeskPet-Windows-Setup-0.6.1.exe","0.6.0",false) && !ReleaseInfo.WindowsUpdateAsset("DeskPet-Windows-Setup-0.6.0.exe","0.6.0",true),"automatic execution binds both version and installation mode");
+            foreach(bool reverse in new[]{false,true}) {
+                var names=new[]{"DeskPet-Setup-0.6.0.exe","DeskPet-Windows-0.6.0.zip","DeskPet-Windows-Setup-0.6.0.exe","DeskPet-macOS-0.6.0-arm64.zip","DeskPet-Linux-Setup-0.6.0.exe"};
+                using(var handler=new AssetHandler((reverse?names.Reverse():names).ToArray()))using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler)) {
+                    Check((await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,ProxyConfiguration.DefaultAddress,false,CancellationToken.None)).AssetName=="DeskPet-Windows-Setup-0.6.0.exe","new Windows installer name wins over legacy installer regardless of order "+reverse);
+                    Check((await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,ProxyConfiguration.DefaultAddress,true,CancellationToken.None)).AssetName=="DeskPet-Windows-0.6.0.zip","portable preference wins over both installer names "+reverse);
+                }
+            }
+        }
         static async Task PlatformAssetChecks()
         {
-            string[] excluded={"DeskPet-Mac-x64.zip","DeskPet-MACOS-Setup-x64.zip","DeskPet-darwin-x64.zip","DeskPet-osx-x64.zip","DeskPet-macOS.dmg","DeskPet-dmg.zip","DeskPet-HighFPS-Template-v2-0.5.3.zip","DeskPet-创作模板.zip","DeskPet-Four-Skins-0.5.3.zip","DeskPet-Source-0.5.3.zip"};
+            string[] excluded={"DeskPet-Mac-x64.zip","DeskPet-MACOS-Setup-x64.zip","DeskPet-darwin-x64.zip","DeskPet-osx-x64.zip","DeskPet-macOS.dmg","DeskPet-dmg.zip","DeskPet-HighFPS-Template-v2-0.5.3.zip","DeskPet-创作模板.zip","DeskPet-Four-Skins-0.5.3.zip","DeskPet-Source-0.5.3.zip",
+                "DeskPet-macOS-0.5.7-arm64-preview.zip","DeskPet-macOS-0.5.7-x86_64-preview.dmg","DeskPet-Linux-x64.zip","DeskPet-Linux-Setup.exe","DeskPet.zip","unknown-Setup.exe","DeskPet-Windows-0.5.7.zip.exe"};
             foreach(string asset in excluded)using(var handler=new AssetHandler(new[]{asset}))using(var updater=new GitHubUpdates(new Uri("https://api.github.com/"),handler)) {
                 foreach(bool portable in new[]{false,true}) {
                     var release=await updater.CheckAsync(ReleaseInfo.RepositoryUrl,false,ProxyConfiguration.DefaultAddress,portable,CancellationToken.None);

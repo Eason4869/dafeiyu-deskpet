@@ -54,7 +54,7 @@ namespace Dafeiyu.Tests
                     animation.Play(action,.3);animation.Advance(.301);Check(animation.State=="idle",builtin.Id+" slower running does not stretch explicit action duration: "+action);
                 }
                 foreach(var builtin in catalog.Skins.Where(s=>s.Embedded))foreach(string action in AnimationPlayer.States) {
-                    if(action=="running-right" || action=="running-left")continue;
+                    if(action=="running-right" || action=="running-left" || AdditionalInteractions.Has(builtin,action))continue;
                     double actualDuration;bool actualLoop;if(SmoothMotion.TryTiming(builtin.Id,Array.IndexOf(AnimationPlayer.States,action),out actualDuration,out actualLoop) && !actualLoop)continue;
                     var baseline=new AnimationPlayer();var selected=CreateAnimation(builtin);baseline.Play(action,0);selected.Play(action,0);
                     for(int tick=0;tick<120;tick++){baseline.Advance(.016);selected.Advance(.016);if(baseline.Frame!=selected.Frame)throw new Exception("unrelated animation timing changed: "+builtin.Id+" "+action);}

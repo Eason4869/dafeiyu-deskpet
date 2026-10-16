@@ -32,13 +32,18 @@ namespace Dafeiyu
         private static readonly int[] MarfuRightStride={0,2,3,2,4,2,6,2};
         public SkinManifest Manifest { get; private set; }
         public bool Illustrated { get { return Manifest!=null && Manifest.Version==2; } }
-        public string SpecialAction { get { return Illustrated && !String.IsNullOrWhiteSpace(Manifest.SpecialAction) ? Manifest.SpecialAction : "专属动作"; } }
+        public string SpecialAction { get {
+            if(Illustrated && !String.IsNullOrWhiteSpace(Manifest.SpecialAction))return Manifest.SpecialAction;
+            if(Embedded){switch(Id){case "e-bao":return "傲娇扭头";case "dafeiyu":return "摇尾欢呼";case "marfu":return "挥杖流光";}}
+            return "伙伴招牌";
+        } }
         internal SkinDefinition(string id,string folder,SkinManifest manifest) : this(id,SkinCatalog.CleanName(manifest.Name),folder,manifest.Preview,false,manifest.SystemPrompt,manifest.Description) { Manifest=manifest; }
         public string Id { get; private set; }
         public string Name { get; private set; }
         public string Source { get; private set; }
         public string Preview { get; private set; }
         public bool Embedded { get; private set; }
+        internal bool Bundled { get; set; }
         public string SystemPrompt { get; private set; }
         public string Description { get; private set; }
         public SkinDefinition(string id,string name,string source,string preview,bool embedded,string prompt=null,string description=null)
@@ -66,6 +71,7 @@ namespace Dafeiyu
             double period=Embedded && (Id=="marfu" || Id=="e-bao" || Id=="dafeiyu") ? .22 : .11;
             double[] durations=null;
             if(Illustrated) durations=AnimationPlayer.States.Select(n=>Manifest.Animations[n].Loop ? 0 : Manifest.Animations[n].Frames/Manifest.Animations[n].Fps).ToArray();
+            if(AdditionalInteractions.Has(this,"jumping")){if(durations==null)durations=new double[AnimationPlayer.States.Length];durations[4]=1;}
             return new AnimationPlayer(frameMultiplier,period,durations);
         }
     }

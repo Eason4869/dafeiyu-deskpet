@@ -9,6 +9,7 @@ import subprocess
 import re
 from zipfile import ZipFile, ZIP_DEFLATED
 from PIL import Image
+from tools.release_assets import installer_asset_name
 
 PROJECT=Path(__file__).resolve().parent
 arguments=argparse.ArgumentParser(description='Create clean versioned DeskPet release archives.')
@@ -38,7 +39,7 @@ def include_source(file):
 source_files=[p for p in sorted(PROJECT.rglob('*')) if include_source(p)]
 # User-facing templates and documentation remain in the runtime; developer
 # verification reports, tests and intermediate artwork stay out.
-user_docs=['skin-format.md','dialogue-setup.md','installation.md','daily-use.md','voice-presets.md','sources.md','roadmap.md']
+user_docs=['skin-format.md','dialogue-setup.md','installation.md','daily-use.md','voice-presets.md','sources.md','roadmap.md','release-naming.md','interaction-extension.md']
 runtime_text={name:(PROJECT/name).read_text(encoding='utf-8-sig') for name in ['README.md','CHANGELOG.md']+[str(Path('docs')/name) for name in user_docs]}
 readme=runtime_text['README.md']
 for pet,still in [('ebao','e-bao'),('dafeiyu','dafeiyu'),('marfu','marfu'),('xiaobei','xiaobei')]:
@@ -162,7 +163,7 @@ with ZipFile(runtime_zip) as bundle:
     assert hashlib.sha256(bundle.read(exe_name)).digest()==hashlib.sha256((APP/'桌面伙伴.exe').read_bytes()).digest()
 with ZipFile(source_zip) as bundle: assert bundle.testzip() is None
 artifacts=[APP/'桌面伙伴.exe',runtime_zip,source_zip,template_zip]+skin_artifacts
-setup=OUTPUT/('DeskPet-Setup-'+version+'.exe')
+setup=OUTPUT/installer_asset_name(version)
 if setup.exists(): artifacts.append(setup)
 (OUTPUT/'SHA256.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(OUTPUT)) for p in artifacts)+'\n',encoding='utf-8')
 print('PASS archive integrity, executable identity and clean settings')

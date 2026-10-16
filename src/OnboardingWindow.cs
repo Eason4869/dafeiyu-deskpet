@@ -149,7 +149,7 @@ namespace Dafeiyu
                 }
                 else if(Step==2)
                 {
-                    title.Text="3 · 调整陪伴方式";instruction.Text="调整大小、跟随、散步与置顶。正常使用时，悬停在伙伴身上会跳一次并暂停视线跟随；移开后恢复。引导期间暂停此悬停效果。保留当前值也可以；自启只在你主动开启时生效。";
+                    title.Text="3 · 调整陪伴方式";instruction.Text="调整大小、跟随、散步与置顶，也可开关拖放踉跄和空闲小憩。悬停时随机播放跳跃、打招呼或伙伴的具名招牌动作，一次移入只播放一次；移开后恢复视线跟随。引导期间暂停悬停随机动作和自动小憩。保留当前值也可以；自启只在你主动开启时生效。";
                     settings.SelectCompanionSection(1);TargetName="SizeSlider";scopeName="GuideBehaviorSection";
                     AddAction("试试互动","GuideTryInteraction",delegate {pet.PlayInteraction("petting");});
                 }

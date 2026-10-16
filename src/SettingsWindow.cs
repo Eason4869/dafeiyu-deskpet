@@ -15,7 +15,7 @@ namespace Dafeiyu
         private readonly TextBlock name,notice,sizeLabel;
         private readonly Image avatar;
         private readonly ComboBox skins;
-        private readonly CheckBox follow,wander,top,pause,autoStart,greetings,aiGreetings;
+        private readonly CheckBox follow,wander,top,pause,autoStart,greetings,aiGreetings,stumble,autoSleep;
         private readonly TextBox greetingMin,greetingMax;
         private readonly StartupRegistration startup=new StartupRegistration(Process.GetCurrentProcess().MainModule.FileName);
         private readonly Slider size;
@@ -73,6 +73,10 @@ namespace Dafeiyu
             var behavior=new StackPanel{Name="GuideBehaviorSection"}; behavior.Children.Add(Heading("陪伴方式"));
             follow=Ui.Toggle("视线跟随鼠标",pet.Settings.FollowCursor,delegate(bool value) { if(!refreshing) { pet.Settings.FollowCursor=value; pet.ApplySettings(); } }); follow.Name="FollowCursor"; behavior.Children.Add(follow);
             wander=Ui.Toggle("偶尔在桌面上散步",pet.Settings.Wander,delegate(bool value) { if(!refreshing) { pet.Settings.Wander=value; pet.ApplySettings(); } }); wander.Name="Wander"; behavior.Children.Add(wander);
+            stumble=Ui.Toggle("拖动放下后偶尔踉跄",pet.Settings.StumbleEnabled,delegate(bool value) {if(!refreshing){pet.Settings.StumbleEnabled=value;pet.ApplySettings();}});stumble.Name="StumbleEnabled";behavior.Children.Add(stumble);
+            behavior.Children.Add(Ui.Text("实际拖动后有 40% 概率，触发后冷却 10 秒；支持四位内置伙伴。",11,Ui.Muted));
+            autoSleep=Ui.Toggle("长时间空闲时自动小憩",pet.Settings.AutoSleepEnabled,delegate(bool value){if(!refreshing){pet.Settings.AutoSleepEnabled=value;pet.ApplySettings();}});autoSleep.Name="AutoSleepEnabled";behavior.Children.Add(autoSleep);
+            behavior.Children.Add(Ui.Text("系统空闲 5 分钟或 15 分钟未操作伙伴后，每分钟有 70% 概率小憩；点击互动可唤醒。",11,Ui.Muted));
             top=Ui.Toggle("保持在其他窗口上方",pet.Settings.Topmost,delegate(bool value) { if(!refreshing) { pet.Settings.Topmost=value; pet.ApplySettings(); } }); top.Name="Topmost"; behavior.Children.Add(top);
             autoStart=Ui.Toggle("开启自启",false,SetAutoStart);autoStart.Name="AutoStart";behavior.Children.Add(autoStart);
             behavior.Children.Add(Ui.Text("登录 Windows 时启动桌宠；关闭后立即撤销。",11,Ui.Muted));
@@ -148,7 +152,7 @@ namespace Dafeiyu
         public void RefreshState()
         {
             if(displayedSkinId!=pet.Skin.Id)RefreshAvatar();
-            refreshing=true; follow.IsChecked=pet.Settings.FollowCursor; wander.IsChecked=pet.Settings.Wander;
+            refreshing=true; follow.IsChecked=pet.Settings.FollowCursor; wander.IsChecked=pet.Settings.Wander;stumble.IsChecked=pet.Settings.StumbleEnabled;autoSleep.IsChecked=pet.Settings.AutoSleepEnabled;
             top.IsChecked=pet.Settings.Topmost; pause.IsChecked=pet.Paused;greetings.IsChecked=pet.Settings.GreetingEnabled;aiGreetings.IsChecked=pet.Settings.AiGreetingEnabled; size.Value=pet.Settings.Scale;
             sizeLabel.Text=Math.Round(pet.Settings.Scale*100)+"%"; skins.SelectedItem=pet.Skin; refreshing=false;
             RefreshAutoStart();if(quiet!=null)quiet.RefreshState();

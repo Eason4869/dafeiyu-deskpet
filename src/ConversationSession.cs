@@ -36,6 +36,7 @@ namespace Dafeiyu
             public readonly CancellationTokenSource Cancel=new CancellationTokenSource();
             public readonly TaskCompletionSource<bool> Complete=new TaskCompletionSource<bool>();
             public PetSettings Snapshot,Live; public IAudioRecorder Recorder; public bool Finishing; public int Ended;
+            public Action<string> RecordingFailure;
             public ConversationLog History;public string PersonaId,ReplyId,Source="text";public IList<ChatMessage> SteeringContext;
             public readonly StringBuilder Partial=new StringBuilder();public readonly Stopwatch Checkpoint=Stopwatch.StartNew();
         }
@@ -92,8 +93,23 @@ namespace Dafeiyu
         public void StartRecording(PetSettings settings)
         {
             ValidateVoice(settings); Operation op=Begin(settings,ConversationStage.Recording);
-            try { op.Recorder=microphone(); op.Recorder.Start(); }
+            try {
+                op.Recorder=microphone();var failures=op.Recorder as IPcmMicrophone;
+                if(failures!=null){op.RecordingFailure=message=>RecordingFailed(op,message);failures.Failed+=op.RecordingFailure;}
+                op.Recorder.Start();
+            }
             catch { End(op); throw; }
+        }
+        private void RecordingFailed(Operation op,string message)
+        {
+            lock(gate) {
+                if(disposed || active!=op || op.Finishing || op.Ended!=0)return;
+                op.Finishing=true;LastNotice=String.IsNullOrWhiteSpace(message)?"麦克风录音中断，请检查设备及权限。":message;
+                op.Cancel.Cancel();
+            }
+            // A device may raise failure on its capture worker; disposing there can
+            // deadlock when the recorder waits for that same worker to finish.
+            Task.Run(delegate { End(op); });
         }
         private static void ValidateVoice(PetSettings settings)
         { ApiClient.ValidateConnection(settings.Text,ApiClient.ChatPath(settings.Text)); var connection=settings.TranscriptionConnection(); ApiClient.ValidateConnection(connection,ApiClient.AsrPath(connection)); }
@@ -198,7 +214,11 @@ namespace Dafeiyu
         private void End(Operation op)
         {
             if(Interlocked.Exchange(ref op.Ended,1)!=0) return;
-            if(op.Recorder!=null) op.Recorder.Dispose();
+            if(op.Recorder!=null) {
+                var failures=op.Recorder as IPcmMicrophone;
+                if(failures!=null && op.RecordingFailure!=null)failures.Failed-=op.RecordingFailure;
+                op.Recorder.Dispose();
+            }
             lock(gate) if(Object.ReferenceEquals(active,op)) active=null;
             op.Cancel.Dispose(); SetStage(ConversationStage.Idle); op.Complete.TrySetResult(true);
         }

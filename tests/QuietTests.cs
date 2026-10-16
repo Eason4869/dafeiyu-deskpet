@@ -66,9 +66,11 @@ namespace Dafeiyu.Tests
     var walking=typeof(PetWindow).GetField("walking",BindingFlags.NonPublic|BindingFlags.Instance);walking.SetValue(pet,true);pet.SetQuietMode(true);Check(!(bool)walking.GetValue(pet),"DND stops wandering");
     pet.ShowSettings();Pump(.1);var prefs=(SettingsWindow)typeof(PetWindow).GetField("preferences",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet);prefs.SelectPage(6);Check(prefs.IsOnAboutPage,"About navigation index preserved");prefs.SelectPage(7);Check(!prefs.IsOnAboutPage,"quiet page appended");
     var policy=(VisibilityPolicy)typeof(PetWindow).GetField("visibility",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet);policy.Fullscreen=true;settings.HideOnFullscreen=true;
-    typeof(PetWindow).GetMethod("ApplyVisibility",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(pet,null);Check(pet.AutoHidden && !pet.IsVisible,"automatic hide applies to window");var ticks=typeof(PetWindow).GetField("previousTick",BindingFlags.NonPublic|BindingFlags.Instance);double frozen=(double)ticks.GetValue(pet);typeof(PetWindow).GetMethod("RenderFrame",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(pet,new object[]{null,EventArgs.Empty});Check(frozen==(double)ticks.GetValue(pet),"auto hidden renderer ignores callbacks");
-    pet.HidePet();policy.Fullscreen=false;typeof(PetWindow).GetMethod("ApplyVisibility",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(pet,null);Check(!pet.IsVisible && !pet.UserVisible,"fullscreen exit never undoes manual hide");
-    pet.ShowQuickChat();Pump(.1);Check(pet.IsVisible && pet.UserVisible,"explicit quick chat restores manually hidden pet");
+    typeof(PetWindow).GetMethod("ApplyVisibility",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(pet,null);Check(pet.AutoHidden && !pet.IsPetVisible,"automatic hide applies to window");var ticks=typeof(PetWindow).GetField("previousTick",BindingFlags.NonPublic|BindingFlags.Instance);double frozen=(double)ticks.GetValue(pet);typeof(PetWindow).GetMethod("RenderFrame",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(pet,new object[]{null,EventArgs.Empty});Check(frozen==(double)ticks.GetValue(pet),"auto hidden renderer ignores callbacks");
+    pet.HidePet();policy.Fullscreen=false;typeof(PetWindow).GetMethod("ApplyVisibility",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(pet,null);Check(!pet.IsPetVisible && !pet.UserVisible,"fullscreen exit never undoes manual hide");
+    pet.SetClickThrough(false);pet.ApplySettings();Check((GetWindowLong(handle,-20)&0x20)!=0 && !pet.IsHitTestVisible && pet.Opacity==0,"settings cannot make hidden surface intercept input");
+    pet.SetClickThrough(true);pet.RestorePet();Check(pet.IsPetVisible && settings.ClickThrough && (GetWindowLong(handle,-20)&0x20)!=0,"restore retains user click-through preference");pet.HidePet();pet.SetClickThrough(false);
+    pet.ShowQuickChat();Pump(.1);Check(pet.IsPetVisible && pet.UserVisible,"explicit quick chat restores manually hidden pet");
     var quick=(QuickChatWindow)typeof(PetWindow).GetField("quick",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet);quick.Hide();Pump(.3);Check(!policy.OverrideFullscreen,"quick chat override ends when panel hides");
    }finally{pet.Close();Pump(.3);}
    Check(app.Windows.Count==0,"async close releases companion windows");
@@ -84,12 +86,26 @@ namespace Dafeiyu.Tests
    var info=new System.Diagnostics.ProcessStartInfo(System.Reflection.Assembly.GetExecutingAssembly().Location,"--fullscreen-fixture "+screen.Left+" "+screen.Top+" "+screen.Width+" "+screen.Height){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true};
    using(var fixture=System.Diagnostics.Process.Start(info))try {
     var ready=fixture.StandardOutput.ReadLineAsync();Check(ready.Wait(10000),"fullscreen fixture starts");IntPtr other=new IntPtr(Int64.Parse(ready.Result));SetForegroundWindow(other);Pump(.15);
+    if(GetForegroundWindow()!=other)
+    {
+     // The foreground application can cover this non-activated fixture. Put
+     // our two test windows above it before the one real activation click.
+     SetWindowPos(other,new IntPtr(-1),0,0,0,0,0x1|0x2|0x10);
+     SetWindowPos(handle,new IntPtr(-1),0,0,0,0,0x1|0x2|0x10);Pump(.05);
+     var activationPoint=new NativePoint{X=screen.Left+10,Y=screen.Top+10};
+     Check(WindowFromPoint(activationPoint)==other,"activation click actually targets fullscreen fixture");
+     var cursor=DesktopInterop.Cursor();
+     try{Check(SetCursorPos(activationPoint.X,activationPoint.Y),"fullscreen fixture native pointer available");Pump(.03);mouse_event(2,0,0,0,UIntPtr.Zero);var until=DateTime.UtcNow.AddSeconds(1);while(GetForegroundWindow()!=other && DateTime.UtcNow<until)Pump(.01);}
+     finally{mouse_event(4,0,0,0,UIntPtr.Zero);SetCursorPos((int)cursor.X,(int)cursor.Y);Pump(.03);}
+    }
+    Check(GetForegroundWindow()==other,"fullscreen fixture owns foreground before product checks");
+    SetWindowPos(handle,new IntPtr(-1),0,0,0,0,0x1|0x2|0x10);Pump(.05);
     Check(DesktopInterop.ForegroundIsFullScreen(handle),"real foreground fullscreen on pet monitor detected fg="+GetForegroundWindow()+" fixture="+other+" bounds="+DesktopInterop.Bounds(other)+" screen="+screen);
     var bounds=DesktopInterop.Bounds(handle);var atlas=(SpriteAtlas)typeof(PetWindow).GetField("atlas",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet);int row=(int)typeof(PetWindow).GetField("shownRow",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet),col=(int)typeof(PetWindow).GetField("shownCol",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(pet);int sx=0,sy=0;bool found=false;
     for(int y=20;y<atlas.CellHeight-20 && !found;y+=4)for(int x=20;x<atlas.CellWidth-20;x+=4)if(atlas.AlphaAt(row,col,x,y)>240){sx=x;sy=y;found=true;break;}
     Check(found,"opaque pet point found");var point=new NativePoint{X=(int)(bounds.Left+(sx+.5)/atlas.CellWidth*bounds.Width),Y=(int)(bounds.Top+(sy+.5)/atlas.CellHeight*bounds.Height)};
     Check(WindowFromPoint(point)==handle,"opaque pet receives pointer before passthrough actual="+WindowFromPoint(point)+" pet="+handle+" fixture="+other+" style="+GetWindowLong(handle,-20)+" point="+point.X+","+point.Y);pet.SetClickThrough(true);Pump(.1);Check(WindowFromPoint(point)==other,"pointer passes whole pet to separate process");pet.SetClickThrough(false);Pump(.1);Check(WindowFromPoint(point)==handle,"passthrough recovery returns pet hit target");
-    pet.Settings.HideOnFullscreen=true;SetForegroundWindow(other);Pump(.35);Check(pet.AutoHidden && !pet.IsVisible,"real fullscreen poll hides pet");var ticks=typeof(PetWindow).GetField("previousTick",BindingFlags.NonPublic|BindingFlags.Instance);double frozen=(double)ticks.GetValue(pet);Pump(.3);Check(frozen==(double)ticks.GetValue(pet),"auto hidden renderer suspended");pet.HidePet();ShowWindow(other,6);Pump(.35);Check(!pet.IsVisible && !pet.UserVisible,"real fullscreen exit preserves manual hide");pet.Settings.HideOnFullscreen=false;pet.RestorePet();Pump(.1);
+    pet.Settings.HideOnFullscreen=true;SetForegroundWindow(other);Pump(.35);Check(pet.AutoHidden && !pet.IsPetVisible,"real fullscreen poll hides pet");var ticks=typeof(PetWindow).GetField("previousTick",BindingFlags.NonPublic|BindingFlags.Instance);double frozen=(double)ticks.GetValue(pet);Pump(.3);Check(frozen==(double)ticks.GetValue(pet),"auto hidden renderer suspended");pet.HidePet();ShowWindow(other,6);Pump(.35);Check(!pet.IsPetVisible && !pet.UserVisible,"real fullscreen exit preserves manual hide");pet.Settings.HideOnFullscreen=false;pet.RestorePet();Pump(.1);
    }finally{if(!fixture.HasExited){fixture.Kill();fixture.WaitForExit(5000);}}
   }
   [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]struct NativePoint{public int X,Y;}
@@ -97,6 +113,9 @@ namespace Dafeiyu.Tests
   [System.Runtime.InteropServices.DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
   [System.Runtime.InteropServices.DllImport("user32.dll")]static extern bool SetForegroundWindow(IntPtr handle);
   [System.Runtime.InteropServices.DllImport("user32.dll")]static extern bool ShowWindow(IntPtr handle,int command);
+  [System.Runtime.InteropServices.DllImport("user32.dll")]static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
+  [System.Runtime.InteropServices.DllImport("user32.dll")]static extern bool SetCursorPos(int x,int y);
+  [System.Runtime.InteropServices.DllImport("user32.dll")]static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
   [System.Runtime.InteropServices.DllImport("user32.dll",EntryPoint="GetWindowLong")]static extern int GetWindowLong(IntPtr handle,int index);
   static void Pump(double seconds){var frame=new System.Windows.Threading.DispatcherFrame();var timer=new System.Windows.Threading.DispatcherTimer{Interval=TimeSpan.FromSeconds(seconds)};timer.Tick+=delegate{timer.Stop();frame.Continue=false;};timer.Start();System.Windows.Threading.Dispatcher.PushFrame(frame);}
   static void Check(bool ok,string label){if(!ok)throw new Exception(label);passed++;}

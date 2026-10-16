@@ -44,14 +44,14 @@ namespace Dafeiyu
             get
             {
                 if (String.IsNullOrEmpty(EncryptedKey)) return "";
-                try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(EncryptedKey), null, DataProtectionScope.CurrentUser)); }
+                try { return Encoding.UTF8.GetString(SecretProtection.Unprotect(Convert.FromBase64String(EncryptedKey))); }
                 catch (CryptographicException) { return ""; }
                 catch (FormatException) { return ""; }
             }
             set
             {
                 string key = (value ?? "").Trim();
-                EncryptedKey = key.Length == 0 ? "" : Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(key), null, DataProtectionScope.CurrentUser));
+                EncryptedKey = key.Length == 0 ? "" : Convert.ToBase64String(SecretProtection.Protect(Encoding.UTF8.GetBytes(key)));
             }
         }
         public ConnectionSettings Copy()
@@ -135,6 +135,7 @@ namespace Dafeiyu
         [DataMember] public string OnboardingState { get; set; }
         [DataMember] public int OnboardingStep { get; set; }
         [DataMember] public int OnboardingVersion { get; set; }
+        [DataMember] public string LastOnboardingSeries { get; set; }
         [DataMember] public bool SaveChatHistory { get; set; }
         [DataMember] public bool QuietMode { get; set; }
         [DataMember] public bool HideOnFullscreen { get; set; }
@@ -146,6 +147,8 @@ namespace Dafeiyu
         [DataMember] public bool Topmost { get; set; }
         [DataMember] public bool FollowCursor { get; set; }
         [DataMember] public bool Wander { get; set; }
+        [DataMember] public bool StumbleEnabled { get; set; }
+        [DataMember] public bool AutoSleepEnabled { get; set; }
         [DataMember] public bool GreetingEnabled { get; set; }
         [DataMember] public bool AiGreetingEnabled { get; set; }
         [DataMember] public int GreetingMinMinutes { get; set; }
@@ -182,13 +185,13 @@ namespace Dafeiyu
         [DataMember] public ConnectionSettings Transcription { get; set; }
         [DataMember] public ConnectionSettings Speech { get; set; }
         public PetSettings() { Defaults(); }
-        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingVersion=0;OnboardingState="legacy";LiveVoice="Kore"; }
+        [OnDeserializing] private void BeforeDeserialize(StreamingContext context) { Defaults();OnboardingVersion=0;OnboardingState="legacy";LastOnboardingSeries=OnboardingUpgrade.LegacySeries;LiveVoice="Kore"; }
         private void Defaults()
         {
-            OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;
+            OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;LastOnboardingSeries="";
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
-            Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false;
+            Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false; StumbleEnabled=true;AutoSleepEnabled=true;
             GreetingEnabled=true; AiGreetingEnabled=false; GreetingMinMinutes=30; GreetingMaxMinutes=60;
             SkinId = "e-bao";
             ReadReplies = true; UseCloudVoice = false; VoiceUsesTextService = false; VoiceName = "";
@@ -297,8 +300,8 @@ namespace Dafeiyu
             if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles)if(pair.Value!=null)voiceProfiles[pair.Key]=pair.Value.Copy();
             var providers=new List<TextProviderSettings>();if(TextProviders!=null)foreach(var provider in TextProviders)if(provider!=null)providers.Add(provider.Copy());
             var audioProviders=new Dictionary<string,ServiceProviderSettings>();if(AudioProviders!=null)foreach(var pair in AudioProviders)if(pair.Value!=null)audioProviders[pair.Key]=pair.Value.Copy();
-            return new PetSettings { AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
-                GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
+            return new PetSettings { AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,LastOnboardingSeries=LastOnboardingSeries,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
+                AutoSleepEnabled=AutoSleepEnabled,StumbleEnabled=StumbleEnabled,GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,
                 PersonaOverrides=new Dictionary<string,string>(PersonaOverrides),RepositoryUrl=RepositoryUrl,UpdateUseProxy=UpdateUseProxy,UpdateProxyAddress=UpdateProxyAddress,UpdateUseMirror=UpdateUseMirror,UpdateMirrorAddress=UpdateMirrorAddress,AutoUpdate=AutoUpdate,LastUpdateCheckUtcTicks=LastUpdateCheckUtcTicks,Text=Text.Copy(),Transcription=Transcription.Copy(),Speech=Speech.Copy() };
@@ -327,8 +330,8 @@ namespace Dafeiyu
                         (!String.IsNullOrEmpty(settings.Transcription.EncryptedKey) && settings.Transcription.ApiKey.Length == 0) ||
                         (!String.IsNullOrEmpty(settings.Speech.EncryptedKey) && settings.Speech.ApiKey.Length == 0) ||
                         (!String.IsNullOrEmpty(settings.Live.EncryptedKey) && settings.Live.ApiKey.Length == 0))
-                        Warning = "已保存的密钥无法在当前 Windows 用户下解密，请重新填写。";
-                    foreach(var provider in settings.TextProviders)if(!String.IsNullOrEmpty(provider.Connection.EncryptedKey) && provider.Connection.ApiKey.Length==0)Warning="已保存的密钥无法在当前 Windows 用户下解密，请重新填写。";
+                        Warning = "已保存的密钥无法在当前系统账户下解密，请重新填写。";
+                    foreach(var provider in settings.TextProviders)if(!String.IsNullOrEmpty(provider.Connection.EncryptedKey) && provider.Connection.ApiKey.Length==0)Warning="已保存的密钥无法在当前系统账户下解密，请重新填写。";
                     return settings;
                 }
             }
@@ -350,8 +353,20 @@ namespace Dafeiyu
             {
                 using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
                 { new DataContractJsonSerializer(typeof(PetSettings)).WriteObject(stream, settings); stream.Flush(true); }
-                if (File.Exists(path)) File.Replace(temporary, path, null);
-                else File.Move(temporary, path);
+                for(int attempt=0;;attempt++)try
+                {
+                    if(File.Exists(path))File.Replace(temporary,path,null);else File.Move(temporary,path);
+                    break;
+                }
+                catch(IOException error)
+                {
+                    // Keep the atomic commit when a scanner or another short-lived
+                    // reader briefly denies delete sharing. Never delete the old
+                    // settings or retry permanent permission/storage errors.
+                    int code=error.HResult&0xffff;
+                    if(attempt>=3 || (code!=32 && code!=33 && code!=1175) || !File.Exists(temporary))throw;
+                    System.Threading.Thread.Sleep(25*(attempt+1));
+                }
                 Warning = "";
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }

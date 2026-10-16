@@ -40,7 +40,14 @@ namespace Dafeiyu
         public void ConfigureMirror(bool enabled,string address,IProgress<string> reporter){mirrorAddress=enabled?MirrorPrefix(address):null;useMirror=enabled;route=reporter;}
         void Route(string text){if(route!=null)route.Report(text);}
         public GitHubUpdates() : this(new Uri("https://api.github.com/")){}
-        public GitHubUpdates(Uri root){if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;apiRoot=root;direct=Create(false,null);}
+        public GitHubUpdates(Uri root)
+        {
+            if(root==null || !(root.Scheme=="https" || root.IsLoopback))throw new ArgumentException("Invalid API root.");
+#if !PORTABLE
+            ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
+#endif
+            apiRoot=root;direct=Create(false,null);
+        }
         internal GitHubUpdates(Uri root,HttpMessageHandler handler):this(root){direct.Dispose();direct=new HttpClient(handler){Timeout=Timeout.InfiniteTimeSpan};direct.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/"+ReleaseInfo.DisplayVersion);}
         static HttpClient Create(bool useProxy,string address){var client=useProxy?ProxyConfiguration.CreateHttpClient(address,true):new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=true}){Timeout=Timeout.InfiniteTimeSpan};client.DefaultRequestHeaders.UserAgent.ParseAdd("DafeiyuDeskPet/"+ReleaseInfo.DisplayVersion);return client;}
         public static string Repository(string address)
@@ -84,10 +91,9 @@ namespace Dafeiyu
         }
         static int Score(string name)
         {
-            string lower=(name??"").ToLowerInvariant();
-            if(lower.Contains("source") || lower.Contains("源码") || lower.Contains("arm64") || lower.Contains("外观") || lower.Contains("skin") ||
-                lower.Contains("mac") || lower.Contains("darwin") || lower.Contains("osx") || lower.Contains("dmg") || lower.Contains("template") || lower.Contains("模板"))return -1;
-            string ext=Path.GetExtension(lower);int score=ext==".msi"?40:ext==".exe"?30:ext==".zip"?10:-1;if(score<0)return -1;if(lower.Contains("setup") || lower.Contains("install") || lower.Contains("安装"))score+=20;if(Environment.Is64BitOperatingSystem && lower.Contains("x64"))score+=5;return score;
+            if(!ReleaseInfo.WindowsUpdateAsset(name))return -1;
+            string lower=name.ToLowerInvariant();
+            string ext=Path.GetExtension(lower);int score=ext==".msi"?40:ext==".exe"?30:ext==".zip"?10:-1;if(score<0)return -1;if(lower.Contains("setup"))score+=20;if(lower.StartsWith("deskpet-windows-setup",StringComparison.Ordinal))score+=25;return score;
         }
         bool SafeAsset(string address){Uri uri;if(!Uri.TryCreate(address,UriKind.Absolute,out uri) || uri.UserInfo.Length>0 || uri.Fragment.Length>0)return false;if(apiRoot.IsLoopback && uri.IsLoopback && uri.Scheme=="http")return true;return uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.Contains("/releases/download/");}
         public Task<string> DownloadAsync(UpdateRelease release,string folder,bool useProxy,IProgress<double> progress,CancellationToken cancel){return DownloadAsync(release,folder,useProxy,ProxyConfiguration.DefaultAddress,progress,cancel);}

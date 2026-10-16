@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -45,7 +45,7 @@ namespace Dafeiyu
             try {
                 if(!File.Exists(path))return new List<ChatMessage>();
                 if(new FileInfo(path).Length>MaximumBytes)throw new SerializationException();
-                byte[] plain=ProtectedData.Unprotect(File.ReadAllBytes(path),null,DataProtectionScope.CurrentUser);
+                byte[] plain=SecretProtection.Unprotect(File.ReadAllBytes(path));
                 if(plain.Length>MaximumBytes)throw new SerializationException();
                 Document document;using(var stream=new MemoryStream(plain))document=(Document)new DataContractJsonSerializer(typeof(Document)).ReadObject(stream);
                 if(document==null || document.Version!=1 || document.Messages==null || document.Messages.Count>400)throw new SerializationException();
@@ -64,7 +64,7 @@ namespace Dafeiyu
                     Directory.CreateDirectory(directory);byte[] encrypted;
                     while(true) {
                         byte[] plain;using(var stream=new MemoryStream()){new DataContractJsonSerializer(typeof(Document)).WriteObject(stream,new Document {Messages=copy});plain=stream.ToArray();}
-                        encrypted=ProtectedData.Protect(plain,null,DataProtectionScope.CurrentUser);
+                        encrypted=SecretProtection.Protect(plain);
                         if(encrypted.Length<=MaximumBytes && copy.Select(m=>m.TurnId).Distinct().Count()<=200)break;
                         if(copy.Count==0)throw new SerializationException();string turn=copy[0].TurnId;copy.RemoveAll(m=>m.TurnId==turn);
                     }

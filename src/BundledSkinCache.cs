@@ -60,7 +60,7 @@ namespace Dafeiyu
             candidates.AddRange(Directory.GetDirectories(root,name+"-repair-*").OrderBy(p=>p,StringComparer.Ordinal));
             foreach(string candidate in candidates)if(Matches(candidate,entries)) {
                 IllustratedPack.Validate(candidate,manifest,false);
-                return new SkinDefinition("xiaobei",candidate,manifest);
+                return new SkinDefinition("xiaobei",candidate,manifest){Bundled=true};
             }
             string staging=Path.Combine(root,".staging-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(staging);
             try {
@@ -76,7 +76,7 @@ namespace Dafeiyu
                     // Concurrent first launches may have published the same immutable bundle.
                     if(!Matches(destination,entries))throw;
                 }
-                return new SkinDefinition("xiaobei",destination,manifest);
+                return new SkinDefinition("xiaobei",destination,manifest){Bundled=true};
             } finally {
                 // Only this invocation's new, contained staging directory can be removed.
                 if(Directory.Exists(staging))Directory.Delete(staging,true);

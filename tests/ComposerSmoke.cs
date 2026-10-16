@@ -97,6 +97,9 @@ namespace Dafeiyu.Tests
                     Check(input.Text.Length==0 && pet.InputQueue.Items.Single().Text=="识别文字","right dictation arrow queues recognized text while AI is busy");Click(button);Pump(.1);Click(Find<Button>(window,"RemoveQueuedMessage"));pet.InputQueue.Resume();
                     input.Text="原草稿";Click(Find<Button>(window,"VoiceRecord"));Pump(.1);Click(Find<Button>(window,"FinishDictation"));Pump(.2);
                     Check(session.IsBusy && input.Text.Length==0 && session.History.Messages.Any(m=>m.Role=="user" && m.Content.Contains("原草稿") && m.Content.Contains("识别文字")),"idle right dictation arrow sends combined draft and transcription");Click(button);Pump(.1);pet.InputQueue.Resume();
+                    int requestsBeforeFailure=api.Requests.Count;input.Text="设备故障前的草稿";Click(Find<Button>(window,"VoiceRecord"));Pump(.05);recorder.Fail();Until(()=>!dictation.IsBusy);Pump(.1);
+                    var failureStatus=Find<TextBlock>(window,small?"QuickStatus":"ChatStatus");
+                    Check(recorder.Disposed && failureStatus.IsVisible && failureStatus.Text.Contains("麦克风设备已断开") && input.Text=="设备故障前的草稿" && api.Requests.Count==requestsBeforeFailure,"recording device failure restores composer and shows its reason without sending or losing draft");input.Clear();
 
                 }
                 ReorderSmoke(pet,chat,quick,api);ReorderSmoke(pet,quick,chat,api);
@@ -237,7 +240,7 @@ namespace Dafeiyu.Tests
         sealed class Api:IConversationApi
         {public readonly List<ConnectionSettings> Requests=new List<ConnectionSettings>();public readonly List<string> Texts=new List<string>();TaskCompletionSource<string> pending;public async Task<string> ChatAsync(ConnectionSettings s,IList<ChatMessage> m,CancellationToken t){Requests.Add(s);Texts.Add(m.Last().Content);var current=new TaskCompletionSource<string>();pending=current;using(t.Register(()=>current.TrySetCanceled()))return await current.Task;}public void Complete(){pending.TrySetResult("done");}public Task<string> TranscribeAsync(ConnectionSettings s,byte[] b,CancellationToken t){return Task.FromResult("识别文字");}public Task<byte[]> SpeechAsync(ConnectionSettings s,string v,string x,CancellationToken t){throw new NotSupportedException();}public void Dispose(){}}
         sealed class Recorder:IAudioRecorder,IPcmMicrophone
-        {public bool Disposed;public bool IsRecording{get{return !Disposed;}}public event Action<byte[]> PcmAvailable;public event Action<string> Failed;public void Start(){if(PcmAvailable!=null){var data=new byte[3200];for(int i=0;i<data.Length;i+=2){short sample=(short)(Math.Sin(i*.04)*15000);data[i]=(byte)sample;data[i+1]=(byte)(sample>>8);}PcmAvailable(data);}}public Task<byte[]> FinishAsync(){return Task.FromResult(WaveData.EncodePcm(new byte[16000]));}public void Dispose(){Disposed=true;}}
+        {public bool Disposed;public bool IsRecording{get{return !Disposed;}}public event Action<byte[]> PcmAvailable;public event Action<string> Failed;public void Start(){if(PcmAvailable!=null){var data=new byte[3200];for(int i=0;i<data.Length;i+=2){short sample=(short)(Math.Sin(i*.04)*15000);data[i]=(byte)sample;data[i+1]=(byte)(sample>>8);}PcmAvailable(data);}}public void Fail(){if(Failed!=null)Failed("麦克风设备已断开，请检查输入设备。");}public Task<byte[]> FinishAsync(){return Task.FromResult(WaveData.EncodePcm(new byte[16000]));}public void Dispose(){Disposed=true;}}
         sealed class Speech:IReplySpeech{public Task SpeakAsync(string s,PetSettings p,CancellationToken t){return Task.FromResult(0);}public void Stop(){}public void SetVolume(int v){}public void Dispose(){}}
     }
 }

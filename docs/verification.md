@@ -1,3 +1,60 @@
+# 0.5.6 Windows 发布验收（2026-10-16）
+
+A 线发布 Windows，B 线独立推进 0.6.0 Mac 适配与规范包名；0.6.0 仅提交与标签，暂不创建 Release。以下为当前 0.5.6 源码验证，历史记录单独保留。
+
+- CI 原 22 个目标与新增引导／录音故障目标共 24 组通过。版本系列引导 35 项覆盖数字比较、补丁去重、旧配置迁移、关闭／跳过／完成去重、降级及返回旧系列。
+- 最终批量回归暴露设置文件原子替换的短暂占用失败，独立 GUID 夹具原文件完整，与预览实例路径隔离。已对 Windows 共享／锁定／替换错误 32、33、1175 增加有界重试，继续使用原子替换；持续占用仍报错且保留原文件。真实 `FileStream` 删除共享锁回归先失败后通过，Windows 引导目标现为 39 项（引导策略 35 项与 Windows 文件锁 4 项）；非 Windows 仍执行全部 35 项引导策略，跳过原生共享锁语义检查。
+- 包名迁移最终回归：Update 96、Proxy 12、UpdateApply 24、Core 16、AutoUpdate 37、Python 命名 2 项通过。0.5.6 与 0.5.11 保持旧安装名；0.6.0 与更高版本采用 Windows 显式名称，程序与助手核验平台、版本和安装模式。
+- 当前 0.5.6 源编译的独立真实 worker 分别对 0.6.0 新名／旧别名完成安装、握手、等待旧进程、重启及保留数据，每套 8 项通过。测试使用独立 AppId 与 mutex，不覆盖用户现有安装。
+- 普通录音与 Live 的真实 WinMM 适配器故障检查 14 项通过：实际无效设备错误、正常停止不误报、会话释放与错误通知；测试没有申请麦克风。Conversation 12、Dictation 8 通过。
+- 真实 WPF 配置引导 79 项通过（不启用模拟手势）；鼠标 down 到达回执后再释放，避免夹具瞬时 down/up 的调度假设。四格技能轮盘 138 项通过，README 轮盘图取自本次真实窗口。
+- 最终隐藏／恢复修复保留透明窗口的 HWND，以零透明度、禁止视觉命中及整体鼠标穿透隐藏；恢复时保留原点击穿透设置和前台焦点。隐藏期间停止渲染、问候与自动小憩，取消捕获、拖放及弹出菜单。下表对应修复后的最终日志，先前失败与诊断记录不计为通过。
+- 新鲜源码 PackagingSmoke 含真实 Inno 编译通过：0.5.6 产物仍为旧名，便携 ZIP 可由真实更新助手应用，数据／历史／导入外观保留，源码无工作区与私有文件，文档、模板、版本与 SHA256 一致。
+
+| 最终检查 | 结果与证据 |
+| --- | --- |
+| StumbleSmoke | 1511 通过；四宠新旧动作、原生拖放与完整隐藏／恢复链。`work/A-0.5.6-StumbleSmoke-final.log` |
+| 隐藏／恢复原生专项 | 147 通过；四宠恢复后真实点击与拖放、隐藏时穿透和停止渲染、释放捕获及菜单、保持 HWND 与前台焦点。`work/A-0.5.6-StumbleSmoke-restore-regression.log` |
+| HoverSleepSmoke | 161 通过；四种原生悬停结果、节日候选，以及可控时钟下的小憩与唤醒。`work/A-0.5.6-HoverSleepSmoke-final.log` |
+| QuietTests | 58 通过；真实全屏前台、自动／手动隐藏、隐藏时修改设置不拦截鼠标、恢复用户穿透偏好。`work/A-0.5.6-QuietTests-final.log` |
+| UiSmoke | 104 通过；隐藏表面全透明、不可命中及恢复后的设置与窗口生命周期。`work/A-0.5.6-UiSmoke-final.log` |
+| OnboardingSmoke | 79 通过；当前配置引导的真实原生手势、分步保存及退出锁定释放。`work/A-0.5.6-OnboardingSmoke-final.log` |
+| OnboardingUpgradeTests | Windows 39 通过；包含短暂占用后保存成功、持续占用拒绝、原文件保留及临时文件清理。`work/A-settings-replace-OnboardingUpgradeTests.log`；先红证据 `work/A-onboarding-replace-red.log` |
+| ComposerSmoke | 87 通过；完整／快聊的严格按钮对齐、麦克风故障原因可见、草稿保留与不误发送；本次未运行 `--native-drag`。`work/A-recorder-ComposerSmoke-fixed.log` |
+| QueueTests | 24 通过；串行发送、重排、按伙伴隔离、加密持久化与恢复暂停。`work/A-0.5.6-QueueTests.log` |
+
+日志：`work/A-0.5.6-tests.log`、`work/A-0.5.6-naming-tests.log`、`work/A-recorder-*`、`work/A-0.5.6-OnboardingSmoke-native.log`、`work/A-0.5.6-ActionPaletteSmoke.log`。本机已有安装记录，不执行会覆盖该记录的正式安装器测试；安装升级流程使用隔离 AppId 夹具实测。云端 AI、真实麦克风听感与最终人物观感不由这些回归代替。
+
+---
+
+# 0.5.5 dev 快照检查（2026-10-16）
+
+当前状态见 [快照说明](0.5.5-dev-checkpoint.md)。Windows 预览已构建；InteractionTests 1005、StumbleSmoke 1445、Core 16、Profile 86、API 22、Conversation 12、Queue 24 通过；.NET 10 共用业务 251、Mac 平台托管测试 22 通过。原生拖放覆盖新旧配对及统一下落距离。下面 2882 项是更早的单套素材阶段记录，不能作为全部新改动的 UI 回归依据。macOS 完整前端不可编译，原生编译/运行、正式包、签名、公证均未完成；本次不创建 Release。
+
+# 本地互动扩展早期阶段验收（基于 0.5.4，2026-10-16）
+
+未发布、未更改版本号。基线 `c94898a`，测试使用隔离配置，未替换用户安装。以下为本次代码和最终素材的结果，旧版记录不作为本次通过依据。
+
+| 检查 | 结果 |
+| --- | --- |
+| InteractionTests | 673 通过；40% 概率边界、冷却、32 条优化互动的 8 姿态与时钟、取消、空闲阈值、70% 概率与重试、具名候选、节日接口及同名自定义外观隔离 |
+| StumbleSmoke | 1313 通过；四宠 32 条动作在真实 WPF 窗口逐一显示 0→7 帧，真实鼠标拖放、触发／不触发／禁用、透明边界与位移范围、自定义外观回退 |
+| HoverSleepSmoke | 161 通过；四宠真实鼠标悬停四种结果、单次移入、节日第五候选、迟到首帧、E包跳跃实际 8 帧顺序与完整时长、实际小憩及各种唤醒后重计时 |
+| ActionPaletteSmoke / InteractionUiSmoke | 138 / 190 通过；四格命中、具名标签、缩略图、旧手势及新动作、中断和回退 |
+| SettingsNavigationSmoke / OnboardingSmoke | 36 / 77 通过；设置布局、16 步引导、真实手势、区域锁定、跳过和恢复 |
+| Core / Profile / SpriteAlignment | 16 / 86 / 9 通过 |
+| BundledSkin / ImportedSkin / Quiet | 37 / 114 / 32 通过；内置包、旧格式导入、设置迁移和原生快捷键 |
+
+桌面测试在沙箱外运行，未启用模拟手势。原生夹具通过当前图像透明度选择命中点，确认 `WM_NCHITTEST`，等待真实 MouseDown／移动事件，并隔开系统双击间隔。空闲小憩使用真实 WPF 动画、可控时钟和真实 Windows 空闲查询验证，没有让测试机等待 5／15 分钟。互动回归没有调用聊天／语音 AI 接口。落地改为 1 秒后，旧 UI 测试的 0.8 秒等待断言曾失败，更新为与 8 FPS 完整时长相符的等待后重跑通过。
+
+四位伙伴四项技能、开心、拎起、普通落地及踉跄全部按原画参考重绘，另有 E包跳跃，共 33 条、264 帧。Pets create-pet 0.1.6 原始组件提取、边缘去色和帧检查脚本适配 480×520 格；全部帧通过检查，零错误、零警告。最终编码 PNG 逐格与处理后的源帧字节一致、每条 8 个不同姿态、全透明像素 RGB 清零，素材与源条 SHA256 一致。原有基础图集及旧互动图没有改动。小贝睡眠条发现首尾睁眼问题后单独重绘，最终全程闭眼。
+
+接触表、GIF 和检查 JSON：`work/{Ebao,Dafeiyu,Marfu,Xiaobei}-repair`；真实窗口对照：`work/stumble-8974fd76f756412f832cc3ea8c249237`；测试日志：`work/repair-*.log`。GIF 使用 120／130 ms 交替编码，平均 8 FPS；HTML 预览每 125 ms 一帧，可暂停逐帧查看。重绘仍可能有细微线条差别，透明边缘检查与代码回归不能证明人物逐像素一致或代替最终观感验收。
+
+本地预览输出：`work/DeskPet-preview/桌面伙伴.exe`；动作检查页：`work/companion-animation-review.html`（源文件 `tools/companion_review.html`）。独立代码审查未发现可确认的运行逻辑缺陷，指出的陈旧素材说明已更新。构建保留既有 `TextProviderEditor.cs:215` 的 CS4014 警告，与本次改动无关。未提交、推送或发布。
+
+---
+
 # 推送与发布前必检：配置引导
 
 每次修改完成后，推送 GitHub 仓库之前必须核对当前构建的“配置引导”；正式发布前也必须确认该检查针对最终待发布版本完成。历史版本的通过记录不能代替本次检查。此步骤无需在每次编辑后立即运行，应安排在推送／发布验收阶段。

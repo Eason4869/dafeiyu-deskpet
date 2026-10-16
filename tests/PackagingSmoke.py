@@ -12,6 +12,8 @@ import uuid
 from zipfile import ZipFile
 
 PROJECT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(PROJECT))
+from tools.release_assets import installer_asset_name
 version = re.search(r'DisplayVersion="([^"]+)"', (PROJECT / 'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
 arguments = argparse.ArgumentParser()
 arguments.add_argument('--compiler', help='Optional Inno ISCC.exe for full fresh installer verification')
@@ -55,7 +57,7 @@ for worker in [runtime / 'DeskPet.Update.exe'] + ([options.legacy_worker.resolve
                     '--work-directory', str(PROJECT/'work')], check=True, timeout=120)
 print('PASS real update engine accepts the complete release archive and preserves personal data')
 with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
-    for document in ['skin-format.md', 'dialogue-setup.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md']:
+    for document in ['skin-format.md', 'dialogue-setup.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md', 'release-naming.md', 'interaction-extension.md']:
         assert bundle.read('DafeiyuDeskPet/docs/' + document).decode('utf-8-sig').replace('\r\n','\n') == (checkout / 'docs' / document).read_text(encoding='utf-8-sig')
 print('PASS runtime includes the exact daily-use and voice-preset guides')
 for pet in ['Ebao', 'Dafeiyu', 'Marfu', 'Xiaobei']:
@@ -130,7 +132,7 @@ if options.compiler:
     print('PASS installer builds from the fresh public source tree')
     manifest = (output / 'SHA256.txt').read_text(encoding='utf-8-sig').splitlines()
     version = re.search(r'DisplayVersion="([^"]+)"', (checkout / 'src/ReleaseInfo.cs').read_text(encoding='utf-8-sig')).group(1)
-    installer_name = 'DeskPet-Setup-' + version + '.exe'
+    installer_name = installer_asset_name(version)
     assert len([line for line in manifest if line.endswith('  ' + installer_name)]) == 1, 'installer must appear exactly once in the final manifest'
     for line in manifest:
         digest, name = line.split('  ', 1)

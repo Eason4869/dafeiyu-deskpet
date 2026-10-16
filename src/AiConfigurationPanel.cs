@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -20,7 +20,7 @@ namespace Dafeiyu
             RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
             RowDefinitions.Add(new RowDefinition());
             var heading=new StackPanel { Margin=new Thickness(0,0,0,18) };
-            var title=Ui.Text("AI 配置",25);title.FontWeight=FontWeights.SemiBold;heading.Children.Add(title);
+            var title=Ui.Text("模型配置",25);title.FontWeight=FontWeights.SemiBold;heading.Children.Add(title);
             heading.Children.Add(Ui.Text("把常用服务与模型收在一起，为伙伴连接对话与声音。",12,Ui.Muted));
             Children.Add(heading);
             var strip=new UniformGrid { Rows=1,Columns=4 };

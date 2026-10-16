@@ -33,8 +33,8 @@ namespace Dafeiyu.Tests
                 {
                     pet.Settings.Text=new ConnectionSettings {BaseUrl=server.Url+"/v1",Model="chat-test",ApiKey="dummy-key"};input.Text="你好，大肥鱼";send.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Wait(delegate{return !pet.Conversation.IsBusy && pet.Conversation.History.Messages.Count==2;},6);
-                    if(!All<TextBox>(chat).Any(t=>t.Text=="你好，我是桌面伙伴。"))Console.WriteLine("HTTP UI diagnostic: path="+server.Path+", status="+Find<TextBlock>(chat,"ChatStatus").Text+", message statuses="+String.Join(",",pet.Conversation.History.Messages.Select(m=>m.Status)));
-                    Check(All<TextBox>(chat).Any(t=>t.Text=="你好，我是桌面伙伴。"),"actual HTTP reply renders in chat");
+                    if(!All<MarkdownView>(chat).Any(t=>t.Text=="你好，我是桌面伙伴。"))Console.WriteLine("HTTP UI diagnostic: path="+server.Path+", status="+Find<TextBlock>(chat,"ChatStatus").Text+", message statuses="+String.Join(",",pet.Conversation.History.Messages.Select(m=>m.Status)));
+                    Check(All<MarkdownView>(chat).Any(t=>t.Text=="你好，我是桌面伙伴。"),"actual HTTP reply renders in chat");
                     Check(server.Path=="/v1/chat/completions" && server.Body.Contains("大肥鱼"),"chat sends real Unicode model request");
                 }
                 Save(chat,Path.Combine(folder,"chat-window.png"));
@@ -52,16 +52,16 @@ namespace Dafeiyu.Tests
                     pet.Settings.Speech=new ConnectionSettings {BaseUrl=synthesis.Url,Model="tts",ApiKey="speech-key"};pet.Settings.VoiceName="test";pet.Settings.UseCloudVoice=true;pet.Settings.ReadReplies=true;
                     var voice=pet.Conversation.SendVoiceAsync(WaveData.EncodePcm(new byte[16000]),pet.Settings,pet.Skin.Name);try{Wait(delegate{return voice.IsCompleted;},10);}catch{Console.WriteLine("Voice diagnostic: stage="+pet.Conversation.Stage+", ASR="+recognition.Path+", model="+model.Path+", TTS="+synthesis.Path+", status="+Find<TextBlock>(chat,"ChatStatus").Text);throw;}voice.GetAwaiter().GetResult();
                     Check(recognition.Path=="/audio/transcriptions" && model.Path=="/chat/completions" && synthesis.Path=="/audio/speech","three separate configured services execute voice pipeline");
-                    Check(pet.Conversation.History.Messages.Count==6 && All<TextBox>(chat).Any(t=>t.Text=="语音回复测试。"),"voice reply is retained and displayed");
+                    Check(pet.Conversation.History.Messages.Count==6 && All<MarkdownView>(chat).Any(t=>t.Text=="语音回复测试。"),"voice reply is retained and displayed");
                     Check(!Directory.GetFiles(Path.Combine(folder,"audio-cache"),"*.wav").Any(),"temporary spoken WAV is deleted");
                 }
                 chat.Close();Pump(.2);pet.ShowChat();Pump(.2);chat=app.Windows.OfType<ChatWindow>().Single();
-                Check(pet.Conversation.History.Messages.Count==6 && All<TextBox>(chat).Any(t=>t.Text=="语音回复测试。"),"reopened chat preserves in-memory successful history");
+                Check(pet.Conversation.History.Messages.Count==6 && All<MarkdownView>(chat).Any(t=>t.Text=="语音回复测试。"),"reopened chat preserves in-memory successful history");
                 Find<Button>(chat,"ClearChat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(pet.Conversation.History.Messages.Count==0,"clear button resets model context");
                 pet.ShowSettings(true);Pump(.3);var settings=app.Windows.OfType<SettingsWindow>().Single();
                 var url=Find<TextBox>(settings,"TextServiceUrl");var modelField=Find<TextBox>(settings,"TextServiceModel");var key=Find<PasswordBox>(settings,"TextServiceKey");
                 Check(url!=null && key!=null && Find<ComboBox>(settings,"TextServiceProtocol")!=null && Find<CheckBox>(settings,"TextServiceProxy")!=null,"text settings expose password, protocol and proxy fields");
-                var textProxy=Find<TextBox>(settings,"TextServiceProxyAddress");Check(textProxy!=null && textProxy.IsEnabled && textProxy.Text=="127.0.0.1:7890","text proxy address is editable with the default value");textProxy.Text="localhost:17890";
+                var textProxy=Find<TextBox>(settings,"TextServiceProxyAddress");Check(textProxy!=null && textProxy.IsEnabled && textProxy.Text==ProxyConfiguration.DefaultAddress,"text proxy address is editable with the default value");textProxy.Text="localhost:17890";
                 url.Text="https://example.com/v1";modelField.Text="my-model";key.Password="private-test-key";Find<Button>(settings,"SaveConnections").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.15);
                 Check(pet.Store.Load().Text.ApiKey=="private-test-key" && !File.ReadAllText(Path.Combine(folder,"settings.json")).Contains("private-test-key"),"UI connection save encrypts secret on disk");
                 Check(pet.Store.Load().Text.ProxyAddress=="localhost:17890","edited text proxy is saved by the service settings UI");
@@ -99,11 +99,11 @@ namespace Dafeiyu.Tests
                 }
                 pet.InputQueue.Resume();
                 using(var server=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"头顶气泡回复。\"}}]}"))
-                {pet.Settings.Text.BaseUrl=server.Url;Find<TextBox>(quick,"QuickMessageInput").Text="快速聊聊";Find<Button>(quick,"SendQuickMessage").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>!pet.Conversation.IsBusy && pet.Conversation.History.Messages.Count==2,5);Check(Find<TextBox>(quick,"QuickReply").Text=="头顶气泡回复。" && All<TextBox>(chat).Any(t=>t.Text=="头顶气泡回复。"),"quick bubble and full chat share actual model replies");}
+                {pet.Settings.Text.BaseUrl=server.Url;Find<TextBox>(quick,"QuickMessageInput").Text="快速聊聊";Find<Button>(quick,"SendQuickMessage").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>!pet.Conversation.IsBusy && pet.Conversation.History.Messages.Count==2,5);Check(Find<MarkdownView>(quick,"QuickReply").Text=="头顶气泡回复。" && All<MarkdownView>(chat).Any(t=>t.Text=="头顶气泡回复。"),"quick bubble and full chat share actual model replies");}
                 pet.ReturnHome();quick.FollowPet();Pump(.1);Save(quick,Path.Combine(folder,"quick-chat.png"));
                 var quickHandle=new System.Windows.Interop.WindowInteropHelper(quick).Handle;var petHandle=new System.Windows.Interop.WindowInteropHelper(pet).Handle;var quickBounds=DesktopInterop.Bounds(quickHandle);Check(DesktopInterop.WorkArea(petHandle).Contains(quickBounds) && quickBounds.Bottom<DesktopInterop.Bounds(petHandle).Bottom,"bubble is clamped above the pet inside the screen");
-                Check(!pet.SelectSkin(pet.Catalog.Find("e-bao")) && settings.HasUnsavedEdits,"persona switching protects pending settings edits");Check(settings.SaveAiConfiguration(),"save pending service edits before persona switch");pet.SelectSkin(pet.Catalog.Find("e-bao"));Pump(.2);Check(pet.Settings.SystemPrompt==PersonaProfiles.Ebao && pet.Conversation.History.Messages.Count==0 && !All<TextBox>(chat).Any(t=>t.Text=="头顶气泡回复。"),"switching pet updates persona and excludes the other pet history");settings.SelectPage(1);Pump(.1);Save(settings,Path.Combine(folder,"persona-settings.png"));
-                pet.SelectSkin(pet.Catalog.Find("dafeiyu"));Pump(.1);Check(pet.Conversation.History.Messages.Count==2 && All<TextBox>(chat).Any(t=>t.Text=="头顶气泡回复。"),"returning to a pet restores its own history");
+                Check(!pet.SelectSkin(pet.Catalog.Find("e-bao")) && settings.HasUnsavedEdits,"persona switching protects pending settings edits");Check(settings.SaveAiConfiguration(),"save pending service edits before persona switch");pet.SelectSkin(pet.Catalog.Find("e-bao"));Pump(.2);Check(pet.Settings.SystemPrompt==PersonaProfiles.Ebao && pet.Conversation.History.Messages.Count==0 && !All<MarkdownView>(chat).Any(t=>t.Text=="头顶气泡回复。"),"switching pet updates persona and excludes the other pet history");settings.SelectPage(1);Pump(.1);Save(settings,Path.Combine(folder,"persona-settings.png"));
+                pet.SelectSkin(pet.Catalog.Find("dafeiyu"));Pump(.1);Check(pet.Conversation.History.Messages.Count==2 && All<MarkdownView>(chat).Any(t=>t.Text=="头顶气泡回复。"),"returning to a pet restores its own history");
                 using(var server=new ApiTests.Fixture("{\"choices\":[{\"message\":{\"content\":\"后台气泡回复。\"}}]}"))
                 {server.DelayBodyMilliseconds=350;pet.Settings.Text.BaseUrl=server.Url;Find<TextBox>(quick,"QuickMessageInput").Text="继续";Find<Button>(quick,"SendQuickMessage").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump(.08);Check(!pet.SelectSkin(pet.Catalog.Find("e-bao")),"active conversation refuses persona changes");chat.Close();quick.Close();Wait(()=>!pet.Conversation.IsBusy,5);Check(pet.Conversation.History.Messages.Count==4,"closing either idle full chat or bubble preserves the bubble-owned request");}
                 pet.ShowChat();Pump(.1);chat=app.Windows.OfType<ChatWindow>().Single();pet.ShowQuickChat();Pump(.1);quick=app.Windows.OfType<QuickChatWindow>().Single();pet.HidePet();Pump(.1);Check(!quick.IsVisible,"hiding the pet also hides its bubble");pet.RestorePet();quick.Close();

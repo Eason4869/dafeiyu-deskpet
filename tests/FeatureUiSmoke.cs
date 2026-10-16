@@ -33,12 +33,12 @@ namespace Dafeiyu.Tests
                 Check(earlier!=null && earlier.IsEnabled,"earlier-history control for records beyond fifty turns");
                 Check(export!=null && export.IsEnabled,"current-pet export control");
                 earlier.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-                Check(All(chat).OfType<TextBox>().Any(t=>t.Text=="问题 0"),"earlier history loads oldest retained turn");
+                Check(All(chat).OfType<MarkdownView>().Any(t=>t.Text=="问题 0"),"earlier history loads oldest retained turn");
                 pet.Conversation.Clear();Pump();
-                Check(!All(chat).OfType<TextBox>().Any(t=>t.Text=="问题 0"),"clear rebuilds full conversation");
-                Check(Find<TextBox>(quick,"QuickReply").Text.Contains("写下一句话"),"clear also resets quick bubble");
+                Check(!All(chat).OfType<MarkdownView>().Any(t=>t.Text=="问题 0"),"clear rebuilds full conversation");
+                Check(Find<MarkdownView>(quick,"QuickReply").Text.Contains("写下一句话"),"clear also resets quick bubble");
                 pet.Conversation.AddLiveTurn(pet.Skin.Id,"同步问题","同步回复");Pump();
-                Check(Find<TextBox>(quick,"QuickReply").Text=="同步回复","quick bubble shares committed replies");
+                Check(Find<MarkdownView>(quick,"QuickReply").Text=="同步回复","quick bubble shares committed replies");
                 var editor=new ConnectionSettingsPanel(pet);
                 editorHost=new Window {Content=editor};Ui.Window(editorHost,"音色显示回归",650,780);editorHost.Show();Pump();
                 var stream=Find<CheckBox>(editor,"TextServiceStreamReplies");
@@ -74,14 +74,14 @@ namespace Dafeiyu.Tests
                 cfg.QuietMode=false;cfg.ReadReplies=false;cfg.Text=new ConnectionSettings{BaseUrl="http://127.0.0.1:9876",Model="ui-fixture",StreamReplies=true};
                 session.Clear();var request=session.SendTextAsync("开始流式",cfg,pet.Skin.Name);Wait(()=>api.Delta!=null);
                 Task.Run(()=>api.Emit("第一段")).GetAwaiter().GetResult();Pump();
-                Check(!request.IsCompleted && All(chat).OfType<TextBox>().Any(t=>t.Text=="第一段") && Find<TextBox>(quick,"QuickReply").Text.Contains("第一段"),"both windows show partial text before completion");
+                Check(!request.IsCompleted && All(chat).OfType<MarkdownView>().Any(t=>t.Text=="第一段") && Find<MarkdownView>(quick,"QuickReply").Text.Contains("第一段"),"both windows show partial text before completion");
                 api.Finish("第一段完整");Wait(()=>request.IsCompleted);request.GetAwaiter().GetResult();
                 // Begin again before the final queued update is flushed: the old ID must not replace the new pending reply.
                 api.Delta=null;var second=session.SendTextAsync("继续",cfg,pet.Skin.Name);Wait(()=>api.Delta!=null);Pump();
-                Check(Find<TextBox>(quick,"QuickReply").Text.Contains("等待回复"),"old final callback cannot replace the latest pending bubble");
+                Check(All(quick).OfType<TextBlock>().Any(t=>t.Text.Contains("正在思考")),"old final callback cannot replace the latest pending bubble");
                 Task.Run(()=>api.Emit("保留部分")).GetAwaiter().GetResult();Pump();var stopped=session.StopAsync();Wait(()=>stopped.IsCompleted && second.IsCompleted);try{second.GetAwaiter().GetResult();}catch(OperationCanceledException){}Pump();
-                Check(Find<TextBox>(quick,"QuickReply").Text.Contains("保留部分") && Find<TextBox>(quick,"QuickReply").Text.Contains("已停止") && All(chat).OfType<TextBlock>().Any(t=>t.Text=="已停止"),"stopped stream retains text and status in both windows");
-                session.Clear();Pump();Check(Find<TextBox>(quick,"QuickReply").Text.Contains("写下一句话") && !All(chat).OfType<TextBox>().Any(t=>t.Text=="保留部分"),"clear discards queued stream updates");
+                Check(Find<MarkdownView>(quick,"QuickReply").Text.Contains("保留部分") && All(quick).OfType<TextBlock>().Any(t=>t.Text=="已停止") && All(chat).OfType<TextBlock>().Any(t=>t.Text=="已停止"),"stopped stream retains text and status in both windows");
+                session.Clear();Pump();Check(Find<MarkdownView>(quick,"QuickReply").Text.Contains("写下一句话") && !All(chat).OfType<MarkdownView>().Any(t=>t.Text=="保留部分"),"clear discards queued stream updates");
                 Console.WriteLine("Feature UI smoke: "+passed+" passed");return 0;
             }
             catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}

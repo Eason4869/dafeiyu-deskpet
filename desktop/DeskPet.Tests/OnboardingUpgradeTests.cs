@@ -32,7 +32,19 @@ namespace Dafeiyu.Tests
             result=Prepare(old,"0.6.0");
             Check(result.ShowGuide && result.Changed && Series(old)=="0.6" && old.OnboardingStep==0 && old.OnboardingState=="new","legacy config first entering 0.6 resets guide from step zero");
             store.Save(old);var persisted=store.Load();
-            Check(Series(persisted)=="0.6" && !Prepare(persisted,"0.6.1").ShowGuide,"series is persisted before any guide completion or close");
+            Check(Series(persisted)=="0.6" && !Prepare(persisted,"0.6.0").ShowGuide,"series is persisted before any guide completion or close");
+            result=Prepare(persisted,"0.6.1");
+            Check(result.ShowGuide && result.Changed && persisted.OnboardingStep==OnboardingUpgrade.WorkGuideStep && persisted.OnboardingVersion==OnboardingUpgrade.WorkGuideVersion,"0.6.0 upgrade opens the new feature lessons once without repeating setup");
+            store.Save(persisted);persisted=store.Load();
+            Check(!Prepare(persisted,"0.6.1").ShowGuide && persisted.OnboardingStep==14,"feature revision is persisted before guide completion or close");
+            foreach(string state in new[]{"new","deferred","completed","skipped"}) {
+                persisted.OnboardingState=state;persisted.OnboardingStep=15;
+                Check(!Prepare(persisted,"0.6.2").ShowGuide && persisted.OnboardingStep==15,"feature guidance does not repeat after "+state);
+            }
+            Check(!Prepare(persisted,"0.6.0").ShowGuide && !Prepare(persisted,"0.6.1").ShowGuide,"patch downgrade and re-upgrade retain the claimed feature revision");
+            var currentFresh=new PetSettings();result=Prepare(currentFresh,"0.6.1");
+            Check(result.ShowGuide && currentFresh.OnboardingStep==0 && currentFresh.OnboardingVersion==2 && !Prepare(currentFresh,"0.6.2").ShowGuide,"fresh 0.6.1 installation sees the full guide only once");
+            var newerSeries=Recorded("0.7");Check(!Prepare(newerSeries,"0.6.1").ShowGuide && Series(newerSeries)=="0.7","feature revision cannot reopen a guide after a series downgrade");
             Check(Series(persisted.Copy())=="0.6","settings copy preserves last onboarding series");
             foreach(var pair in new[]{new[]{"0.8","1.0.0"},new[]{"0.9","0.10.0"},new[]{"2.8","10.0.0"},new[]{"0.5","8.7.4"}}) {
                 var settings=Recorded(pair[0]);result=Prepare(settings,pair[1]);
@@ -54,7 +66,7 @@ namespace Dafeiyu.Tests
             Check(!result.ShowGuide && result.Changed && Series(canonical)=="0.5","equivalent numeric series canonicalizes without retriggering");
             var maximum=Recorded("2147483647.2147483647");result=Prepare(maximum,"2147483647.2147483647.1");
             Check(!result.ShowGuide && !result.Changed,"maximum supported numeric series does not overflow");
-            var manual=Recorded("0.6");manual.OnboardingState="deferred";manual.OnboardingStep=4;
+            var manual=Recorded("0.6");manual.OnboardingVersion=OnboardingUpgrade.WorkGuideVersion;manual.OnboardingState="deferred";manual.OnboardingStep=4;
             Check(!Prepare(manual,"0.6.2").ShowGuide && manual.OnboardingState=="deferred" && manual.OnboardingStep==4,"manual guide state remains available without automatic reopening");
         }
         static PetSettings Recorded(string series){return new PetSettings{OnboardingState="completed",OnboardingStep=9,LastOnboardingSeries=series};}

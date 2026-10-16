@@ -95,7 +95,11 @@ internal sealed class PetWindow : Window
         Add("伙伴招牌", () => Interact("special")); Add("第二招牌", () => Interact("special2"));
         Add("暂停 / 继续", () => Paused = !Paused); Add("隐藏伙伴", Hide);
         items.Add(new Separator());
-        foreach (var skin in owner.Skins) Add("切换 · " + skin.Name, () => owner.Run(() => owner.SelectSkinAsync(skin)));
+        foreach (var skin in owner.Skins)
+        {
+            var item = new MenuItem { Header = "切换 · " + skin.Name, Icon = new AvatarView { Assets = assets, Skin = skin, Width = 24, Height = 24 } };
+            item.Click += (_, _) => owner.Run(() => owner.SelectSkinAsync(skin)); items.Add(item);
+        }
         Add("设置", owner.ShowSettings); Add("使用引导", owner.ShowGuide); Add("关于与更新", owner.ShowAbout); Add("退出", () => owner.Run(owner.ExitAsync));
         menu.ItemsSource = items; return menu;
     }

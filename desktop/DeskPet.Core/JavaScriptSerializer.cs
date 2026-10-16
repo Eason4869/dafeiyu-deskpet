@@ -11,9 +11,10 @@ namespace System.Web.Script.Serialization
     public sealed class JavaScriptSerializer
     {
         public int MaxJsonLength {get;set;}=2097152;
+        public int RecursionLimit {get;set;}=64;
         public string Serialize(object value)
         {
-            string result=JsonSerializer.Serialize(value,new JsonSerializerOptions{IncludeFields=true,Encoder=JavaScriptEncoder.UnsafeRelaxedJsonEscaping});
+            string result=JsonSerializer.Serialize(value,new JsonSerializerOptions{IncludeFields=true,Encoder=JavaScriptEncoder.UnsafeRelaxedJsonEscaping,MaxDepth=RecursionLimit});
             if(result.Length>MaxJsonLength)throw new ArgumentException("JSON exceeds its length limit.");
             return result;
         }
@@ -23,16 +24,16 @@ namespace System.Web.Script.Serialization
             if(typeof(T)==typeof(object) || typeof(T)==typeof(Dictionary<string,object>))
                 return (T)Parse(value,true);
             if(typeof(T)==typeof(object[]))return (T)DeserializeObject(value);
-            return JsonSerializer.Deserialize<T>(value,new JsonSerializerOptions{IncludeFields=true,PropertyNameCaseInsensitive=true});
+            return JsonSerializer.Deserialize<T>(value,new JsonSerializerOptions{IncludeFields=true,PropertyNameCaseInsensitive=true,MaxDepth=RecursionLimit});
         }
         public object DeserializeObject(string value)
         {
             Validate(value);
             return Parse(value,false);
         }
-        static object Parse(string value,bool arrayLists)
+        object Parse(string value,bool arrayLists)
         {
-            try {using(var json=JsonDocument.Parse(value))return ConvertElement(json.RootElement,arrayLists);}
+            try {using(var json=JsonDocument.Parse(value,new JsonDocumentOptions{MaxDepth=RecursionLimit}))return ConvertElement(json.RootElement,arrayLists);}
             catch(JsonException error){throw new ArgumentException("Invalid JSON.",error);}
         }
         void Validate(string value)

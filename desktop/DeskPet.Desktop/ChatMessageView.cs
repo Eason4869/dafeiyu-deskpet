@@ -1,0 +1,215 @@
+﻿using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using Avalonia.Automation;
+using Avalonia.Input.Platform;
+using Avalonia.Media.Imaging;
+using ShapePath = Avalonia.Controls.Shapes.Path;
+using Dafeiyu;
+
+namespace DeskPet.Desktop;
+
+internal sealed class ChatMessageView : Border
+{
+    private readonly MarkdownView body = new();
+    private readonly SelectableTextBlock reasoning = new() { TextWrapping = TextWrapping.Wrap, FontSize = 14, Foreground = Brushes.Black };
+    private readonly TextBlock preview = new() { Name = "ProcessPreview", TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 14, Foreground = Brushes.Black };
+    private readonly TextBlock thinkingLabel = new() { Name = "ProcessStatus", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#89929F")) };
+    private readonly Border previewRow;
+    private readonly StackPanel processArea = new() { Name = "ThinkingProcess" };
+    private string previousReasoning = "", previousTools = "";
+    private bool latestIsTool;
+    private readonly TextBlock status = new() { FontSize = 11 };
+    private readonly TextBlock elapsed = new() { Name = "ReplyElapsedTime", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#969BA3")) };
+    private readonly Avalonia.Threading.DispatcherTimer clock = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly Border elapsedRow;
+    private readonly Expander thinking;
+    private readonly StackPanel tools = new() { Spacing = 3 };
+    private readonly Dictionary<string, Expander> toolRows = new();
+    private readonly StackPanel replyActions;
+    private readonly Button readReply;
+    private readonly MenuItem regenerate;
+    private readonly MenuItem showReasoning;
+    private readonly DesktopController owner;
+    private readonly Window window;
+    private readonly Border? userBubble;
+    private readonly WrapPanel sentAttachments = new() { Name = "SentAttachments", Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly List<Bitmap> sentImages = new();
+    private List<ChatAttachment> displayedAttachments = new();
+    private ChatMessage current;
+    private bool reading, showHistory;
+    private bool? detailedSetting;
+    public bool IsUser { get; }
+    public ChatMessageView(ChatMessage message, DesktopController controller, Window host)
+    {
+        owner = controller; window = host; current = message;
+        IsUser = message.Role == "user"; Name = IsUser ? "UserMessage" : "AssistantMessage";
+        Background = Brushes.Transparent;
+        BorderThickness = new Thickness(0); CornerRadius = new CornerRadius(18);
+        HorizontalAlignment = IsUser ? HorizontalAlignment.Right : HorizontalAlignment.Stretch;
+        Padding = IsUser ? new Thickness(0) : new Thickness(2, 8);
+        Margin = new Thickness(0, 0, 0, 20);
+        previewRow = new Border { BorderBrush = new SolidColorBrush(Color.Parse("#ECECEC")), BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 8, 0, 0), Margin = new Thickness(0, 5, 0, 0), Child = preview };
+        thinking = new Expander { Name = "ReasoningDetails", Header = thinkingLabel, Content = Ui.Column(new ScrollViewer { Content = reasoning, MaxHeight = 240 }, tools), IsExpanded = false, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        ProcessExpander.Apply(thinking);
+        thinking.PropertyChanged += (_, e) => { if (e.Property == Expander.IsExpandedProperty) previewRow.IsVisible = !thinking.IsExpanded && !string.IsNullOrEmpty(preview.Text); };
+        processArea.Children.Add(thinking); processArea.Children.Add(previewRow);
+        var panel = Ui.Column(); panel.Spacing = IsUser ? 3 : 10;
+        elapsedRow = new Border { Child = elapsed, BorderBrush = new SolidColorBrush(Color.Parse("#ECECEC")), BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 8) };
+        if (!IsUser) { panel.Children.Add(elapsedRow); panel.Children.Add(processArea); }
+        clock.Tick += (_, _) => RefreshElapsed(); AttachedToVisualTree += (_, _) => RefreshElapsed(); DetachedFromVisualTree += (_, _) => clock.Stop();
+        panel.Children.Add(sentAttachments); RefreshSentAttachments(message.Attachments);
+        if (IsUser) { userBubble = new Border { Name = "UserBubble", Background = new SolidColorBrush(Color.Parse("#E8F2FF")), CornerRadius = new CornerRadius(18), Padding = new Thickness(15, 10), HorizontalAlignment = HorizontalAlignment.Right, Child = body }; panel.Children.Add(userBubble); }
+        else panel.Children.Add(body); if (!IsUser) panel.Children.Add(status);
+        Ui.ReadOnlyMenu(reasoning);
+        DetachedFromVisualTree += (_, _) => DisposeSentImages();
+        var copy = IconButton("CopyReply", "复制回复", "M 6,3 L 14,3 L 14,12 L 6,12 Z M 3,6 L 3,15 L 11,15", () => owner.Run(() => CopyAsync(false)));
+        readReply = IconButton("ReadReply", "朗读回复 / 停止朗读", "M 3,7 L 6,7 L 10,3 L 10,15 L 6,11 L 3,11 Z M 13,5 Q 18,9 13,13", ReadReply);
+        var more = IconButton("MoreReply", "更多", "M 3,9 L 4,9 M 8,9 L 9,9 M 13,9 L 14,9", () => { });
+        regenerate = new MenuItem { Header = "重新生成" };
+        regenerate.Click += (_, _) => owner.Run(async () => { EnsureIdle(); owner.Queue.Hold(); await owner.Session.RegenerateAsync(current.Id, owner.Settings, owner.Skin.Name); });
+        var copyPlain = new MenuItem { Header = "复制纯文本" }; copyPlain.Click += (_, _) => owner.Run(() => CopyAsync(true));
+        var export = new MenuItem { Header = "导出本条 Markdown" }; export.Click += (_, _) => owner.Run(ExportAsync);
+        showReasoning = new MenuItem { Header = "查看思考过程" };
+        showReasoning.Click += (_, _) => { showHistory = !showHistory; thinking.IsExpanded = showHistory; Update(current); };
+        var menu = new ContextMenu { ItemsSource = new object[] { regenerate, copyPlain, export, showReasoning } };
+        menu.Opening += (_, _) => regenerate.IsEnabled = CanStart();
+        more.ContextMenu = menu; more.Click += (_, _) => menu.Open(more);
+        replyActions = new StackPanel { Name = "ReplyActions", Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 0, 2) };
+        replyActions.Children.Add(copy); replyActions.Children.Add(readReply); replyActions.Children.Add(more);
+        if (!IsUser) panel.Children.Add(replyActions);
+        else
+        {
+            var userActions = new StackPanel { Name = "UserMessageActions", Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 5, Opacity = 0 };
+            var sent = new TextBlock { Name = "UserMessageTime", Text = message.Timestamp.ToLocalTime().ToString("HH:mm"), Foreground = new SolidColorBrush(Color.Parse("#969BA3")), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(sent, message.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")); userActions.Children.Add(sent);
+            userActions.Children.Add(IconButton("CopyUserMessage", "复制消息", "M 6,3 L 14,3 L 14,12 L 6,12 Z M 3,6 L 3,15 L 11,15", () => owner.Run(() => CopyAsync(false))));
+            panel.Children.Add(userActions);
+            PropertyChanged += (_, e) => { if (e.Property == Avalonia.Input.InputElement.IsPointerOverProperty || e.Property == Avalonia.Input.InputElement.IsKeyboardFocusWithinProperty) userActions.Opacity = IsPointerOver || IsKeyboardFocusWithin ? 1 : 0; };
+        }
+        Child = panel;
+        Update(message);
+    }
+    private static Button IconButton(string name, string tip, string geometry, Action action)
+    {
+        var button = new Button { Name = name, Width = 28, Height = 28, Padding = new Thickness(3), Background = Brushes.Transparent, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(5), Foreground = new SolidColorBrush(Color.Parse("#939BA7")), Content = new ShapePath { Data = Geometry.Parse(geometry), Stroke = new SolidColorBrush(Color.Parse("#939BA7")), StrokeThickness = 1.5, Stretch = Stretch.Uniform, Width = 18, Height = 18 } };
+        AutomationProperties.SetName(button, tip); ToolTip.SetTip(button, tip); button.Click += (_, _) => action(); return button;
+    }
+    private bool CanStart() => !owner.Session.IsBusy && !owner.Live.IsActive && !owner.Dictation.IsBusy;
+    private void DisposeSentImages() { foreach (var image in sentImages) image.Dispose(); sentImages.Clear(); }
+    private void RefreshSentAttachments(IList<ChatAttachment>? files)
+    {
+        files ??= Array.Empty<ChatAttachment>();
+        if (files.Count == displayedAttachments.Count && files.Zip(displayedAttachments).All(p => p.First.Name == p.Second.Name && p.First.MediaType == p.Second.MediaType && p.First.Data == p.Second.Data && p.First.Text == p.Second.Text)) { sentAttachments.IsVisible = files.Count > 0; return; }
+        sentAttachments.Children.Clear(); DisposeSentImages(); displayedAttachments = files.ToList(); sentAttachments.IsVisible = files.Count > 0;
+        foreach (var file in files)
+        {
+            Control? child = null;
+            if (file.IsImage)
+            {
+                try
+                {
+                    using var stream = new MemoryStream(Convert.FromBase64String(file.Data)); var bitmap = Bitmap.DecodeToWidth(stream, 160); sentImages.Add(bitmap);
+                    child = new Border { Name = "SentImageCard", Width = 80, Height = 80, CornerRadius = new CornerRadius(10), BorderBrush = new SolidColorBrush(Color.Parse("#E0E4E9")), BorderThickness = new Thickness(1), Background = Brushes.White, Clip = new RectangleGeometry(new Rect(0, 0, 80, 80), 10, 10), Child = new Image { Name = "SentImageThumbnail", Source = bitmap, Stretch = Stretch.UniformToFill } };
+                }
+                catch (Exception e) when (e is FormatException or ArgumentException or IOException) { }
+            }
+            if (child == null)
+            {
+                var icon = new ShapePath { Width = 18, Height = 22, Stretch = Stretch.Uniform, Data = Geometry.Parse("M 3,1 L 11,1 L 16,6 L 16,20 L 3,20 Z M 11,1 L 11,6 L 16,6"), Stroke = new SolidColorBrush(Color.Parse("#858D99")), StrokeThickness = 1.2 };
+                var name = new TextBlock { Name = "SentFileName", Text = file.Name, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 140, VerticalAlignment = VerticalAlignment.Center };
+                var fileRow = new Grid { ColumnDefinitions = new ColumnDefinitions("26,*") }; fileRow.Children.Add(icon); Grid.SetColumn(name, 1); fileRow.Children.Add(name);
+                child = new Border { Name = "SentFileCard", MaxWidth = 190, Height = 52, CornerRadius = new CornerRadius(10), BorderBrush = new SolidColorBrush(Color.Parse("#E0E4E9")), BorderThickness = new Thickness(1), Background = Brushes.White, Padding = new Thickness(10), Child = fileRow };
+            }
+            child.Margin = new Thickness(6, 0, 0, 6); ToolTip.SetTip(child, file.Name); sentAttachments.Children.Add(child);
+        }
+    }
+    private void EnsureIdle() { if (!CanStart()) throw new InvalidOperationException("请先结束当前对话或听写。"); }
+    private async Task CopyAsync(bool plain)
+    {
+        if (window.Clipboard is { } clipboard) await clipboard.SetTextAsync(plain ? MarkdownContent.PlainText(current.Content).Trim() : current.Content);
+    }
+    private void ReadReply()
+    {
+        if (reading) { owner.Session.StopSpeech(); return; }
+        owner.Run(async () =>
+        {
+            EnsureIdle(); owner.Queue.Hold(); reading = true; Update(current);
+            try { await owner.Session.SpeakReplyAsync(current.Id, owner.Settings); }
+            finally { reading = false; Update(current); }
+        });
+    }
+    private async Task ExportAsync()
+    {
+        var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { Title = "导出本条回复", SuggestedFileName = "reply-" + current.Id + ".md", DefaultExtension = "md", FileTypeChoices = new[] { new FilePickerFileType("Markdown") { Patterns = new[] { "*.md" } } } });
+        if (file == null) return;
+        await using var stream = await file.OpenWriteAsync(); stream.SetLength(0); using var writer = new StreamWriter(stream); await writer.WriteAsync(current.Content);
+    }
+    public void Update(ChatMessage message) => Update(message, owner.Settings.AgentDetailedProcess);
+    private void RefreshElapsed()
+    {
+        elapsedRow.IsVisible = !IsUser && current.ProcessingStartedAt.HasValue;
+        elapsed.Text = current.ProcessingLabel(DateTime.UtcNow);
+        if (!IsUser && VisualRoot != null && current.Status == "pending" && current.ProcessingStartedAt.HasValue) clock.Start(); else clock.Stop();
+    }
+    public void Update(ChatMessage message, bool detailedProcess)
+    {
+        current = message;
+        RefreshElapsed();
+        if (message.Status == "pending") showHistory = false;
+        body.Update(message.Content ?? ""); body.IsVisible = !string.IsNullOrEmpty(message.Content);
+        if (userBubble != null) userBubble.IsVisible = body.IsVisible;
+        RefreshSentAttachments(message.Attachments);
+        reasoning.Text = message.Reasoning ?? "";
+        bool active = message.Status == "pending" && string.IsNullOrEmpty(message.Content);
+        bool detailChanged = detailedSetting != detailedProcess;
+        if (active && detailChanged) thinking.IsExpanded = detailedProcess;
+        detailedSetting = detailedProcess;
+        processArea.IsVisible = active || showHistory && (!string.IsNullOrWhiteSpace(message.Reasoning) || message.ToolEvents?.Count > 0);
+        thinking.IsVisible = processArea.IsVisible;
+        reasoning.IsVisible = !string.IsNullOrWhiteSpace(message.Reasoning);
+        tools.IsVisible = (active || showHistory) && message.ToolEvents != null && message.ToolEvents.Count > 0;
+        var events = message.ToolEvents ?? new();
+        foreach (var stale in toolRows.Keys.Where(id => !events.Any(t => t != null && t.Id == id)).ToList()) { tools.Children.Remove(toolRows[stale]); toolRows.Remove(stale); }
+        foreach (var item in events.Where(t => t != null && !string.IsNullOrWhiteSpace(t.Id)))
+        {
+            if (!toolRows.TryGetValue(item.Id, out var row))
+            {
+                row = new Expander { Name = "AgentToolDetails", IsExpanded = active && detailedProcess, HorizontalContentAlignment = HorizontalAlignment.Stretch, Content = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#89929F")) } };
+                ProcessExpander.Apply(row);
+                toolRows[item.Id] = row; tools.Children.Add(row);
+            }
+            else if (active && detailChanged) row.IsExpanded = detailedProcess;
+            var summary = (item.Summary ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+            if (summary.Length > 100) summary = summary[..100] + "…";
+            row.Header = new TextBlock { Text = (item.Status is "pending" or "running" ? "◌ " : item.Status == "error" ? "! " : "✓ ") + item.Name + (string.IsNullOrWhiteSpace(summary) ? "" : " · " + summary) + (item.ElapsedMilliseconds > 0 ? " · " + (item.ElapsedMilliseconds / 1000.0).ToString("0.0") + " 秒" : ""), FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#89929F")), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = Math.Max(100, Bounds.Width > 1 ? Bounds.Width - 50 : 500) };
+            ((SelectableTextBlock)row.Content!).Text = item.Summary;
+        }
+        UpdateProcess(message, events, active);
+        previewRow.IsVisible = !thinking.IsExpanded && !string.IsNullOrEmpty(preview.Text);
+        status.Text = message.Status == "pending" ? active ? "" : "正在生成…" : message.Status == "cancelled" ? "已停止" : message.Status == "error" ? "回复未完成" : message.Status == "interrupted" ? "已中断" : "";
+        status.IsVisible = !string.IsNullOrEmpty(status.Text);
+        replyActions.IsVisible = !IsUser && message.Status == "complete" && !string.IsNullOrWhiteSpace(message.Content);
+        regenerate.IsEnabled = CanStart(); readReply.IsEnabled = reading || CanStart();
+        ToolTip.SetTip(readReply, reading ? "停止朗读" : "朗读回复");
+        showReasoning.IsVisible = !string.IsNullOrWhiteSpace(message.Reasoning) || events.Count > 0;
+        showReasoning.Header = showHistory ? "隐藏思考过程" : "查看思考过程";
+    }
+    private void UpdateProcess(ChatMessage message, List<AgentToolEvent> events, bool active)
+    {
+        string text = message.Reasoning ?? "", signature = string.Join("\n", events.Select(t => t.Id + "\t" + t.Status + "\t" + t.Summary));
+        if (text != previousReasoning) latestIsTool = false;
+        if (signature != previousTools) latestIsTool = events.Count > 0;
+        previousReasoning = text; previousTools = signature;
+        var running = events.LastOrDefault(t => t.Status is "running" or "pending");
+        var latest = running ?? (latestIsTool || string.IsNullOrWhiteSpace(text) ? events.LastOrDefault() : null);
+        preview.Text = latest != null ? ((latest.Summary ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? latest.Name) : text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "";
+        preview.Foreground = latest != null ? new SolidColorBrush(Color.Parse("#89929F")) : Brushes.Black;
+        string stage = running == null ? (latest != null || string.IsNullOrWhiteSpace(text) && message.WorkMode ? "处理中" : "思考中") :
+            running.Name is "write_file" or "edit_file" or "apply_patch" or "create_directory" ? "编辑中" :
+            running.Name is "run_command" or "exec_command" or "shell" or "open_directory" ? "运行中" : "处理中";
+        thinkingLabel.Text = active ? stage : "处理记录";
+    }
+}

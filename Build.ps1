@@ -1,4 +1,4 @@
-﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests','InteractionTests','SpriteAlignmentTests','InteractionUiSmoke','ActionPaletteSmoke','SettingsNavigationSmoke','OnboardingSmoke','OnboardingModelSmoke','LiveCallSmoke','GuideMenuSmoke','QueueTests','ComposerSmoke','DictationTests','AboutSmoke','SteeringSmoke','FeedbackSmoke','ProviderTests','ProviderUiSmoke','ImportedSkinTests','XiaobeiUiSmoke','AiGreetingTests','AiGreetingUiSmoke','BundledSkinTests','SkinPackExport','StumbleSmoke','HoverSleepSmoke','OnboardingUpgradeTests','RecorderFailureTests')][string]$Target = 'App', [string]$OutputDirectory = '', [string[]]$TestArguments = @())
+﻿param([ValidateSet('App','CoreTests','ApiTests','ProfileTests','ConversationTests','ChatSmoke','AudioSmoke','UiSmoke','MotionSmoke','LiveTests','UpdateTests','StartupTests','ReleaseUiSmoke','ProxyTests','GreetingTests','UpdateApplyTests','MenuSmoke','AutoUpdateSmoke','HistoryTests','StreamingTests','QuietTests','FeatureUiSmoke','VoicePresetTests','InteractionTests','SpriteAlignmentTests','InteractionUiSmoke','ActionPaletteSmoke','SettingsNavigationSmoke','OnboardingSmoke','OnboardingModelSmoke','LiveCallSmoke','GuideMenuSmoke','QueueTests','ComposerSmoke','DictationTests','AboutSmoke','SteeringSmoke','FeedbackSmoke','ProviderTests','ProviderUiSmoke','ImportedSkinTests','XiaobeiUiSmoke','AiGreetingTests','AiGreetingUiSmoke','BundledSkinTests','SkinPackExport','StumbleSmoke','HoverSleepSmoke','OnboardingUpgradeTests','RecorderFailureTests','ConversationUiSmoke','MarkdownTests','AgentWorkspaceTests','AgentProtocolTests','AgentSessionTests','ApplicationSnapshotTests','AttachmentPickerTests','WorkSettingsTests','UpdateScheduleTests')][string]$Target = 'App', [string]$OutputDirectory = '', [string[]]$TestArguments = @())
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
@@ -33,15 +33,29 @@ if ($Target -eq 'App') {
     $options = @('/target:exe',('/main:Dafeiyu.Tests.' + $Target))
 }
 # Shared business/interfaces are also needed by the small legacy test targets.
-foreach ($sharedSource in @('PetBusiness.cs','AudioContracts.cs','SecretProtection.cs','OnboardingUpgrade.cs')) {
+foreach ($sharedSource in @('PetBusiness.cs','ChatAttachment.cs','MarkdownContent.cs','AgentWorkspace.cs','ApiClient.cs','ChatStream.cs','NativeAgentClient.cs','AudioContracts.cs','SecretProtection.cs','OnboardingUpgrade.cs')) {
     $sharedPath = Join-Path $projectRoot ('src\' + $sharedSource)
     if ((Test-Path -LiteralPath $sharedPath) -and $sources -notcontains $sharedPath) { $sources += $sharedPath }
 }
 $assets = @('/resource:' + (Join-Path $projectRoot 'assets\provider-logos.json') + ',Dafeiyu.ProviderLogos')
+if ($sources | Where-Object { [IO.Path]::GetFileName($_) -eq 'MarkdownContent.cs' }) {
+    foreach ($markdownLibrary in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'vendor/markdown') -Filter '*.dll') {
+        $references += '/reference:' + $markdownLibrary.FullName
+        $assets += '/resource:' + $markdownLibrary.FullName + ',Dafeiyu.Markdown.' + $markdownLibrary.Name
+    }
+    foreach ($markdownLicense in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'vendor/markdown') -Filter '*LICENSE.txt') {
+        $assets += '/resource:' + $markdownLicense.FullName + ',Dafeiyu.Markdown.' + $markdownLicense.Name
+    }
+}
 foreach ($asset in @(@('spritesheet.png','Dafeiyu.Atlas'),@('pet.ico','Dafeiyu.Icon'),@('pet-preview-hd.png','Dafeiyu.Preview'),@('e-bao-spritesheet.png','Dafeiyu.EbaoAtlas'),@('e-bao-pet-preview-hd.png','Dafeiyu.EbaoPreview'),@('marfu-spritesheet.png','Dafeiyu.MarfuAtlas'),@('marfu-pet-preview-hd.png','Dafeiyu.MarfuPreview'),@('e-bao-interactions.png','Dafeiyu.EbaoInteractions'),@('dafeiyu-interactions.png','Dafeiyu.DafeiyuInteractions'),@('marfu-interactions.png','Dafeiyu.MarfuInteractions'))) {
     $assetPath = Join-Path $projectRoot ('assets\' + $asset[0])
     if (!(Test-Path -LiteralPath $assetPath)) { throw "Required artwork is missing: $assetPath" }
     $assets += '/resource:' + $assetPath + ',' + $asset[1]
+}
+foreach ($avatarId in @('e-bao','dafeiyu','marfu','xiaobei')) {
+    $avatarPath = Join-Path $projectRoot ('assets\avatars\' + $avatarId + '.png')
+    if (!(Test-Path -LiteralPath $avatarPath)) { throw "Required companion avatar is missing: $avatarPath" }
+    $assets += '/resource:' + $avatarPath + ',Dafeiyu.Avatar.' + $avatarId
 }
 # Reference-matched eight-pose actions are required for all four presets.
 foreach ($extraPet in @('e-bao','dafeiyu','marfu','xiaobei')) {

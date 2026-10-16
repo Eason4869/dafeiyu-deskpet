@@ -25,8 +25,8 @@ namespace Dafeiyu.Tests
                 pet=new PetWindow(null,cfg,new SettingsStore(Path.Combine(folder,"settings.json")),null);pet.Show();Pump();
                 settings=new SettingsWindow(pet);settings.Show();Pump();
                 var nav=(ListBox)settings.FindControl("SettingsNavigation");
-                Check(nav.Items.Count==4,"four primary settings destinations");
-                Check(nav.Items.Cast<ListBoxItem>().Select(i=>(string)i.Content).SequenceEqual(new[]{"伙伴","AI 配置","快捷键","关于"}),"navigation combines companion and persona");
+                Check(nav.Items.Count==5,"five primary settings destinations");
+                Check(nav.Items.Cast<ListBoxItem>().Select(i=>(string)i.Content).SequenceEqual(new[]{"伙伴","模型配置","工作设置","快捷键","关于"}),"navigation combines companion and persona");
                 bool guide=false;settings.GuideRequested+=delegate {guide=true;};Click(settings,"OpenOnboarding");Check(guide,"sidebar guide entry invokes guide event");
                 settings.SelectPage(2);Pump();var model=(TextBox)settings.FindControl("TextServiceModel");string original=model.Text;model.Text="navigation-draft";
                 settings.SelectPage(3);Pump();Check(settings.FindControl("TranscriptionModel")!=null && nav.SelectedIndex==1,"legacy ASR route opens AI secondary page");
@@ -51,9 +51,9 @@ namespace Dafeiyu.Tests
                     var target=settings.FocusGuideTarget(fields[index]);Pump();Check(target!=null && target.IsVisible,"guide locates and scrolls to real field "+index);
                     Capture(settings,Path.Combine(folder,"ai-"+index+"-minimum.png"));
                 }
-                settings.SelectPage(6);Pump();Check(settings.IsOnAboutPage && nav.SelectedIndex==3,"legacy About route uses fourth navigation item");
-                nav.ScrollIntoView(nav.Items[3]);Pump();Check(Inside((FrameworkElement)nav.Items[3],settings),"About item reachable at minimum window height");
-                settings.SelectPage(7);Pump();Check(settings.FindControl("QuietMode")!=null && nav.SelectedIndex==2 && !settings.IsOnAboutPage,"legacy quiet route uses third navigation item");
+                settings.SelectPage(6);Pump();Check(settings.IsOnAboutPage && nav.SelectedIndex==4,"legacy About route uses fifth navigation item");
+                nav.ScrollIntoView(nav.Items[4]);Pump();Check(Inside((FrameworkElement)nav.Items[4],settings),"About item reachable at minimum window height");
+                settings.SelectPage(7);Pump();Check(settings.FindControl("QuietMode")!=null && nav.SelectedIndex==3 && !settings.IsOnAboutPage,"legacy quiet route uses fourth navigation item");
                 string[] companionTabs={"CompanionPersonaTab","CompanionBehaviorTab","CompanionGreetingsTab"};string[] companionFields={"SkinPicker","SizeSlider","GreetingMinMinutes"};
                 for(int index=0;index<3;index++)
                 {

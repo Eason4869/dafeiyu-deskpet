@@ -7,7 +7,7 @@ namespace DeskPet.Desktop;
 
 public sealed class App : Application
 {
-    public override void Initialize() => Styles.Add(new FluentTheme());
+    public override void Initialize() { Styles.Add(new FluentTheme()); DesktopAppearance.Install(this); }
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

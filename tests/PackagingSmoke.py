@@ -38,6 +38,10 @@ print('PASS application compiles from the fresh public source tree')
 (runtime / 'private-key.txt').write_text('private sentinel', encoding='utf-8')
 (runtime / 'data').mkdir()
 (runtime / 'data/settings.json').write_text('private settings sentinel', encoding='utf-8')
+for private_name in ['.env', '.env.local', 'credentials.json', 'release-signing.pfx']:
+    (checkout / private_name).write_text('private source sentinel', encoding='utf-8')
+(checkout / '.codex').mkdir(exist_ok=True)
+(checkout / '.codex/auth.json').write_text('private auth sentinel', encoding='utf-8')
 result = subprocess.run([sys.executable, str(checkout / 'Package.py'), '--output-directory', str(output)], cwd=checkout,
                         env=dict(os.environ,PYTHONIOENCODING='utf-8'),
                         capture_output=True, text=True, encoding='utf-8', timeout=180)
@@ -57,7 +61,7 @@ for worker in [runtime / 'DeskPet.Update.exe'] + ([options.legacy_worker.resolve
                     '--work-directory', str(PROJECT/'work')], check=True, timeout=120)
 print('PASS real update engine accepts the complete release archive and preserves personal data')
 with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
-    for document in ['skin-format.md', 'dialogue-setup.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md', 'release-naming.md', 'interaction-extension.md']:
+    for document in ['skin-format.md', 'dialogue-setup.md', 'conversation-agent.md', 'native-agent-design.md', 'third-party-notices.md', 'sources.md', 'installation.md', 'daily-use.md', 'voice-presets.md', 'release-naming.md', 'interaction-extension.md']:
         assert bundle.read('DafeiyuDeskPet/docs/' + document).decode('utf-8-sig').replace('\r\n','\n') == (checkout / 'docs' / document).read_text(encoding='utf-8-sig')
 print('PASS runtime includes the exact daily-use and voice-preset guides')
 for pet in ['Ebao', 'Dafeiyu', 'Marfu', 'Xiaobei']:
@@ -107,11 +111,15 @@ images = re.findall(r'<img\s+src="([^"]+)"|!\[[^\]]*\]\(([^)]+)\)', readme)
 for alternatives in images:
     target = next(value for value in alternatives if value)
     assert (runtime / target).is_file(), 'installed README image missing: ' + target
-    assert (checkout / target).is_file(), 'repository README image missing: ' + target
+    source_target = target.replace('previews/avatars/', 'assets/avatars/')
+    assert (checkout / source_target).is_file(), 'repository README image missing: ' + source_target
+    if target.startswith('previews/avatars/'):
+        assert (runtime / target).read_bytes() == (checkout / source_target).read_bytes(), 'packaged avatar changed: ' + target
     with ZipFile(output / ('DeskPet-Windows-' + version + '.zip')) as bundle:
         assert 'DafeiyuDeskPet/' + target in bundle.namelist(), 'portable README image missing: ' + target
 print('PASS README images resolve in the repository and installed runtime')
 with ZipFile(output / ('DeskPet-Source-' + version + '.zip')) as bundle:
+    assert not any(Path(name).name in {'.env', '.env.local', 'credentials.json', 'release-signing.pfx', 'auth.json'} for name in bundle.namelist()), 'private source files must not ship'
     assert not any(part in {'work', 'data', '.git', '.superpowers', 'superpowers', 'public-artifacts', 'outputs'}
                    for name in bundle.namelist() for part in Path(name).parts)
 with ZipFile(output/('DeskPet-Source-'+version+'.zip')) as bundle:

@@ -16,7 +16,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($target in @('CoreTests','ProfileTests','ApiTests','ConversationTests','HistoryTests','StreamingTests','VoicePresetTests','LiveTests','UpdateTests','UpdateApplyTests','GreetingTests','StartupTests','ProxyTests','QueueTests','DictationTests','InteractionTests','SpriteAlignmentTests','ProviderTests','OnboardingModelSmoke','ImportedSkinTests','AiGreetingTests','BundledSkinTests','OnboardingUpgradeTests','RecorderFailureTests')) {
+          foreach ($target in @('CoreTests','ProfileTests','ApiTests','ConversationTests','HistoryTests','StreamingTests','VoicePresetTests','LiveTests','UpdateTests','UpdateApplyTests','GreetingTests','StartupTests','ProxyTests','QueueTests','DictationTests','InteractionTests','SpriteAlignmentTests','ProviderTests','OnboardingModelSmoke','ImportedSkinTests','AiGreetingTests','BundledSkinTests','OnboardingUpgradeTests','RecorderFailureTests','UpdateScheduleTests','MarkdownTests','AgentWorkspaceTests','AgentProtocolTests','AgentSessionTests','WorkSettingsTests','ConversationUiSmoke','ApplicationSnapshotTests')) {
             & .\Build.ps1 -Target $target
             if ($LASTEXITCODE -ne 0) { throw "Failed: $target" }
           }

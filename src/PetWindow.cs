@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
@@ -263,7 +263,7 @@ namespace Dafeiyu
         { trayMenu.Items.Add(text,null,delegate { Dispatcher.BeginInvoke(action); }); }
         private ContextMenu CreateMenu()
         {
-            var menu=new ContextMenu();
+            var menu=ChatUi.Menu();
             // When a settings/chat/guide window already owns foreground focus,
             // activating the pet-owned popup makes Windows restore that window
             // and WPF drops mouse capture. Keep the existing foreground owner;
@@ -305,7 +305,7 @@ namespace Dafeiyu
             {
                 SkinDefinition selected=skin;
                 var item=new MenuItem{Header=skin.Name,IsCheckable=true,IsChecked=skin.Id==Skin.Id,IsEnabled=!DialogueBusy && (preferences==null || !preferences.HasUnsavedEdits),Tag=skin.Id};
-                item.Icon=new Image{Source=SkinCatalog.GetPreview(skin),Width=28,Height=32,Stretch=Stretch.Uniform};
+                item.Icon=new Image{Source=SkinCatalog.GetAvatar(skin),Width=28,Height=28,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,28,28),5.6,5.6)};
                 item.Click+=delegate{SelectSkin(selected);foreach(MenuItem entry in menu.Items)entry.IsChecked=(string)entry.Tag==Skin.Id;};menu.Items.Add(item);
             }
         }

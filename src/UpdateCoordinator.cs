@@ -17,7 +17,7 @@ namespace Dafeiyu
         readonly DispatcherTimer startup,readyTimer;
         CancellationTokenSource cancel;
         UpdateJob pending;
-        bool checking,applying,disposed,pendingManual,checkingManual;
+        bool checking,applying,disposed,pendingManual,checkingManual,automaticStarted,retryAutomatic;
         DateTime? restartAt;
         public string Status {get;private set;}
         public string NetworkStatus {get;private set;}
@@ -39,16 +39,29 @@ namespace Dafeiyu
             startup=new DispatcherTimer(DispatcherPriority.Background){Interval=TimeSpan.FromSeconds(30)};
             startup.Tick+=async delegate
             {
-                startup.Interval=TimeSpan.FromHours(24);if(!pet.Settings.AutoUpdate || IsBusy)return;
-                var last=new DateTime(pet.Settings.LastUpdateCheckUtcTicks,DateTimeKind.Utc);if(DateTime.UtcNow-last<TimeSpan.FromHours(24))return;
+                startup.Stop();if(!pet.Settings.AutoUpdate)return;
+                if(IsBusy){ScheduleAutomatic(TimeSpan.FromMinutes(1));return;}
+                var now=DateTime.UtcNow;long ticks=pet.Settings.LastUpdateCheckUtcTicks;
+                if(!retryAutomatic && ticks>0 && ticks<=now.Ticks)
+                {
+                    var last=new DateTime(ticks,DateTimeKind.Utc);var remaining=TimeSpan.FromHours(4)-(now-last);
+                    if(remaining>TimeSpan.Zero){ScheduleAutomatic(remaining);Status="上次成功检查："+last.ToLocalTime().ToString("MM-dd HH:mm")+"，已安排下次自动检查。";Notify();return;}
+                }
                 await CheckAndUpdateAsync(false);
             };
             readyTimer=new DispatcherTimer(DispatcherPriority.Background){Interval=TimeSpan.FromMilliseconds(250)};readyTimer.Tick+=ApplyWhenReady;
         }
-        public void StartAutomaticChecks(){if(!disposed)startup.Start();}
+        public void StartAutomaticChecks(){if(disposed)return;automaticStarted=true;if(pet.Settings.AutoUpdate)ScheduleAutomatic(TimeSpan.FromSeconds(30));}
+        void ScheduleAutomatic(TimeSpan delay)
+        {
+            startup.Stop();if(disposed || !automaticStarted || !pet.Settings.AutoUpdate)return;
+            startup.Interval=delay<TimeSpan.FromSeconds(1)?TimeSpan.FromSeconds(1):delay;startup.Start();
+        }
+        void SuccessfulCheck(){pet.Settings.LastUpdateCheckUtcTicks=DateTime.UtcNow.Ticks;pet.SaveSettings();}
         public void AutomaticChanged()
         {
             if(!pet.Settings.AutoUpdate && ((pending!=null && !pendingManual) || (checking && !checkingManual)))Cancel();
+            if(pet.Settings.AutoUpdate){automaticStarted=true;ScheduleAutomatic(TimeSpan.FromSeconds(1));}else{startup.Stop();}
             pet.SaveSettings();Notify();
         }
         public async Task CheckAndUpdateAsync(bool manual)
@@ -59,8 +72,7 @@ namespace Dafeiyu
                 pendingManual=true;restartAt=null;Status="新版已就绪，空闲后将自动退出、安装并重启。";readyTimer.Start();Notify();return;
             }
             if(IsBusy)return;checking=true;checkingManual=manual;cancel=new CancellationTokenSource();var token=cancel.Token;
-            Progress=0;Status="正在检查 GitHub 正式版本…";Notify();
-            pet.Settings.LastUpdateCheckUtcTicks=DateTime.UtcNow.Ticks;pet.SaveSettings();
+            bool succeeded=false;Progress=0;Status="正在检查 GitHub 正式版本…";Notify();
             try
             {
                 bool useProxy=pet.Settings.UpdateUseProxy;string proxyAddress=pet.Settings.UpdateProxyAddress;
@@ -70,7 +82,7 @@ namespace Dafeiyu
                 string directory=Path.GetDirectoryName(pet.Store.DirectoryPath);
                 bool portable=!UpdateInstall.IsInstalledDirectory(directory);
                 var release=await feed.CheckAsync(ReleaseInfo.RepositoryUrl,useProxy,proxyAddress,portable,token);
-                if(!release.IsNewerThan(new Version(installedVersion))){Status="当前已是最新版本 "+installedVersion+"。";return;}
+                if(!release.IsNewerThan(new Version(installedVersion))){Status="当前已是最新版本 "+installedVersion+"。";SuccessfulCheck();succeeded=true;return;}
                 string version=release.VersionTag.TrimStart('v','V');
                 if(!ReleaseInfo.WindowsUpdateAsset(release.AssetName,version,portable) || String.IsNullOrEmpty(release.Digest) || !release.Digest.StartsWith("sha256:",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("发现 "+release.VersionTag+"，但没有可验证的自动更新包。请到 GitHub Release 查看。");
                 string work=Path.Combine(pet.Store.DirectoryPath,"updates",Guid.NewGuid().ToString("N"));
@@ -79,13 +91,13 @@ namespace Dafeiyu
                 string package=await feed.DownloadAsync(release,work,useProxy,proxyAddress,reporter,token);
                 token.ThrowIfCancellationRequested();if(disposed)return;
                 using(var process=Process.GetCurrentProcess())pending=new UpdateJob{InstallationDirectory=directory,WorkDirectory=work,PackagePath=package,Mode=portable?"portable":"installed",InstalledVersion=installedVersion,TargetVersion=version,Digest=release.Digest.Substring(7),Size=release.Size,AssetUrl=release.AssetUrl,ParentPid=process.Id,ParentStartedUtcTicks=process.StartTime.ToUniversalTime().Ticks};
-                UpdateInstall.Validate(pending);pendingManual=manual;Status="下载与校验完成，等待空闲后自动更新。";readyTimer.Start();
+                UpdateInstall.Validate(pending);pendingManual=manual;Status="下载与校验完成，等待空闲后自动更新。";SuccessfulCheck();succeeded=true;readyTimer.Start();
             }
             catch(Exception e)
             {
                 pending=null;Status=e is OperationCanceledException?"更新已取消，当前版本继续运行。":e is ApiException || e is InvalidOperationException?e.Message:"自动更新未完成，请检查网络、代理和目录权限。";
             }
-            finally{checking=false;IsDownloading=false;cancel.Dispose();cancel=null;Notify();}
+            finally{checking=false;IsDownloading=false;cancel.Dispose();cancel=null;retryAutomatic=!succeeded;ScheduleAutomatic(succeeded?TimeSpan.FromHours(4):TimeSpan.FromMinutes(10));Notify();}
         }
         async void ApplyWhenReady(object sender,EventArgs args)
         {

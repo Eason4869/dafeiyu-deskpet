@@ -9,7 +9,14 @@ namespace Dafeiyu
     {
         public static FrameworkElement Image(string name,Brush ink)
         {
-            string shape=name=="speaker"?"M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,8 C20,10 20,14 16,16 M18,4 C26,9 26,15 18,20":
+            string shape=name=="speaker"?"M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,9 C19,11 19,13 16,15 M18,6 C23,9 23,15 18,18":
+                name=="copy"?"M9,8 L19,8 19,21 9,21 Z M5,16 L4,16 4,3 14,3 14,5":
+                name=="file"?"M6,3 L14,3 19,8 19,21 6,21 Z M14,3 L14,8 19,8":
+                name=="chat"?"M5,4 L19,4 Q21,4 21,6 L21,16 Q21,18 19,18 L10,18 5,21 5,18 Q3,18 3,16 L3,6 Q3,4 5,4 Z M8,9 L8,10 M12,9 L12,10 M16,9 L16,10":
+                name=="attachment"?"M8,14 L14,6 C18,2 23,7 19,11 L10,20 C6,24 0,18 4,14 L14,4 M8,15 L16,7":
+                name=="snapshot"?"M3,8 L3,4 7,4 M17,4 L21,4 21,8 M21,16 L21,20 17,20 M7,20 L3,20 3,16 M7,9 L17,9 17,15 7,15 Z":
+                name=="target"?"M21,12 A9,9 0 1 1 12,3 M17,12 A5,5 0 1 1 12,7 M12,12 L22,2 M17,2 L22,2 22,7":
+                name=="more"?"M5,11 L5,13 M12,11 L12,13 M19,11 L19,13":
                 name=="muted"?"M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,9 L22,15 M22,9 L16,15":
                 name=="live"?"M4,9 L4,15 M8,5 L8,19 M12,2 L12,22 M16,6 L16,18 M20,9 L20,15":
                 name=="stop"?"M6,6 L18,6 18,18 6,18 Z":
@@ -59,8 +66,8 @@ namespace Dafeiyu
         }
         public static CheckBox Speech(PetWindow pet)
         {
-            var toggle=new CheckBox {Name="TtsOutput",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,0,0),Cursor=System.Windows.Input.Cursors.Hand,Focusable=true};
-            toggle.Template=(ControlTemplate)System.Windows.Markup.XamlReader.Parse("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='CheckBox'><Border x:Name='b' Background='Transparent' CornerRadius='9' Padding='7' BorderBrush='Transparent' BorderThickness='1'><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='#456DE6'/></Trigger><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='Background' Value='#EDF3FF'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='b' Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
+            var toggle=new CheckBox {Name="TtsOutput",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,0,0),Cursor=System.Windows.Input.Cursors.Hand,Focusable=true,FocusVisualStyle=null};
+            toggle.Template=(ControlTemplate)System.Windows.Markup.XamlReader.Parse("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='CheckBox'><Border x:Name='b' Background='Transparent' CornerRadius='9' Padding='7' BorderBrush='Transparent' BorderThickness='1'><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='b' Property='Background' Value='#EFEFEF'/></Trigger><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='Background' Value='#EFEFEF'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='b' Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
             Action sync=delegate {toggle.IsChecked=pet.Settings.ReadReplies;toggle.Content=Image(pet.Settings.ReadReplies?"speaker":"muted",pet.Settings.ReadReplies?Ui.Blue:Ui.Muted);toggle.ToolTip=pet.Settings.ReadReplies?"关闭回复朗读":"开启回复朗读";System.Windows.Automation.AutomationProperties.SetName(toggle,(string)toggle.ToolTip);};
             toggle.Checked+=delegate {pet.SetReplySpeech(true);sync();};toggle.Unchecked+=delegate {pet.SetReplySpeech(false);sync();};
             toggle.Loaded+=delegate {sync();pet.ReplySpeechChanged+=sync;};toggle.Unloaded+=delegate {pet.ReplySpeechChanged-=sync;};sync();return toggle;

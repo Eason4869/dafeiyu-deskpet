@@ -10,8 +10,8 @@ namespace Dafeiyu
 {
     public sealed class QuickChatWindow : Window
     {
-        readonly PetWindow pet;readonly ConversationSession session;readonly TextBox input,reply;readonly TextBlock status;readonly Button record;readonly ConversationComposer composer;readonly Polygon tail;readonly Image avatar;
-        bool closed;readonly MessageUpdatePump messagePump;
+        readonly PetWindow pet;readonly ConversationSession session;readonly TextBox input;MarkdownView reply;readonly StackPanel messages=new StackPanel();readonly System.Collections.Generic.Dictionary<string,ChatMessageView> rendered=new System.Collections.Generic.Dictionary<string,ChatMessageView>();readonly ScrollViewer scroll;readonly TextBlock status;readonly Button record;readonly ConversationComposer composer;readonly Polygon tail;readonly Image avatar;
+        bool closed;string renderedPersona;readonly MessageUpdatePump messagePump;
         readonly Button close;GuideFocusScope guideScope;
         public QuickChatWindow(PetWindow companion)
         {
@@ -22,14 +22,14 @@ namespace Dafeiyu
             var header=new DockPanel();
             close=UiIcons.Button("close","关闭快速对话");close.Name="CloseQuickChat";close.Margin=new Thickness(0);close.Click+=delegate {Hide();};DockPanel.SetDock(close,Dock.Right);header.Children.Add(close);
             var expand=UiIcons.Button("expand","展开完整对话");expand.Name="ExpandChat";expand.Click+=delegate {pet.ShowChat();};DockPanel.SetDock(expand,Dock.Right);header.Children.Add(expand);
-            avatar=new Image{Source=SkinCatalog.GetPreview(pet.Skin),Width=34,Height=40,Stretch=Stretch.Uniform,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};avatar.Name="QuickAvatar";RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);header.Children.Add(avatar);
+            avatar=new Image{Source=SkinCatalog.GetAvatar(pet.Skin),Width=34,Height=34,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,34,34),6.8,6.8),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};avatar.Name="QuickAvatar";RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);header.Children.Add(avatar);
             var identity=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};identity.Children.Add(UiIcons.Speech(pet));header.Children.Add(identity);panel.Children.Add(header);
-            reply=new TextBox{Name="QuickReply",Text="写下一句话，我在这里。",IsReadOnly=true,TextWrapping=TextWrapping.Wrap,AcceptsReturn=true,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,BorderThickness=new Thickness(0),Background=Brushes.Transparent,Foreground=Ui.Ink,Padding=new Thickness(3,14,3,12),FontSize=14};Grid.SetRow(reply,1);panel.Children.Add(reply);
+            scroll=Ui.Scroll(messages);scroll.Name="QuickHistoryScroll";scroll.Margin=new Thickness(0,12,0,8);Grid.SetRow(scroll,1);panel.Children.Add(scroll);
             status=Ui.Text("",11,Ui.Muted);status.Name="QuickStatus";
             input=Ui.Field("",true);input.Name="QuickMessageInput";input.MaxLength=8000;input.PreviewKeyDown+=delegate(object sender,KeyEventArgs e){if(e.Key==Key.Escape){e.Handled=true;Hide();}};
             record=UiIcons.Button("mic","听写");record.Name="VoiceRecord";
             composer=new ConversationComposer(pet,this,input,record,status,true);Grid.SetRow(composer,2);panel.Children.Add(composer);
-            root.Children.Add(new Border{Child=panel,CornerRadius=new CornerRadius(20),BorderThickness=new Thickness(1),BorderBrush=Ui.Line,Background=Ui.Brush("#F7F9FD")});tail=new Polygon{Fill=Ui.Brush("#F7F9FD"),Stroke=Ui.Line,StrokeThickness=1,Points=new PointCollection(new[]{new Point(168,0),new Point(180,13),new Point(192,0)})};Grid.SetRow(tail,1);root.Children.Add(tail);Content=root;
+            root.Children.Add(new Border{Child=panel,CornerRadius=new CornerRadius(20),BorderThickness=new Thickness(1),BorderBrush=Ui.Line,Background=Brushes.White});tail=new Polygon{Fill=Brushes.White,Stroke=Ui.Line,StrokeThickness=1,Points=new PointCollection(new[]{new Point(168,0),new Point(180,13),new Point(192,0)})};Grid.SetRow(tail,1);root.Children.Add(tail);Content=root;
             messagePump=new MessageUpdatePump(session,Message);session.MessageAdded+=Message;session.HistoryChanged+=HistoryChanged;session.StateChanged+=RefreshState;pet.Live.StateChanged+=RefreshState;pet.Live.PartialTranscript+=Partial;Loaded+=delegate {FollowPet();FocusInput();};IsVisibleChanged+=delegate {if(IsVisible)RefreshState();};Closed+=delegate {closed=true;messagePump.Dispose();session.MessageAdded-=Message;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;pet.Live.PartialTranscript-=Partial;};RefreshPersona();RefreshState();
         }
         public bool HasDraft { get { return !String.IsNullOrWhiteSpace(input.Text) || (composer!=null && composer.HasEdit); } }
@@ -40,9 +40,31 @@ namespace Dafeiyu
         }
         public void FocusInput(){if(input.IsVisible)input.Focus();}
         public void FollowPet(){if(!closed)BubblePlacement.Follow(this,pet,tail);}
-        public void RefreshPersona(){if(composer!=null)composer.RefreshModels();avatar.Source=SkinCatalog.GetPreview(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 快速对话";var last=session.History.Messages.LastOrDefault(m=>m.Role=="assistant");reply.Text=MessagePresentation.QuickText(last);RefreshState();}
-        void Message(ChatMessage message){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Message(message)));return;}if(message.Role=="assistant" && session.History.Messages.LastOrDefault(m=>m.Role=="assistant")!=null && session.History.Messages.Last(m=>m.Role=="assistant").Id==message.Id)reply.Text=MessagePresentation.QuickText(message);}
-        void HistoryChanged(){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(HistoryChanged));return;}RefreshPersona();}
+        public void RefreshPersona(){if(composer!=null)composer.RefreshModels();avatar.Source=SkinCatalog.GetAvatar(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 快速对话";if(renderedPersona!=pet.Skin.Id){renderedPersona=pet.Skin.Id;ReloadHistory();}RefreshState();}
+        void ReloadHistory()
+        {
+            messages.Children.Clear();rendered.Clear();
+            reply=new MarkdownView{Name="QuickReply",Text="写下一句话，我在这里。",Margin=new Thickness(3,14,3,12)};
+            var history=session.History.Messages;foreach(var message in history.Skip(Math.Max(0,history.Count-20)))Message(message);
+            if(rendered.Count==0)messages.Children.Add(reply);
+            Dispatcher.BeginInvoke(new Action(delegate{if(!closed)scroll.ScrollToEnd();}));
+        }
+        void Message(ChatMessage message)
+        {
+            if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Message(message)));return;}
+            if(!session.History.Messages.Any(m=>m.Id==message.Id))return;
+            bool follow=scroll.ScrollableHeight-scroll.VerticalOffset<32;ChatMessageView view;
+            if(rendered.TryGetValue(message.Id,out view))view.Update(message);
+            else
+            {
+                if(rendered.Count==0)messages.Children.Clear();
+                view=new ChatMessageView(message,messages,pet,this);rendered[message.Id]=view;messages.Children.Add(view);
+                if(message.Role=="assistant"){reply.Name="";reply=view.Body;reply.Name="QuickReply";}
+                while(messages.Children.Count>20){var old=(ChatMessageView)messages.Children[0];rendered.Remove((string)old.Tag);messages.Children.RemoveAt(0);}
+            }
+            if(follow)Dispatcher.BeginInvoke(new Action(delegate{if(!closed)scroll.ScrollToEnd();}));
+        }
+        void HistoryChanged(){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(HistoryChanged));return;}renderedPersona=null;RefreshPersona();}
         void Partial(string role,string text){if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Partial(role,text)));return;}if(pet.LiveActive && role=="assistant")reply.Text=text;}
         void RefreshState()
         {

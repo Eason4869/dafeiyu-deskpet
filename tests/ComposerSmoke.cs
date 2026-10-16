@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -58,7 +58,7 @@ namespace Dafeiyu.Tests
                     if(input==null || button==null)throw new Exception("Composer controls missing in "+window.GetType().Name+"; visible="+window.IsVisible);
                     var picker=Find<Button>(window,"TextModelPicker");var mic=Find<Button>(window,"VoiceRecord");Rect inputBounds=Bounds(input,window),pickerBounds=Bounds(picker,window),micBounds=Bounds(mic,window),sendBounds=Bounds(button,window);
                     Check(inputBounds.Bottom<=pickerBounds.Top && inputBounds.Width>pickerBounds.Width+micBounds.Width+sendBounds.Width,"full-width input stays above the toolbar");
-                    Check(pickerBounds.Right<=micBounds.Left && micBounds.Right<=sendBounds.Left && Math.Abs(pickerBounds.Bottom-sendBounds.Bottom)<1,"model, microphone and blue action align at bottom right");
+                    Check(pickerBounds.Right<=micBounds.Left && micBounds.Right<=sendBounds.Left && Math.Abs(pickerBounds.Bottom-sendBounds.Bottom)<=5 && Math.Abs(micBounds.Bottom-sendBounds.Bottom)<1,"model optical offset stays within toolbar while microphone and blue action align");
                     input.Text="第一行，输入区域横向完整\n第二行不会被按钮遮住\n第三行保留换行";window.UpdateLayout();Check(Bounds(input,window).Bottom<=Bounds(picker,window).Top,"multiline draft never overlaps model controls");Save(window,small?"quick-model-layout.png":"chat-model-layout.png");input.Clear();
                     Check(((string)picker.ToolTip).Contains(longModel),"aliased picker tooltip retains the full API model ID");
                     var aliasedProvider=cfg.TextProviders.Single(p=>p.Id=="second");aliasedProvider.ModelDisplayNames.Remove(longModel);pet.RefreshChatAppearance();window.UpdateLayout();Check(Find<TextBlock>(window,"CurrentTextModel").Text==longModel,"model without custom display name falls back to full ID");
@@ -124,7 +124,7 @@ namespace Dafeiyu.Tests
             MouseInputEvent(2,0,0);MouseInputEvent(4,0,0);Pump(.08);
         }
         static TextBlock Placeholder(DependencyObject node)
-        {var text=node as TextBlock;if(text!=null&&text.Text=="想聊些什么？")return text;for(int i=0;i<VisualTreeHelper.GetChildrenCount(node);i++){var result=Placeholder(VisualTreeHelper.GetChild(node,i));if(result!=null)return result;}return null;}
+        {var text=node as TextBlock;if(text!=null&&text.Name=="ComposerPlaceholder")return text;for(int i=0;i<VisualTreeHelper.GetChildrenCount(node);i++){var result=Placeholder(VisualTreeHelper.GetChild(node,i));if(result!=null)return result;}return null;}
         static void PlaceholderSmoke(Window chat,Window quick)
         {
             Point cursor=DesktopInterop.Cursor();
@@ -135,11 +135,12 @@ namespace Dafeiyu.Tests
                 var field=(FrameworkElement)VisualTreeHelper.GetParent(input);window.UpdateLayout();var dpi=VisualTreeHelper.GetDpi(window);Console.WriteLine("DPI native "+tag+" "+dpi.PixelsPerInchX+"x"+dpi.PixelsPerInchY);
                 Check(!input.IsKeyboardFocusWithin && hint.IsVisible,"unfocused empty input shows hint "+tag);Save(window,tag+"-placeholder-empty.png");
                 Console.WriteLine("TEXT rect="+input.GetRectFromCharacterIndex(0)+" hint margin="+hint.Margin+" lineheight="+hint.LineHeight+" input padding="+input.Padding);var blankBounds=new Dictionary<int,Rect>();foreach(int scale in new[]{96,120,144,192})blankBounds[scale]=GlyphBounds(field,scale,tag+"-hint-"+scale+"dpi.png");
-                input.Text="想聊些什么？";window.UpdateLayout();Pump(.06);
+                input.Text=hint.Text;window.UpdateLayout();Pump(.06);
                 foreach(int scale in new[]{96,120,144,192}){Rect actual=GlyphBounds(field,scale,tag+"-text-"+scale+"dpi.png"),expected=blankBounds[scale];Console.WriteLine("GLYPH "+tag+" dpi="+scale+" hint="+expected+" text="+actual);Check(Math.Abs(actual.Left-expected.Left)<=1 && Math.Abs(actual.Top-expected.Top)<=1 && Math.Abs(actual.Height-expected.Height)<=1,"placeholder and actual glyph origins match at render DPI "+scale+" "+tag);}
-                input.Clear();NativeClick(window,input);Check(input.IsKeyboardFocused && !hint.IsVisible,"native focus hides hint beside caret "+tag);Save(window,tag+"-placeholder-focused.png");
+                input.Clear();NativeClick(window,input);Check(input.IsKeyboardFocused && hint.IsVisible,"native focus preserves empty hint beside caret "+tag);
+                var editorSurface=(Border)VisualTreeHelper.GetChild(input,0);Check(editorSurface.Background==Brushes.Transparent,"focused composer editor has no gray overlay "+tag);Save(window,tag+"-placeholder-focused.png");
                 if(GetForegroundWindow()!=new WindowInteropHelper(window).Handle)throw new Exception("Native typing aborted: foreground is not fixture");foreach(char c in "中文输入 ABC"){KeyInput(0,c,4);KeyInput(0,c,6);}Pump(.12);Check(input.Text=="中文输入 ABC" && !hint.IsVisible,"native Unicode input displays without hint overlap "+tag);Save(window,tag+"-placeholder-typed.png");
-                input.SelectAll();KeyInput(8,0,0);KeyInput(8,0,2);Pump(.1);Check(input.Text.Length==0 && input.IsKeyboardFocused && !hint.IsVisible,"native clearing keeps focused hint hidden "+tag);
+                input.SelectAll();KeyInput(8,0,0);KeyInput(8,0,2);Pump(.1);Check(input.Text.Length==0 && input.IsKeyboardFocused && hint.IsVisible,"native clearing restores hint while focused "+tag);
                 NativeClick(window,picker);picker.ContextMenu.IsOpen=false;Pump(.1);Check(hint.IsVisible,"native blur restores empty hint "+tag);Save(window,tag+"-placeholder-cleared.png");
                 input.Text="第一行中文\n第二行输入\n第三行输入";window.UpdateLayout();Pump(.08);Check(!hint.IsVisible && input.GetRectFromCharacterIndex(6).Top>input.GetRectFromCharacterIndex(0).Top,"multiline text stays unobstructed "+tag);Save(window,tag+"-placeholder-multiline.png");input.Clear();
             }}finally{MouseInputEvent(4,0,0);SetCursorPos((int)cursor.X,(int)cursor.Y);}

@@ -49,16 +49,16 @@ namespace Dafeiyu
             root.RowDefinitions.Add(new RowDefinition());
             root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             var greeting=new DockPanel {Margin=new Thickness(0,0,0,15)};
-            avatar=new Image {Source=SkinCatalog.GetPreview(pet.Skin),Width=56,Height=64,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,13,0)};
+            avatar=new Image {Source=SkinCatalog.GetAvatar(pet.Skin),Width=56,Height=56,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,56,56),11.2,11.2),Margin=new Thickness(0,0,13,0)};
             RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);greeting.Children.Add(avatar);
             var hello=new StackPanel {VerticalAlignment=VerticalAlignment.Center};introduction=Ui.Text("和"+pet.Skin.Name+"一起开始",17);introduction.FontWeight=FontWeights.SemiBold;hello.Children.Add(introduction);
             hello.Children.Add(Ui.Text("当前项可操作，其余区域暂时锁定。",11,Ui.Muted));greeting.Children.Add(hello);root.Children.Add(greeting);
-            var progress=new UniformGrid {Rows=2,Columns=8,Margin=new Thickness(0,0,0,17)};
+            var progress=new UniformGrid {Rows=2,Columns=9,Margin=new Thickness(0,0,0,17)};
 
             for(int i=0;i<chips.Length;i++)
             {
                 var label=Ui.Text((i+1).ToString(),10);label.HorizontalAlignment=HorizontalAlignment.Center;
-                chips[i]=new Border {Child=label,CornerRadius=new CornerRadius(7),Padding=new Thickness(2,3,2,3),Margin=new Thickness(0,0,i%8==7?0:3,3)};progress.Children.Add(chips[i]);
+                chips[i]=new Border {Child=label,CornerRadius=new CornerRadius(7),Padding=new Thickness(2,3,2,3),Margin=new Thickness(0,0,i%9==8?0:3,3)};progress.Children.Add(chips[i]);
             }
             Grid.SetRow(progress,1);root.Children.Add(progress);
             var body=new StackPanel();title=Ui.Text("",20);title.FontWeight=FontWeights.SemiBold;title.Margin=new Thickness(0,0,0,9);body.Children.Add(title);
@@ -109,7 +109,8 @@ namespace Dafeiyu
                 {
                     string error;if(!pet.UpdateHotkey("quick",((TextBox)settings.FindControl("Hotkeyquick")).Text,out error))throw new InvalidOperationException(error);
                     }
-                if(Step==15){if(!settings.SaveGuideNetwork())throw new InvalidOperationException("请检查网络地址，或跳过这一步。");Finish("completed");return;}
+                if(Step==15 && !((WorkSettingsPanel)settings.FindControl("WorkSettingsPanel")).Save())throw new InvalidOperationException("工作设置尚未保存，请查看设置页提示；也可跳过本项。");
+                if(Step==16){if(!settings.SaveGuideNetwork())throw new InvalidOperationException("请检查网络地址，或跳过这一步。");Finish("completed");return;}
                 Step++;Navigate();
             }
             catch(InvalidOperationException e){status.Text=e.Message;}
@@ -123,7 +124,7 @@ namespace Dafeiyu
             else if(Step==1){var prompt=settings.FindControl("PersonaPrompt") as TextBox;ready=prompt!=null && !String.IsNullOrWhiteSpace(prompt.Text);if(!ready)error="请填写人格或恢复预设。";}
             else if(Step==12){int min,max;ready=Int32.TryParse(((TextBox)settings.FindControl("GreetingMinMinutes")).Text,out min) && Int32.TryParse(((TextBox)settings.FindControl("GreetingMaxMinutes")).Text,out max) && min>=1 && max<=1440 && min<=max;if(!ready)error="请输入有效的问候间隔。";}
             else if(Step==13){string value=((TextBox)settings.FindControl("Hotkeyquick")).Text;HotkeyCombination combination;ready=String.IsNullOrWhiteSpace(value) || HotkeyCombination.TryParse(value,out combination);if(!ready)error="请输入有效快捷键，或留空停用。";}
-            if(Step==15)ready=settings.ValidateGuideNetwork(out error);
+            if(Step==16)ready=settings.ValidateGuideNetwork(out error);
             if(!ready || !next.IsEnabled)status.Text=error;next.IsEnabled=ready;
         }
         private void Navigate()
@@ -133,7 +134,7 @@ namespace Dafeiyu
             {
                 RestoreNetworkPreview();RestoreLessonRestrictions();if(focusScope!=null){focusScope.Dispose();focusScope=null;}if(petScope!=null){petScope.Dispose();petScope=null;}pet.SetGuideInteraction("");gestureDone=false;RemoveHighlight();
                 if(PetLesson){Owner=pet;settings.Hide();}else{if(!settings.IsVisible)settings.Show();Owner=settings;}status.Text="";actions.Children.Clear();
-                introduction.Text="和"+pet.Skin.Name+"一起开始";avatar.Source=SkinCatalog.GetPreview(pet.Skin);
+                introduction.Text="和"+pet.Skin.Name+"一起开始";avatar.Source=SkinCatalog.GetAvatar(pet.Skin);
                 for(int i=0;i<chips.Length;i++){chips[i].Background=i==Step?Ui.Blue:i<Step?Ui.Mint:Ui.Pale;((TextBlock)chips[i].Child).Foreground=i==Step?Brushes.White:Ui.Muted;}
                 back.IsEnabled=Step>0;next.Content=Step==PetSettings.OnboardingLastStep?"完成引导":"下一步";
                 string scopeName;
@@ -161,7 +162,7 @@ namespace Dafeiyu
                 }
                 else if(Step==8)
                 {
-                    title.Text="9 · 添加文字模型";instruction.Text="点击“新增”选厂商，填写 Key 后“保存并获取模型列表”。勾选需要的模型后点“添加所选模型”，选择当前模型，再点引导的“下一步”保存本页。\n\n列表不可用时，手填模型 ID 后点“添加 / 更新”。可搜索模型或填写中文名称；没有账号可跳过本项。\n\n底部“保存配置”在引导中暂时锁定。已保存的有效连接可自动刷新列表，仅查询模型信息，不发送对话或录音。";
+                    title.Text="9 · 模型配置";instruction.Text="在“模型配置”的文字页点击“新增”选厂商，填写 Key 后“保存并获取模型列表”。勾选需要的模型后点“添加所选模型”，选择当前模型，再点引导的“下一步”保存本页。\n\n列表不可用时，手填模型 ID 后点“添加 / 更新”。可搜索模型或填写中文名称；没有账号可跳过本项。\n\n底部“保存配置”在引导中暂时锁定。已保存的有效连接可自动刷新列表，仅查询模型信息，不发送对话或录音。";
                     settings.SelectAiSection(0);TargetName="AddTextProvider";scopeName="GuideTextProviderSection";
                 }
                 else if(Step==9)
@@ -191,12 +192,17 @@ namespace Dafeiyu
                 }
                 else if(Step==14)
                 {
-                    title.Text="15 · 对话、听写与队列";instruction.Text="两个对话窗口操作一致，本步仅展示真实输入区。\n\n有文字：Enter 或蓝色箭头发送；AI 忙碌时排队，每条各回复一次。Shift + Enter 换行。空白时：AI 忙碌显示停止方块，空闲显示声波“通话”。\n\n麦克风“听写”位于主按钮左侧。录音后：左侧黑方块识别并保留草稿；右侧黑箭头识别后连同草稿发送或排队。Esc 取消听写。\n\n队列中的“引导”会停止当前回复、保留已输出内容并优先发送该条，完成后继续原队列。输入新文字时，也可用发送旁选项或 Ctrl + Enter 打断并发送。\n\n铅笔编辑，垃圾桶删除。停止或出错后队列暂停，点击“继续队列”恢复；退出后保留待发消息，重启后需手动继续。";
+                    title.Text="15 · 对话模式与附件";instruction.Text="快聊与完整对话共用会话，本步仅预览，不会发送或收音。\n\n输入框左下角选择“对话模式”（纯聊天）或“工作模式”（文件 Agent）；Tab 切换，从下一次请求生效。权限在下一步“工作设置”中调整。\n\n粘贴、拖放或 + 可添加图片与文件；+ 也可附加文件夹路径或最近应用窗口的快照。目录附件只引用路径，不读取目录，也不改变权限；发送前可移除附件。图片识别需要模型支持。\n\nEnter 发送，Shift + Enter 换行；忙碌时排队，Ctrl + Enter 或队列“引导”打断并优先发送。停止或出错后，点“继续队列”恢复。\n\n麦克风用于听写：停止后保留草稿，发送箭头识别后发送；Esc 取消。回复支持 Markdown；思考/处理时间持续更新，正文出现后过程自动收起，可从回复的更多菜单查看。";
                     TargetName="GuideConversationPreview";scopeName="";pet.SetGuideInteraction("double-click");pet.ShowQuickChat();
+                }
+                else if(Step==15)
+                {
+                    title.Text="16 · 工作设置";instruction.Text="工作模式使用原生文件工具，可列目录、搜索、读取、创建与修改文件，创建文件夹并打开目录。需要所选模型支持工具调用。\n\n默认“完整访问”沿用当前 Windows 账户的文件权限，包括桌面等本机目录；不会提权。“仅工作目录”可限制访问范围。默认目录是相对路径的起点；计划模式只读，不写文件、不打开资源管理器。\n\n可设置持续目标、模型轮数、任务时限和详细过程。默认开启修改前备份；完整访问的备份位于原文件旁的 .deskpet-agent-backups。停止任务会保留已完成的修改。\n\n点击“下一步”保存；保存不会执行任务，从下一次请求生效。多轮请求和附件可能消耗模型额度。";
+                    settings.SelectWorkSettings();TargetName=scopeName="WorkSettingsPanel";
                 }
                 else
                 {
-                    title.Text="16 · 更新与网络加速";instruction.Text="关于页的“网络加速”平时默认收起，本步临时展开。三个选项互斥：不使用 GitHub 加速、使用 GitHub 加速、使用网络代理。\n\n先点击“测试连通性”，查看各地址的可用状态和耗时，再选择可用镜像。自定义地址也需先填写并测试；仅加速更新包下载，失败自动回退 GitHub 直连，版本与校验值仍从官方获取。代理默认 http://127.0.0.1:7890，可用于检查版本和下载更新。此处不影响 AI 服务的代理设置。\n\n通过测试后选中的镜像即时保存；代理地址填写后在移开焦点或完成本步时保存。“测试连通性”需手动点击，不会安装；本引导不会自动测试、更新或卸载。卸载入口在关于页固定底栏。\n\n完成仅表示走完引导，不表示跳过的服务已配置或已验证连接；之后可从设置左下角重新打开。";
+                    title.Text="17 · 更新与网络加速";instruction.Text="关于页的“网络加速”平时默认收起，本步临时展开。三个选项互斥：不使用 GitHub 加速、使用 GitHub 加速、使用网络代理。\n\n先点击“测试连通性”，查看各地址的可用状态和耗时，再选择可用镜像。自定义地址也需先填写并测试；仅加速更新包下载，失败自动回退 GitHub 直连，版本与校验值仍从官方获取。代理默认 http://127.0.0.1:7890，可用于检查版本和下载更新。此处不影响 AI 服务的代理设置。\n\n通过测试后选中的镜像即时保存；代理地址填写后在移开焦点或完成本步时保存。“测试连通性”需手动点击，不会安装；本引导不会自动测试、更新或卸载。卸载入口在关于页固定底栏。\n\n完成仅表示走完引导，不表示跳过的服务已配置或已验证连接；之后可从设置左下角重新打开。";
                     settings.SelectPage(6);networkPreview=(Expander)settings.FindControl("UpdateNetwork");networkWasExpanded=networkPreview.IsExpanded;networkPreview.IsExpanded=true;TargetName=scopeName="UpdateNetwork";
                 }
                 settings.UpdateLayout();focusScope=new GuideFocusScope((UIElement)settings.Content,scopeName.Length==0?null:settings.FindControl(scopeName),scopeName.Length==0?null:settings.FindControl("ConnectionNotice"));

@@ -1,7 +1,7 @@
 name: macOS preview checks
 on:
   push:
-    branches: [main, dev, codex/macos-0.5.7]
+    branches: [main, dev, codex/macos-0.6.0]
     paths:
       - 'desktop/**'
       - 'src/**'

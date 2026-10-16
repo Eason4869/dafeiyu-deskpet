@@ -17,6 +17,8 @@ AppBuilder.Configure<TestApp>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatfo
 int assertions = 0;
 void Check(bool value, string name) { if (!value) throw new Exception("FAIL: " + name); assertions++; }
 void Reject(Action action, string name) { try { action(); } catch (Exception e) when (e is InvalidDataException or ArgumentException or IOException or JsonException) { assertions++; return; } throw new Exception("FAIL: accepted " + name); }
+object Asset(string name, string? url = null) => new { name, browser_download_url = url ?? "https://github.com/Eason4869/deskpet/releases/download/v0.6.0/" + Uri.EscapeDataString(name), size = 1024L };
+JsonDocument Release(params object[] assets) => JsonDocument.Parse(JsonSerializer.Serialize(new { tag_name = "v0.6.0", assets }));
 var directory = Path.Combine(AppContext.BaseDirectory, "DeskPet-UI-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(directory);
 try
@@ -75,18 +77,68 @@ try
     File.Copy(Path.Combine(source, "spritesheet.png"), Path.Combine(abandoned, "spritesheet.png"));
     File.WriteAllText(Path.Combine(abandoned, "pet.json"), "{\"version\":1,\"name\":\"interrupted\",\"atlas\":\"spritesheet.png\"}");
     Check(SpriteAssets.LoadSkins(directory).Count == 5, "interrupted staging import never appears as a companion");
-    Check(AboutWindow.MatchesArchitecture("DeskPet-0.5.5-macos-x86_64-unsigned.zip", "x64"), "Intel release packaging name matches current architecture");
-    Check(!AboutWindow.MatchesArchitecture("DeskPet-0.5.5-macos-arm64-unsigned.zip", "x64"), "Intel query excludes arm64 archive");
+    Check(AboutWindow.MatchesArchitecture("DeskPet-macOS-0.6.0-x86_64-preview.zip", "x64"), "Intel release packaging name matches current architecture");
+    Check(!AboutWindow.MatchesArchitecture("DeskPet-macOS-0.6.0-arm64-preview.zip", "x64"), "Intel query excludes arm64 archive");
+    Check(!AboutWindow.MatchesArchitecture("DeskPet-Windows-macos-notes-x64-template.zip", "x64"), "platform words inside an unrelated filename are not a Mac package");
+    Check(!AboutWindow.MatchesArchitecture("DeskPet-macOS-0.6.0-universal-x64.zip", "x64"), "universal or unknown CPU package is not an Intel package");
+    const string intelDmg = "DeskPet-macOS-0.6.0-x86_64-preview.dmg", intelZip = "DeskPet-macOS-0.6.0-x86_64-preview.zip", armDmg = "DeskPet-macOS-0.6.0-arm64-preview.dmg";
+    using (var mixed = Release(Asset("DeskPet-Setup-0.6.0-x64.exe"), Asset("DeskPet-Windows-0.6.0-x64.zip"), Asset("DeskPet-Windows-macos-notes-x64-template.zip"), Asset("DeskPet-macOS-0.6.0-universal.zip"), Asset("DeskPet-macOS-0.6.0-x64.zip"), Asset(armDmg), Asset(intelZip), Asset(intelDmg)))
+    {
+        var intel = AboutWindow.SelectMacAsset(mixed.RootElement, "Eason4869/deskpet", "X64");
+        Check(intel?.Name == intelDmg && intel.Preview, "mixed platform and CPU release chooses Intel DMG before ZIP");
+        Check(intel?.DownloadUrl.AbsoluteUri == "https://github.com/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg, "download target is the exact official compatible attachment");
+        Check(AboutWindow.SelectMacAsset(mixed.RootElement, "Eason4869/deskpet", "Arm64")?.Name == armDmg, "Apple Silicon excludes Intel and Windows assets");
+        Check(AboutWindow.SelectMacAsset(mixed.RootElement, "Eason4869/deskpet", "X86") == null, "unsupported CPU never falls back to another architecture");
+    }
+    foreach (var invalidUrl in new[]
+    {
+        "http://github.com/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg,
+        "https://github.com/other/deskpet/releases/download/v0.6.0/" + intelDmg,
+        "https://github.com/Eason4869/other/releases/download/v0.6.0/" + intelDmg,
+        "https://github.com/Eason4869/deskpet/releases/download/v0.5.6/" + intelDmg,
+        "https://github.com/Eason4869/deskpet/releases/download/v0.6.0/" + armDmg,
+        "https://github.com.evil.test/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg,
+        "https://github.com/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg + "?redirect=other",
+        "https://github.com/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg + "#fragment",
+        "https://account@github.com/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg,
+        "https://github.com:444/Eason4869/deskpet/releases/download/v0.6.0/" + intelDmg
+    })
+    {
+        using var bad = Release(Asset(intelDmg, invalidUrl));
+        Check(AboutWindow.SelectMacAsset(bad.RootElement, "Eason4869/deskpet", "x64") == null, "reject unrelated or modified official download URL: " + invalidUrl);
+    }
+    using (var wrongVersion = Release(Asset("DeskPet-macOS-0.5.6-x86_64-preview.dmg"))) Check(AboutWindow.SelectMacAsset(wrongVersion.RootElement, "Eason4869/deskpet", "x64") == null, "package version must match release tag");
+    using (var onlyWindows = Release(Asset("DeskPet-Setup-0.6.0-x64.exe"), Asset(armDmg))) Check(AboutWindow.SelectMacAsset(onlyWindows.RootElement, "Eason4869/deskpet", "x64") == null, "no suitable Mac CPU package leaves update download unavailable");
+    using (var signed = Release(Asset(intelDmg), Asset("DeskPet-macOS-0.6.0-x86_64.dmg"))) Check(AboutWindow.SelectMacAsset(signed.RootElement, "Eason4869/deskpet", "x64") is { Preview: false }, "prefer signed release over preview of the same format");
+    using (var zipFallback = Release(Asset(intelZip))) Check(AboutWindow.SelectMacAsset(zipFallback.RootElement, "Eason4869/deskpet", "x86_64")?.Name == intelZip, "ZIP remains valid when no compatible DMG exists");
 
+    var migrationDirectory = Path.Combine(directory, "upgrade-from-0.5.6");
+    var legacy = new PetSettings { OnboardingState = "completed", OnboardingStep = 12, LastOnboardingSeries = "0.5" };
+    Check(!OnboardingUpgrade.Prepare(legacy, "0.5.6").ShowGuide, "actual 0.5.6 completed configuration is already claimed in 0.5 series");
+    new TestRuntime(migrationDirectory).InitializeProtection();
+    var migrationStore = new SettingsStore(Path.Combine(migrationDirectory, "settings.json")); migrationStore.Save(legacy);
+    using (var upgraded = new DesktopController(new ClassicDesktopStyleApplicationLifetime(), new TestRuntime(migrationDirectory)))
+    {
+        Check(upgraded.ShouldShowAutomaticGuide && upgraded.Settings.OnboardingState == "new" && upgraded.Settings.OnboardingStep == 0, "actual saved 0.5.6 configuration triggers 0.6.0 UI guide at first step");
+        Check(migrationStore.Load().LastOnboardingSeries == "0.6", "0.6 upgrade is persisted before opening UI guide");
+        var upgradedGuide = new GuideWindow(upgraded); upgradedGuide.Show(); upgradedGuide.Close(); Dispatcher.UIThread.RunJobs();
+        Check(migrationStore.Load().OnboardingState == "deferred", "closing upgraded UI guide persists the deferred state");
+        upgraded.Pet.Close();
+    }
+    using (var reopened = new DesktopController(new ClassicDesktopStyleApplicationLifetime(), new TestRuntime(migrationDirectory)))
+    {
+        Check(!reopened.ShouldShowAutomaticGuide && reopened.Settings.LastOnboardingSeries == "0.6", "restarting actual 0.6.0 after closing upgrade guide never opens it again");
+        reopened.Pet.Close();
+    }
     var runtime = new TestRuntime(Path.Combine(directory, "data"));
     using var controller = new DesktopController(new ClassicDesktopStyleApplicationLifetime(), runtime);
     Check(controller.ShouldShowAutomaticGuide, "fresh install opens initial guide once");
     controller.Settings.OnboardingState = "completed"; controller.Save();
     using (var restarted = new DesktopController(new ClassicDesktopStyleApplicationLifetime(), new TestRuntime(Path.Combine(directory, "data")))) { Check(!restarted.ShouldShowAutomaticGuide, "same-series restart does not reopen completed guide"); restarted.Pet.Close(); }
-    Check(!OnboardingUpgrade.Prepare(controller.Settings, "0.5.99").ShowGuide, "patch upgrade does not show UI guide");
-    var upgrade = OnboardingUpgrade.Prepare(controller.Settings, "0.6.0"); Check(upgrade.ShowGuide && controller.Settings.OnboardingStep == 0, "series upgrade resets actual UI guide state");
-    Check(!OnboardingUpgrade.Prepare(controller.Settings, "0.6.1").ShowGuide, "claimed series guide not retriggered");
-    Check(!OnboardingUpgrade.Prepare(controller.Settings, "0.5.5").ShowGuide, "downgrade does not reopen UI guide");
+    Check(!OnboardingUpgrade.Prepare(controller.Settings, "0.6.99").ShowGuide, "patch upgrade does not show UI guide");
+    var upgrade = OnboardingUpgrade.Prepare(controller.Settings, "0.7.0"); Check(upgrade.ShowGuide && controller.Settings.OnboardingStep == 0, "next series upgrade resets actual UI guide state");
+    Check(!OnboardingUpgrade.Prepare(controller.Settings, "0.7.1").ShowGuide, "claimed next series guide not retriggered");
+    Check(!OnboardingUpgrade.Prepare(controller.Settings, "0.6.0").ShowGuide, "downgrade does not reopen UI guide");
     var windows = new Window[] { new ChatWindow(controller, true), new ChatWindow(controller, false), new SettingsWindow(controller), new AboutWindow(controller), new LiveWindow(controller) };
     foreach (var window in windows) { window.Show(); window.Measure(new Size(900, 800)); window.Arrange(new Rect(0, 0, 900, 800)); Dispatcher.UIThread.RunJobs(); Check(window.IsVisible && window.Bounds.Width > 0, window.GetType().Name + " opens with actual controls"); }
     var settings = (SettingsWindow)windows[2];

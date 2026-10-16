@@ -71,6 +71,25 @@ class MacPackagingTests(unittest.TestCase):
         self.assertTrue(all('runtime' not in args for args in calls))
         self.assertTrue(all('--timestamp' not in args for args in calls))
 
+    def test_managed_files_are_signed_before_bundle_executable(self):
+        self.make()
+        with patch('mac_package.run') as command:
+            sign_bundle(self.app, 'arm64', '0.5.5', 'preview')
+        signed = [call.args[0][-1] for call in command.call_args_list if '--sign' in call.args[0]]
+        managed = self.app / 'Contents/MacOS/DeskPet.dll'
+        apphost = self.app / 'Contents/MacOS/DeskPet'
+        self.assertIn(managed, signed)
+        self.assertLess(signed.index(managed), signed.index(apphost))
+
+    def test_release_native_helpers_have_hardened_runtime(self):
+        self.binary(self.publish / 'createdump')
+        create_bundle(self.publish, self.app, 'arm64', '0.5.5', 'release', self.icon)
+        with patch.dict(os.environ, {'MACOS_SIGN_IDENTITY': 'Developer ID Application: Example (ABCDEFGHIJ)', 'MACOS_NOTARY_PROFILE': 'profile'}), patch('mac_package.run') as command:
+            sign_bundle(self.app, 'arm64', '0.5.5', 'release')
+        helper = next(call.args[0] for call in command.call_args_list if Path(call.args[0][-1]).name == 'createdump')
+        self.assertIn('runtime', helper)
+        self.assertIn('--timestamp', helper)
+
     def test_missing_native_bridge_rejected(self):
         (self.publish / 'libDeskPetMac.dylib').unlink()
         with self.assertRaisesRegex(PackagingError, 'libDeskPetMac'):

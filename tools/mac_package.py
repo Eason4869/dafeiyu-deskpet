@@ -169,14 +169,19 @@ def create_icon(output: Path):
 def sign_bundle(app: Path, arch: str, version: str, mode: str):
     identity = release_requirements(os.environ)[0] if mode == 'release' else '-'
     report = validate_bundle(app, arch, version, mode)
-    for name in sorted(report['native_binaries'], key=lambda n: (n == 'DeskPet', -n.count('/'), n)):
+    # codesign treats .dll files in Contents/MacOS as nested code as well.
+    # Sign every payload file before apphost; ditto preserves the generic
+    # file signatures in extended attributes when producing DMG and ZIP.
+    payload = app / 'Contents/MacOS'
+    files = [path.relative_to(payload).as_posix() for path in checked_files(payload)]
+    for name in sorted(files, key=lambda n: (n == 'DeskPet', -n.count('/'), n)):
         args = ['codesign', '--force', '--sign', identity]
         if mode == 'release':
             args += ['--timestamp']
+            if name in report['native_binaries']:
+                args += ['--options', 'runtime']
         if name == 'DeskPet':
             args += ['--entitlements', ROOT / 'installer/macos/DeskPet.entitlements']
-            if mode == 'release':
-                args += ['--options', 'runtime']
         run(args + [app / 'Contents/MacOS' / name])
     # Ad-hoc signatures have no Team ID. Hardened library validation would
     # reject the separately signed .NET runtime before managed startup.
@@ -257,9 +262,14 @@ def main():
     stem = f'DeskPet-macOS-{version}-{args.arch}{suffix}'
     archive = output / (stem + '.zip')
     run(['ditto', '-c', '-k', '--keepParent', app, archive])
+    zip_root = output / 'extracted-zip'
+    zip_root.mkdir()
+    run(['ditto', '-x', '-k', archive, zip_root])
+    validate_bundle(zip_root / 'DeskPet.app', args.arch, version, args.mode)
+    run(['codesign', '--verify', '--deep', '--strict', zip_root / 'DeskPet.app'])
     image_root = output / 'disk-image'
     image_root.mkdir()
-    shutil.copytree(app, image_root / 'DeskPet.app', symlinks=True)
+    run(['ditto', app, image_root / 'DeskPet.app'])
     (image_root / 'Applications').symlink_to('/Applications', target_is_directory=True)
     (image_root / '安装说明.txt').write_text('将 DeskPet.app 拖入 Applications，再从应用程序打开。\n' + ('这是未经 Apple Developer ID 签名或公证的预览，尚未正式发布。\n' if args.mode == 'preview' else ''), encoding='utf-8')
     dmg = output / (stem + '.dmg')
@@ -282,6 +292,7 @@ def main():
     finally:
         run(['hdiutil', 'detach', mount])
     report.update({'signature': 'Developer ID' if args.mode == 'release' else 'ad-hoc (not Developer ID)',
+                   'archives_verified': ['zip', 'dmg'],
                    'notarized': args.mode == 'release', 'runtime_verified': False,
                    'artifacts': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in [archive, dmg]}})
     (output / 'SHA256SUMS.txt').write_text(''.join(f'{digest}  {name}\n' for name, digest in report['artifacts'].items()), encoding='ascii')

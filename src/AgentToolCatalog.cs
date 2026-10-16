@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 namespace Dafeiyu
@@ -22,13 +22,20 @@ namespace Dafeiyu
             D("create_directory","创建目录及所需父目录。",false,Fields("path",P("string","目录路径")),"path"),
             D("open_directory","在资源管理器中打开现有目录。",false,Fields("path",P("string","已有目录")),"path"),
             D("find_files","按 glob 查找文件，例如 **/*.cs；跳过依赖与构建目录。使用 next_offset 分页。",true,Fields("path",P("string","目录，默认 ."),"pattern",P("string","路径模式"),"offset",P("integer","跳过匹配项"),"limit",P("integer","1～200 项，默认 100")),"pattern"),
-            D("read_files","批量读取最多 8 个 UTF-8 文件；总输出有界，过长时单独分段读取。",true,Fields("paths",new{type="array",items=new{type="string"},maxItems=8},"offset",P("integer","每个文件跳过行数，默认 0"),"limit",P("integer","每个文件行数，默认 100")),"paths")
+            D("read_files","批量读取最多 8 个 UTF-8 文件；总输出有界，过长时单独分段读取。",true,Fields("paths",new{type="array",items=new{type="string"},maxItems=8},"offset",P("integer","每个文件跳过行数，默认 0"),"limit",P("integer","每个文件行数，默认 100")),"paths"),
+            D("apply_patch","预检后精确修改多个文件，最多 20 个。已有文件提供 path/old_text/new_text，新建文件提供 path/content。",false,Fields("edits",new{type="array",items=new{type="object"},maxItems=20}),"edits"),
+            D("list_changes","列出本任务实际文件变更、原文件备份与恢复状态。",true,Fields()),
+            D("restore_file","从本任务原文件备份恢复；文件又被外部修改时拒绝。",false,Fields("path",P("string","需恢复的文件路径")),"path"),
+            D("update_plan","更新任务步骤与进度，最多 20 步；步骤状态为 pending/in_progress/complete，同时最多一步进行中。",true,Fields("steps",new{type="array",items=new{type="object"},maxItems=20}),"steps"),
+            D("list_commands","列出用户为当前项目配置并授权的命令 ID。",true,Fields()),
+            D("run_command","执行已授权的项目命令 ID；不能提供自由命令或更改参数，返回实际退出码与输出。",false,Fields("command_id",P("string","来自 list_commands 的命令 ID")),"command_id"),
+            D("read_output","分页读取本任务已执行命令的有界输出。",true,Fields("command_id",P("string","命令 ID"),"output_id",P("string","历史工具输出 ID；与 command_id 二选一"),"offset",P("integer","字符偏移，默认 0"),"limit",P("integer","1～12000 字符")))
         };
         internal static bool IsReadOnly(string name){var tool=Definitions.FirstOrDefault(d=>d.Name==name);return tool!=null && tool.ReadOnly;}
-        internal static void Schemas(bool plan,out object[] openai,out object[] anthropic)
+        internal static void Schemas(bool plan,bool commands,out object[] openai,out object[] anthropic)
         {
             var a=new List<object>();var b=new List<object>();
-            foreach(var d in Definitions.Where(d=>!plan || d.ReadOnly)){
+            foreach(var d in Definitions.Where(d=>(!plan || d.ReadOnly) && (commands || (d.Name!="run_command" && d.Name!="list_commands")))){
                 var schema=new{type="object",properties=d.Properties,required=d.Required,additionalProperties=false};
                 a.Add(new{type="function",function=new{name=d.Name,description=d.Description,parameters=schema}});
                 b.Add(new{name=d.Name,description=d.Description,input_schema=schema});

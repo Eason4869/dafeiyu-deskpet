@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -20,7 +20,7 @@ namespace Dafeiyu
     // https://github.com/Celebez/OpenManus-Lite (MIT), think -> tools -> observations -> think.
     public sealed partial class ApiClient : IAgentConversationApi
     {
-        private const int AgentMaximumTurns=12,AgentMaximumArguments=32768;
+        private const int AgentMaximumTurns=12,AgentMaximumArguments=131072;
         private const int AgentMaximumText=200000,AgentMaximumResults=120000;
 
         // onDelta is provisional within each round. Before the first running tool event,
@@ -52,6 +52,7 @@ namespace Dafeiyu
                 if(anthropic)system.AppendLine(instruction);
                 else history.Insert(0,new {role="system",content=instruction});
             }
+            var failedCalls=new Dictionary<string,int>();
             int generated=0,results=0,calls=0;long tokens=0,wireBytes=0;
             Action<string> text=delegate(string delta){if(delta==null)return;generated+=delta.Length;if(generated>AgentMaximumText)throw new ApiException("Agent 内容已达到本次上限，请拆分任务后继续。");if(onDelta!=null)onDelta(delta);};
             Action<string> reasoning=delegate(string delta){if(delta==null)return;generated+=delta.Length;if(generated>AgentMaximumText)throw new ApiException("Agent 内容已达到本次上限，请拆分任务后继续。");if(onReasoning!=null)onReasoning(delta);};
@@ -98,7 +99,7 @@ namespace Dafeiyu
                             {
                                 overall.Token.ThrowIfCancellationRequested();
                                 var item=new AgentToolEvent{Id=call.Id,Name=call.Name,Summary=AgentToolSummary(call,"running"),Status="running"};
-                                if(onToolEvent!=null)onToolEvent(item.Copy());
+                                workspace.RecordTool(item);if(onToolEvent!=null)onToolEvent(item.Copy());
                                 overall.Token.ThrowIfCancellationRequested();
                                 var watch=Stopwatch.StartNew();string result;
                                 try
@@ -109,7 +110,7 @@ namespace Dafeiyu
                                 catch(OperationCanceledException)
                                 {
                                     item.Status="error";item.Summary="工具已取消";item.ElapsedMilliseconds=watch.ElapsedMilliseconds;
-                                    if(onToolEvent!=null)onToolEvent(item.Copy());throw;
+                                    workspace.RecordTool(item);if(onToolEvent!=null)onToolEvent(item.Copy());throw;
                                 }
                                 catch(Exception e)
                                 {
@@ -119,13 +120,17 @@ namespace Dafeiyu
                                 result=result??"";
                                 bool error=result.StartsWith("错误：",StringComparison.Ordinal);
                                 item.Status=error?"error":"complete";item.Summary=AgentToolSummary(call,item.Status);item.ElapsedMilliseconds=watch.ElapsedMilliseconds;
-                                if(onToolEvent!=null)onToolEvent(item.Copy());
+                                workspace.RecordTool(item,result);if(onToolEvent!=null)onToolEvent(item.Copy());
+                                string failureKey=call.Name+"\n"+call.Arguments.ToString();int failures;
+                                if(error){failedCalls.TryGetValue(failureKey,out failures);failedCalls[failureKey]=++failures;if(failures>=3)throw new ApiException("同一工具已连续重复失败三次，任务已停止；请检查错误和项目现状后继续。");}else failedCalls.Remove(failureKey);
                                 results+=result.Length;
+                                if(results>AgentMaximumResults)results=AgentContextBudget.Compact(history,anthropic)+result.Length;
                                 if(results>AgentMaximumResults)throw new ApiException("Agent 工具结果已达到本次上限，请缩小读取或搜索范围。");
                                 if(anthropic)toolResults.Add(new {type="tool_result",tool_use_id=call.Id,content=result,is_error=error});
                                 else history.Add(new {role="tool",tool_call_id=call.Id,content=result});
                             }
                             if(anthropic)history.Add(new {role="user",content=toolResults});
+                            if(results>80000)results=AgentContextBudget.Compact(history,anthropic);
                         }
                     }
                     throw new ApiException("Agent 已达到本次工具循环上限，请拆分任务后继续。");
@@ -168,7 +173,7 @@ namespace Dafeiyu
             internal string Id="",Name="";internal readonly StringBuilder Arguments=new StringBuilder();
             internal void Validate()
             {
-                if(String.IsNullOrWhiteSpace(Id) || Id.Length>256 || String.IsNullOrWhiteSpace(Name) || Name.Length>128 || Arguments.Length>AgentMaximumArguments)throw AgentInvalid();
+                if(String.IsNullOrWhiteSpace(Id) || Id.Length>256 || String.IsNullOrWhiteSpace(Name) || Name.Length>128 || Arguments.Length>(Name=="apply_patch"?AgentMaximumArguments:32768))throw AgentInvalid();
                 try{if(!(new JavaScriptSerializer{MaxJsonLength=AgentMaximumArguments}.DeserializeObject(Arguments.ToString()) is Dictionary<string,object>))throw AgentInvalid();}
                 catch(Exception e){if(!Malformed(e))throw;throw AgentInvalid();}
             }
@@ -177,12 +182,12 @@ namespace Dafeiyu
         }
         private static string AgentToolSummary(AgentCall call,string status)
         {
-            string operation=call.Name=="read_file"?"读取":call.Name=="write_file"?"写入":call.Name=="edit_file"?"修改":call.Name=="search_files"?"搜索":call.Name=="list_files"?"列出":call.Name=="create_directory"?"创建目录":call.Name=="open_directory"?"打开目录":"执行工具";
+            string operation=call.Name=="read_file"?"读取":call.Name=="write_file"?"写入":call.Name=="edit_file"?"修改":call.Name=="search_files"?"搜索":call.Name=="list_files"?"列出":call.Name=="find_files"?"查找文件":call.Name=="read_files"?"批量读取":call.Name=="apply_patch"?"应用补丁":call.Name=="run_command"?"运行命令":call.Name=="update_plan"?"更新计划":call.Name=="restore_file"?"恢复文件":call.Name=="create_directory"?"创建目录":call.Name=="open_directory"?"打开目录":"执行工具";
             string path="";
             try
             {
                 var args=new JavaScriptSerializer{MaxJsonLength=AgentMaximumArguments}.DeserializeObject(call.Arguments.ToString()) as Dictionary<string,object>;
-                string raw=args==null?null:AgentString(args,"path");
+                string raw=args==null?null:AgentString(args,"path");if(String.IsNullOrEmpty(raw) && call.Name=="run_command" && args!=null)raw=AgentString(args,"command_id");
                 if(String.IsNullOrEmpty(raw) && (call.Name=="list_files" || call.Name=="search_files"))raw=".";
                 // Only the path argument is displayed, including full-access absolute paths.
                 // File content, search text and other arguments never enter the tool log.

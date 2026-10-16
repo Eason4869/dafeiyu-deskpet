@@ -98,6 +98,14 @@ namespace Dafeiyu
                     if (name == "list_files") return ListPage(path, GetInt(args,"offset",0,0,1000000), GetInt(args,"limit",200,1,200), token);
                     if (name == "find_files") return FindFiles(path,GetString(args,"pattern",null),GetInt(args,"offset",0,0,1500),GetInt(args,"limit",100,1,200),token);
                     if (name == "read_files") return ReadFiles(args,token);
+                    if (name == "apply_patch") return ApplyPatch(args,token);
+                    if (name == "restore_file") return RestoreFile(path,token);
+                    if (name == "list_changes") return ListChanges();
+                    if (name == "update_plan") return UpdatePlan(args);
+                    if (name == "list_commands") return ListCommands();
+                    if (name == "run_command") return RunCommand(GetString(args,"command_id",null),token);
+                    if (name == "read_output" && args.ContainsKey("output_id")) return SavedOutput(GetString(args,"output_id",null),GetInt(args,"offset",0,0,24000),GetInt(args,"limit",6000,1,12000));
+                    if (name == "read_output") return ReadOutput(GetString(args,"command_id",null),GetInt(args,"offset",0,0,256*1024),GetInt(args,"limit",6000,1,12000));
                     if (name == "read_file") return ReadFile(path, GetInt(args, "offset", 0, 0, 1000000), GetInt(args, "limit", 200, 1, 1000), token);
                     if (name == "search_files") return Search(path, GetString(args, "query", null), GetString(args,"pattern",""), token);
                     if (name == "create_directory")
@@ -120,6 +128,7 @@ namespace Dafeiyu
                         if (oldText.Length == 0) throw new ArgumentException("old_text 不能为空。");
                         using (LockDirectories(Path.GetDirectoryName(path), false))
                         {
+                            CheckExpected(path,ReadBytes(path,token));
                             string content = ReadText(path, token);
                             int start = content.IndexOf(oldText, StringComparison.Ordinal);
                             if (start < 0) return "错误：未找到 old_text，请先读取当前文件。";
@@ -138,7 +147,7 @@ namespace Dafeiyu
                 catch (FileNotFoundException) { return "错误：文件不存在，请先用 list_files 查看目录。"; }
                 catch (DirectoryNotFoundException) { return "错误：目录不存在，请先用 list_files 查看目录。"; }
                 catch (IOException) { return "错误：文件操作失败，文件可能被占用或工作目录已变化。"; }
-                catch (System.ComponentModel.Win32Exception) { return "错误：无法打开资源管理器，请确认目录和系统权限。"; }
+                catch (System.ComponentModel.Win32Exception) { return name=="run_command"?"错误：无法执行配置的命令，请检查程序路径、进程控制权限和系统限制。":"错误：无法打开资源管理器，请确认目录和系统权限。"; }
                 catch (InvalidOperationException) { return "错误：JSON 参数无效或操作超出限制。"; }
                 finally { gate.Release(); }
             }, token);
@@ -268,6 +277,7 @@ namespace Dafeiyu
         private string ReadText(string path, CancellationToken token)
         {
             byte[] bytes = ReadBytes(path, token);
+            observed[path]=ContentHash(bytes);
             return DecodeText(bytes);
         }
         private static string DecodeText(byte[] bytes)
@@ -302,10 +312,10 @@ namespace Dafeiyu
             }
         }
 
-        private string WriteFile(string path, string content, CancellationToken token)
+        private string WriteFile(string path, string content, CancellationToken token, byte[] exactBytes=null)
         {
             if (path == Root) throw new ArgumentException("写入路径必须是文件。");
-            byte[] bytes = Utf8.GetBytes(content);
+            byte[] bytes = exactBytes??Utf8.GetBytes(content);
             if (bytes.Length > MaxFileBytes) throw new ArgumentException("写入内容超过 1 MiB 限制。");
             if (content.IndexOf('\0') >= 0) throw new ArgumentException("写入内容必须是 UTF-8 文本。");
             using (LockDirectories(Path.GetDirectoryName(path), true))
@@ -314,10 +324,12 @@ namespace Dafeiyu
                 bool exists = File.Exists(path);
                 string backupName = null;
                 string backupPath = null;
+                string beforeHash=null;
                 if (exists)
                 {
                     // Keep the original bytes, including BOM; decoding also refuses accidental binary overwrites.
                     byte[] previous = ReadBytes(path, token);
+                    CheckExpected(path,previous);beforeHash=ContentHash(previous);
                     DecodeText(previous);
                     if (BackupEnabled)
                     {
@@ -339,6 +351,7 @@ namespace Dafeiyu
                     }
                 }
                 else if (Directory.Exists(path)) throw new ArgumentException("写入路径是目录。");
+                else if(observed.ContainsKey(path))throw new ArgumentException("读取过的文件已被删除，请核对后重试。");
                 string temp = Path.Combine(Path.GetDirectoryName(path), ".deskpet-write-" + Guid.NewGuid().ToString("N") + ".tmp");
                 try
                 {
@@ -349,10 +362,12 @@ namespace Dafeiyu
                     {
                         WriteContents(stream, bytes, token);
                         token.ThrowIfCancellationRequested();
+                        if(exists)CheckExpected(path,ReadBytes(path,token));
                         Rename(handle, path, exists);
                     }
                 }
                 finally { if (File.Exists(temp)) File.Delete(temp); }
+                RecordChange(path,beforeHash,ContentHash(bytes),backupPath);
                 return "已写入 " + Relative(path) + "（" + bytes.Length + " 字节）" + (backupName == null ? "。" : "；原文件备份：" + Relative(backupPath) + "。");
             }
         }
@@ -496,7 +511,7 @@ namespace Dafeiyu
         private static string Clip(string value) { return value.Length <= MaxResultChars ? value : value.Substring(0, MaxResultChars - 20) + "\n[结果已截断]"; }
         private void BuildSchemas()
         {
-            object[] a,b;AgentToolCatalog.Schemas(readOnly,out a,out b);OpenAITools=a;AnthropicTools=b;
+            object[] a,b;AgentToolCatalog.Schemas(readOnly,CommandsEnabled,out a,out b);OpenAITools=a;AnthropicTools=b;
         }
     }
 }

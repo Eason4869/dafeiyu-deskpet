@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
@@ -92,7 +92,7 @@ namespace Dafeiyu
         private UpdateCoordinator updates;
         private UpdateNoticeWindow updateNotice;
         public bool IsUpdating {get{return updates!=null && updates.IsApplying;}}
-        public bool HasHistorySaveWarning {get{return Settings.SaveChatHistory && conversation!=null && !String.IsNullOrEmpty(conversation.HistoryWarning);}}
+        public bool HasHistorySaveWarning {get{return Settings.SaveChatHistory && conversation!=null && (!String.IsNullOrEmpty(conversation.HistoryWarning) || !String.IsNullOrEmpty(conversation.AgentTaskWarning));}}
         public UpdateCoordinator Updates {get{return updates ?? (updates=new UpdateCoordinator(this));}}
         public bool CanApplyUpdate(bool manual)
         {

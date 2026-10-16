@@ -27,6 +27,7 @@ namespace Dafeiyu
             [DataMember] public int Version=1;
             [DataMember] public List<ChatMessage> Messages;
         }
+        public string DirectoryPath {get{return directory;}}
         public HistoryStore(string directoryPath=null)
         { directory=Path.GetFullPath(directoryPath??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"DeskPet","history")); }
         private string FilePath(string petId)

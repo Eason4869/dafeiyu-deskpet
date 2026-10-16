@@ -154,7 +154,7 @@ namespace Dafeiyu.Tests
                 string fullGit = Path.Combine(outside, ".git", "config");
                 Check(!Error(Call(full, "write_file", new { path = fullGit, content = "fixture git metadata" })) && File.ReadAllText(fullGit) == "fixture git metadata", "full access removes artificial git restriction");
                 Check(Call(full, "list_files", new { path = outside }).Contains(".git"), "full access lists git directory");
-                Check(Call(full, "search_files", new { path = outside, query = "fixture git metadata" }).Contains("config"), "full access searches git directory");
+                Check(Call(full, "search_files", new { path = Path.GetDirectoryName(fullGit), query = "fixture git metadata" }).Contains("config"), "full access searches git directory");
                 string systemNamed = Path.Combine(outside, "System Volume Information", "note.txt");
                 Check(!Error(Call(full, "write_file", new { path = systemNamed, content = "ordinary fixture path" })), "full access removes artificial system-name restriction");
                 full.DirectoryOpener = delegate(string path) { opened = path; }; opened = null;

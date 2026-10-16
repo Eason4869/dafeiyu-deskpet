@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -14,7 +14,8 @@ namespace Dafeiyu
         readonly PetWindow pet;
         readonly ComboBox access;
         readonly TextBox workspace,goal,turns,timeout;
-        readonly CheckBox plan,backup,detailed;
+        readonly CheckBox plan,backup,detailed,commandEnabled;
+        readonly TextBox commandTimeout;readonly AgentCommandEditor commandEditor;
         readonly TextBlock notice,permissionDescription;
         PetSettings baseline;
         public bool HasUnsavedChanges
@@ -23,7 +24,7 @@ namespace Dafeiyu
             {
                 return baseline!=null && (access.SelectedIndex!=(baseline.AgentFullAccess?0:1) || workspace.Text!=(baseline.AgentWorkspace??"") || goal.Text!=(baseline.AgentGoal??"") ||
                     plan.IsChecked!=baseline.AgentPlanMode || backup.IsChecked!=baseline.AgentBackupFiles || detailed.IsChecked!=baseline.AgentDetailedProcess ||
-                    turns.Text!=baseline.AgentMaxTurns.ToString(CultureInfo.InvariantCulture) || timeout.Text!=baseline.AgentTimeoutMinutes.ToString(CultureInfo.InvariantCulture));
+                    commandEnabled.IsChecked!=baseline.AgentCommandsEnabled || commandTimeout.Text!=baseline.AgentCommandTimeoutSeconds.ToString(CultureInfo.InvariantCulture) || commandEditor.Json!=(baseline.AgentCommandRecipes??"[]") || turns.Text!=baseline.AgentMaxTurns.ToString(CultureInfo.InvariantCulture) || timeout.Text!=baseline.AgentTimeoutMinutes.ToString(CultureInfo.InvariantCulture));
             }
         }
         public WorkSettingsPanel(PetWindow companion)
@@ -57,6 +58,11 @@ namespace Dafeiyu
             tasks.Children.Add(Ui.Text("一轮代表一次模型请求。多轮任务与附件按当前服务商规则计费；达到轮数或时限后停止后续操作，已完成的修改会保留。",12,Ui.Muted));
             detailed=Ui.Toggle("默认显示详细过程",false,delegate{});detailed.Name="AgentDetailedProcess";tasks.Children.Add(detailed);
             tasks.Children.Add(Ui.Text("展示模型实际返回的思考与工具记录；正式正文开始后仍自动隐藏过程，可在回复的更多菜单中重新查看。",12,Ui.Muted));root.Children.Add(Card(tasks));
+            var commandCard=new StackPanel();commandCard.Children.Add(Heading("项目命令"));
+            commandEnabled=Ui.Toggle("允许执行已配置的构建和测试命令",false,delegate{});commandEnabled.Name="AgentCommandsEnabled";commandCard.Children.Add(commandEnabled);
+            commandCard.Children.Add(Ui.Text("命令绑定保存时选择的项目目录；使用当前 Windows 账户权限。工作目录不是系统沙箱。计划模式禁止执行命令。",12,Ui.Muted));
+            commandCard.Children.Add(Label("单条命令超时（1～600 秒）"));commandTimeout=Ui.Field();commandTimeout.Name="AgentCommandTimeoutSeconds";commandCard.Children.Add(commandTimeout);
+            commandEditor=new AgentCommandEditor(()=>workspace.Text);commandCard.Children.Add(commandEditor);root.Children.Add(Card(commandCard));
             var save=Ui.Button("保存工作设置",true);save.Name="SaveWorkSettings";save.HorizontalAlignment=HorizontalAlignment.Left;save.Click+=delegate{Save();};root.Children.Add(save);
             notice=Ui.Text("",12,Ui.Muted);notice.Name="WorkSettingsNotice";notice.Margin=new Thickness(0,10,0,0);root.Children.Add(notice);
             Content=new ScrollViewer{Content=root,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};RefreshState();
@@ -74,6 +80,7 @@ namespace Dafeiyu
         {
             if(HasUnsavedChanges)return;
             baseline=pet.Settings.Copy();access.SelectedIndex=baseline.AgentFullAccess?0:1;workspace.Text=baseline.AgentWorkspace??"";goal.Text=baseline.AgentGoal??"";
+            commandEnabled.IsChecked=baseline.AgentCommandsEnabled;commandTimeout.Text=baseline.AgentCommandTimeoutSeconds.ToString(CultureInfo.InvariantCulture);commandEditor.Load(baseline.AgentCommandRecipes);baseline.AgentCommandRecipes=commandEditor.Json;
             plan.IsChecked=baseline.AgentPlanMode;backup.IsChecked=baseline.AgentBackupFiles;detailed.IsChecked=baseline.AgentDetailedProcess;
             turns.Text=baseline.AgentMaxTurns.ToString(CultureInfo.InvariantCulture);timeout.Text=baseline.AgentTimeoutMinutes.ToString(CultureInfo.InvariantCulture);RefreshPermissionDescription();
         }
@@ -88,7 +95,10 @@ namespace Dafeiyu
                 if(!Int32.TryParse(timeout.Text,NumberStyles.None,CultureInfo.InvariantCulture,out maxMinutes) || maxMinutes<1 || maxMinutes>60)throw new InvalidOperationException("任务时限应为 1～60 的整数分钟。");
                 string target=ValidateDirectory(workspace.Text,access.SelectedIndex==1);
                 if(goal.Text.Length>4000)throw new InvalidOperationException("持续目标不能超过 4000 个字符，请缩短后保存。");
-                candidate=pet.Settings.Copy();candidate.AgentFullAccess=access.SelectedIndex==0;candidate.AgentWorkspace=target;candidate.AgentPlanMode=plan.IsChecked==true;
+                int commandSeconds;if(!Int32.TryParse(commandTimeout.Text,out commandSeconds) || commandSeconds<1 || commandSeconds>600)throw new InvalidOperationException("命令超时应为 1～600 的整数秒。");
+                candidate=pet.Settings.Copy();candidate.AgentCommandsEnabled=commandEnabled.IsChecked==true;candidate.AgentCommandRecipes=commandEditor.Json;candidate.AgentCommandTimeoutSeconds=commandSeconds;
+                if(candidate.AgentCommandsEnabled){if(!Directory.Exists(target))throw new InvalidOperationException("执行命令前请选择已存在的项目目录。");new AgentWorkspace(target,access.SelectedIndex==1).ConfigureCommands(true,candidate.AgentCommandRecipes);}
+                candidate.AgentFullAccess=access.SelectedIndex==0;candidate.AgentWorkspace=target;candidate.AgentPlanMode=plan.IsChecked==true;
                 candidate.AgentGoal=goal.Text.Trim();candidate.AgentBackupFiles=backup.IsChecked==true;candidate.AgentMaxTurns=maxTurns;candidate.AgentTimeoutMinutes=maxMinutes;candidate.AgentDetailedProcess=detailed.IsChecked==true;
             }
             catch(Exception e){if(!ValidationError(e))throw;notice.Text=e.Message;return false;}
@@ -104,6 +114,7 @@ namespace Dafeiyu
         }
         static void ApplyWorkFields(PetSettings from,PetSettings to)
         {
+            to.AgentCommandsEnabled=from.AgentCommandsEnabled;to.AgentCommandRecipes=from.AgentCommandRecipes;to.AgentCommandTimeoutSeconds=from.AgentCommandTimeoutSeconds;
             to.AgentFullAccess=from.AgentFullAccess;to.AgentWorkspace=from.AgentWorkspace;to.AgentPlanMode=from.AgentPlanMode;to.AgentGoal=from.AgentGoal;
             to.AgentBackupFiles=from.AgentBackupFiles;to.AgentMaxTurns=from.AgentMaxTurns;to.AgentTimeoutMinutes=from.AgentTimeoutMinutes;to.AgentDetailedProcess=from.AgentDetailedProcess;
         }

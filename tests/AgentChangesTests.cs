@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -23,6 +24,11 @@ namespace Dafeiyu.Tests
             Check(Call(w,"restore_file",new{path="a.txt"}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"a.txt"))=="external","restore refuses overwriting newer external edits");
             Check(!Call(w,"restore_file",new{path="b.txt"}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"b.txt"))=="beta","restore uses original file backup");
             Check(!Call(w,"apply_patch",new{edits=new[]{new{path="nested/new/code.txt",content="created"}}}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"nested/new/code.txt"))=="created","patch can create nested files without preflight directory mutations");
+            File.WriteAllText(Path.Combine(root,"parent.txt"),"regular file");File.WriteAllText(Path.Combine(root,"preflight.txt"),"unchanged");
+            Check(Call(w,"apply_patch",new{edits=new object[]{new{path="preflight.txt",old_text="unchanged",new_text="bad"},new{path="parent.txt/child.txt",content="bad"}}}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"preflight.txt"))=="unchanged","regular-file parent is rejected before any patch writes");
+            Check(Call(w,"apply_patch",new{edits=new[]{new{path="tree",content="file"},new{path="tree/child.txt",content="child"}}}).StartsWith("错误：") && !File.Exists(Path.Combine(root,"tree")),"conflicting patch ancestor paths fail before creating files");
+            var capped=new AgentWorkspace(root);for(int batch=0;batch<16;batch++){var edits=Enumerable.Range(batch*16,16).Select(i=>new{path="cap-"+i+".txt",content="original"}).ToArray();Check(!Call(capped,"apply_patch",new{edits=edits}).StartsWith("错误："),"bounded change batch "+batch);}
+            Check(Call(capped,"write_file",new{path="overflow.txt",content="excess"}).StartsWith("错误：") && !File.Exists(Path.Combine(root,"overflow.txt")) && capped.Changes.Count==256,"change limit rejects new mutations while retaining all recovery records");
             w.ReadOnly=true;Check(Call(w,"apply_patch",patch).StartsWith("错误：") && Call(w,"restore_file",new{path="b.txt"}).StartsWith("错误："),"plan mode rejects patch and restore");
             Console.WriteLine("Agent changes tests: "+n+" passed");return 0;
         }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}}

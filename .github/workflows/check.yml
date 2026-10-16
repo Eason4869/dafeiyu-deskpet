@@ -1,4 +1,4 @@
-锘縩ame: Windows checks
+name: Windows checks
 on:
   push:
     branches: [main, dev, codex/macos-0.6.0]
@@ -9,7 +9,7 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Build and run tests

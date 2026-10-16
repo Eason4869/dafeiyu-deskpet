@@ -49,7 +49,7 @@ namespace Dafeiyu
             public readonly List<AgentToolEvent> ToolEvents=new List<AgentToolEvent>();public bool Regenerating;
         }
         public ConversationSession(IConversationApi transport,IReplySpeech output,Func<IAudioRecorder> recorderFactory,HistoryStore historyStore=null,Func<bool> persistenceEnabled=null)
-        { api=transport;speech=output;microphone=recorderFactory;store=historyStore;taskStore=store==null?null:new AgentTaskStore(System.IO.Path.Combine(store.DirectoryPath,"agent-tasks"));saveEnabled=persistenceEnabled??delegate{return true;};History=new ConversationLog();histories[""]=History;LastNotice="";if(store!=null)store.WarningChanged+=OnWarningChanged; }
+        { api=transport;speech=output;microphone=recorderFactory;store=historyStore;taskStore=store==null?null:new AgentTaskStore(System.IO.Path.Combine(store.DirectoryPath,"agent-tasks"));if(taskStore!=null)taskStore.WarningChanged+=OnWarningChanged;saveEnabled=persistenceEnabled??delegate{return true;};History=new ConversationLog();histories[""]=History;LastNotice="";if(store!=null)store.WarningChanged+=OnWarningChanged; }
         private void OnWarningChanged() { if(!disposed && StateChanged!=null)StateChanged(); }
         private ConversationLog GetHistory(string id)
         {
@@ -293,8 +293,9 @@ namespace Dafeiyu
         {if(!String.Equals(System.IO.Path.GetFullPath(settings.AgentWorkspace).TrimEnd('\\','/'),System.IO.Path.GetFullPath(task.Workspace).TrimEnd('\\','/'),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("当前项目与任务检查点不一致，请先切回原项目。");}
         public async Task ClearAgentTaskAsync(PetSettings settings)
         {
-            string id=PersonaId;var op=Begin(settings,ConversationStage.Thinking);try{if(taskStore!=null)await taskStore.ClearAsync(id,settings.AgentWorkspace);lock(gate)agentTasks.Remove(id);var changed=AgentTaskChanged;if(changed!=null)changed();}finally{End(op);}
+            string id=PersonaId;var op=Begin(settings,ConversationStage.Thinking);try{if(taskStore!=null){await taskStore.ClearAsync(id,settings.AgentWorkspace);if(taskStore.HasWarning(id,settings.AgentWorkspace))throw new InvalidOperationException("任务记录尚未清除，请检查数据目录权限。");}lock(gate)agentTasks.Remove(id);var changed=AgentTaskChanged;if(changed!=null)changed();}finally{End(op);}
         }
+        public async Task RetryAgentTaskSaveAsync(){if(taskStore==null)return;await taskStore.RetryPendingAsync();if(!disposed && StateChanged!=null)StateChanged();}
         public Task ResumeAgentTaskAsync(PetSettings settings,string name)
         {
             if(!settings.AgentEnabled)throw new InvalidOperationException("请先切换到工作模式再继续任务。");
@@ -365,7 +366,7 @@ namespace Dafeiyu
             if(store!=null)store.WarningChanged-=OnWarningChanged;
             if(op!=null)
             { try {op.Cancel.Cancel();}catch(ObjectDisposedException){} if(op.Recorder!=null) op.Recorder.Dispose(); if(!op.Finishing && Stage==ConversationStage.Recording) End(op); }
-            speech.Dispose(); api.Dispose();
+            if(taskStore!=null)taskStore.WarningChanged-=OnWarningChanged;speech.Dispose(); api.Dispose();
         }
     }
 }

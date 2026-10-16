@@ -52,7 +52,7 @@ namespace Dafeiyu
                 if(anthropic)system.AppendLine(instruction);
                 else history.Insert(0,new {role="system",content=instruction});
             }
-            var failedCalls=new Dictionary<string,int>();
+            string lastFailure=null;int consecutiveFailures=0;
             int generated=0,results=0,calls=0;long tokens=0,wireBytes=0;
             Action<string> text=delegate(string delta){if(delta==null)return;generated+=delta.Length;if(generated>AgentMaximumText)throw new ApiException("Agent 内容已达到本次上限，请拆分任务后继续。");if(onDelta!=null)onDelta(delta);};
             Action<string> reasoning=delegate(string delta){if(delta==null)return;generated+=delta.Length;if(generated>AgentMaximumText)throw new ApiException("Agent 内容已达到本次上限，请拆分任务后继续。");if(onReasoning!=null)onReasoning(delta);};
@@ -121,8 +121,7 @@ namespace Dafeiyu
                                 bool error=result.StartsWith("错误：",StringComparison.Ordinal);
                                 item.Status=error?"error":"complete";item.Summary=AgentToolSummary(call,item.Status);item.ElapsedMilliseconds=watch.ElapsedMilliseconds;
                                 workspace.RecordTool(item,result);if(onToolEvent!=null)onToolEvent(item.Copy());
-                                string failureKey=call.Name+"\n"+call.Arguments.ToString();int failures;
-                                if(error){failedCalls.TryGetValue(failureKey,out failures);failedCalls[failureKey]=++failures;if(failures>=3)throw new ApiException("同一工具及参数已重复失败三次，任务已停止；请检查错误和项目现状后继续。");}else failedCalls.Remove(failureKey);
+                                if(error){string failureKey=call.Name+"\n"+call.Arguments.ToString()+"\n"+result;consecutiveFailures=failureKey==lastFailure?consecutiveFailures+1:1;lastFailure=failureKey;if(consecutiveFailures>=3)throw new ApiException("同一工具及参数已重复失败三次且没有进展，任务已停止；请检查错误和项目现状后继续。");}else{lastFailure=null;consecutiveFailures=0;}
                                 results+=result.Length;
                                 if(results>AgentMaximumResults)results=AgentContextBudget.Compact(history,anthropic)+result.Length;
                                 if(results>AgentMaximumResults)throw new ApiException("Agent 工具结果已达到本次上限，请缩小读取或搜索范围。");

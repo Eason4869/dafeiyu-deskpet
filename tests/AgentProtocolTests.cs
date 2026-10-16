@@ -13,8 +13,10 @@ namespace Dafeiyu.Tests
     public static class AgentProtocolTests
     {
         private static int passed,failed;
-        public static int Main()
+        public static int Main(string[] args)
         {
+            if(args.Length>0 && args[0]=="--changing-error"){int count=File.Exists("count.txt")?Int32.Parse(File.ReadAllText("count.txt")):0;File.WriteAllText("count.txt",(++count).ToString());Console.Error.WriteLine("diagnostic-"+count);return 1;}
+            if(args.Length>0 && args[0]=="--verify-fixture"){Console.WriteLine(File.ReadAllText("verified.txt"));return 0;}
             Run("both native protocols write then read with linked observations",async delegate
             {
                 foreach(bool anthropic in new[]{false,true})using(var folder=new WorkspaceFolder())
@@ -179,6 +181,24 @@ namespace Dafeiyu.Tests
                     using(var server=new Fixture(new[]{Json(body)}))using(var api=new ApiClient())
                     {int events=0;var workspace=new AgentWorkspace(folder.Path){MaximumTurns=3};await Fails(()=>api.ChatAgentAsync(Config(server,false),Messages(),workspace,null,null,e=>events++,false,CancellationToken.None),"循环上限");Equal(0,events);await Within(server.Done);Equal(1,server.Bodies.Count);}
                 }
+            });
+            Run("both protocols patch actual files then execute an authorized verification",async delegate
+            {
+                foreach(bool anthropic in new[]{false,true})using(var folder=new WorkspaceFolder())using(var server=new Fixture(new[]{Json(ToolReply(anthropic,"patch","apply_patch",new{edits=new[]{new{path="verified.txt",content="verified-content"}}})),Json(ToolReply(anthropic,"command","run_command",new{command_id="verify"})),Json(FinalReply(anthropic,"verified"))}))using(var api=new ApiClient())
+                {
+                    var workspace=new AgentWorkspace(folder.Path);workspace.ConfigureCommands(true,J(new[]{new{Id="verify",Executable=System.Reflection.Assembly.GetExecutingAssembly().Location,Workspace=folder.Path,Arguments=new[]{"--verify-fixture"}}}));
+                    Equal("verified",await api.ChatAgentAsync(Config(server,anthropic),Messages(),workspace,null,null,null,false,CancellationToken.None));await Within(server.Done);Equal(0,workspace.CommandResults[0].ExitCode);Assert(workspace.CommandResults[0].Output.Contains("verified-content"),"command did not read the patched file");Assert(server.Bodies[2].Contains("verified-content"),"real command observation absent");Equal(1,workspace.TaskState.Changes.Count);
+                }
+            });
+            Run("successful edits reset the repeated-error streak",async delegate
+            {
+                foreach(bool anthropic in new[]{false,true})using(var folder=new WorkspaceFolder())using(var server=new Fixture(new[]{Json(ToolReply(anthropic,"a","read_file",new{path="missing"})),Json(ToolReply(anthropic,"fix1","write_file",new{path="fix.txt",content="one"})),Json(ToolReply(anthropic,"b","read_file",new{path="missing"})),Json(ToolReply(anthropic,"fix2","write_file",new{path="fix.txt",content="two"})),Json(ToolReply(anthropic,"c","read_file",new{path="missing"})),Json(FinalReply(anthropic,"progress preserved"))}))using(var api=new ApiClient())
+                {Equal("progress preserved",await api.ChatAgentAsync(Config(server,anthropic),Messages(),new AgentWorkspace(folder.Path),null,null,null,false,CancellationToken.None));await Within(server.Done);Equal("two",File.ReadAllText(Path.Combine(folder.Path,"fix.txt")));}
+            });
+            Run("different real command diagnostics reset the error streak",async delegate
+            {
+                foreach(bool anthropic in new[]{false,true})using(var folder=new WorkspaceFolder())using(var server=new Fixture(new[]{Json(ToolReply(anthropic,"a","run_command",new{command_id="test"})),Json(ToolReply(anthropic,"b","run_command",new{command_id="test"})),Json(ToolReply(anthropic,"c","run_command",new{command_id="test"})),Json(FinalReply(anthropic,"new diagnostics retained"))}))using(var api=new ApiClient())
+                {var workspace=new AgentWorkspace(folder.Path);workspace.ConfigureCommands(true,J(new[]{new{Id="test",Executable=System.Reflection.Assembly.GetExecutingAssembly().Location,Workspace=folder.Path,Arguments=new[]{"--changing-error"}}}));Equal("new diagnostics retained",await api.ChatAgentAsync(Config(server,anthropic),Messages(),workspace,null,null,null,false,CancellationToken.None));await Within(server.Done);Assert(workspace.CommandResults[2].Output.Contains("diagnostic-3"),"changing command errors lost");}
             });
             Run("repeated identical errors stop after three real protocol rounds",async delegate
             {

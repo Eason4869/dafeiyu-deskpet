@@ -29,6 +29,7 @@ namespace Dafeiyu
         {
             string expected;if(observed.TryGetValue(path,out expected) && expected!=ContentHash(bytes))throw new ArgumentException("文件在读取后已被外部修改："+Relative(path)+"。请重新读取并核对后重试。");
         }
+        void EnsureChangeCapacity(IEnumerable<string> paths){lock(changes){int additional=paths.Distinct(StringComparer.OrdinalIgnoreCase).Count(path=>!changes.Any(c=>c.Status!="restored" && String.Equals(c.Path,path,StringComparison.OrdinalIgnoreCase)));if(changes.Count+additional>256)throw new ArgumentException("本任务已达到 256 个文件变更记录上限，请完成或清除任务记录后再开始新任务。已有恢复记录已保留。");}}
         void RecordChange(string path,string before,string after,string backup)
         {
             lock(changes){var change=changes.FirstOrDefault(c=>String.Equals(c.Path,path,StringComparison.OrdinalIgnoreCase) && c.Status!="restored");
@@ -44,7 +45,7 @@ namespace Dafeiyu
             foreach(object item in edits){
                 token.ThrowIfCancellationRequested();var edit=item as Dictionary<string,object>;if(edit==null)throw new ArgumentException("编辑项目必须是对象。");
                 string path=Resolve(GetString(edit,"path",null));if(!seen.Add(path))throw new ArgumentException("补丁不能重复编辑同一文件。");
-                string parent=Path.GetDirectoryName(path);while(!Directory.Exists(parent)){token.ThrowIfCancellationRequested();parent=Path.GetDirectoryName(parent);if(parent==null)throw new DirectoryNotFoundException();}
+                string parent=Path.GetDirectoryName(path);while(!Directory.Exists(parent)){if(File.Exists(parent))throw new ArgumentException("补丁父路径是文件："+Relative(parent));token.ThrowIfCancellationRequested();parent=Path.GetDirectoryName(parent);if(parent==null)throw new DirectoryNotFoundException();}
                 using(LockDirectories(parent,false)){
                     string content;
                     if(edit.ContainsKey("content")){
@@ -60,6 +61,8 @@ namespace Dafeiyu
                     prepared.Add(new KeyValuePair<string,string>(path,content));
                 }
             }
+            foreach(var file in prepared)if(prepared.Any(other=>!String.Equals(file.Key,other.Key,StringComparison.OrdinalIgnoreCase) && other.Key.StartsWith(file.Key+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)))throw new ArgumentException("补丁文件路径与另一个文件的父目录冲突。");
+            EnsureChangeCapacity(prepared.Select(p=>p.Key));
             int applied=0;var output=new StringBuilder();
             foreach(var file in prepared){token.ThrowIfCancellationRequested();try{output.AppendLine(WriteFile(file.Key,file.Value,token));applied++;}
                 catch(Exception e){if(!(e is IOException || e is UnauthorizedAccessException || e is ArgumentException))throw;return "错误：补丁部分完成（"+applied+"/"+prepared.Count+"）。已完成变更及备份已记录；请读取文件核对后继续。";}

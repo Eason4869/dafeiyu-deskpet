@@ -143,7 +143,7 @@ namespace Dafeiyu
                 catch (DecoderFallbackException) { return "错误：文件不是有效的 UTF-8 文本，未进行写入。"; }
                 catch (EncoderFallbackException) { return "错误：内容包含无效 Unicode 字符，未进行写入。"; }
                 catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { return "错误：正则搜索超时，请缩小范围或简化表达式。"; }
-            catch (ArgumentException ex) { return "错误：" + ex.Message; }
+                catch (ArgumentException ex) { return "错误：" + ex.Message; }
                 catch (UnauthorizedAccessException) { return RestrictToRoot ? "错误：拒绝访问。请使用工作目录内的普通文件，禁止链接、受保护目录和越界路径。" : "错误：拒绝访问。请检查系统访问权限；禁止设备路径、链接及硬链接。"; }
                 catch (FileNotFoundException) { return "错误：文件不存在，请先用 list_files 查看目录。"; }
                 catch (DirectoryNotFoundException) { return "错误：目录不存在，请先用 list_files 查看目录。"; }
@@ -317,6 +317,7 @@ namespace Dafeiyu
         private string WriteFile(string path, string content, CancellationToken token, byte[] exactBytes=null)
         {
             if (path == Root) throw new ArgumentException("写入路径必须是文件。");
+            EnsureChangeCapacity(new[]{path});
             byte[] bytes = exactBytes??Utf8.GetBytes(content);
             if (bytes.Length > MaxFileBytes) throw new ArgumentException("写入内容超过 1 MiB 限制。");
             if (content.IndexOf('\0') >= 0) throw new ArgumentException("写入内容必须是 UTF-8 文本。");

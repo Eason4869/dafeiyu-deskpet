@@ -11,41 +11,55 @@ internal sealed class DesktopController : IDisposable
 {
     private readonly IClassicDesktopStyleApplicationLifetime lifetime;
     private readonly SettingsStore store;
-    private readonly TrayIcon tray;
+    private readonly DesktopRuntime runtime;
+    private readonly TrayIcon? tray;
     private readonly List<IDisposable> hotkeys = new();
     private ChatWindow? quickChat, fullChat;
     private SettingsWindow? settingsWindow;
+    private LiveWindow? liveWindow;
     private GuideWindow? guide;
     private bool exiting;
+    private readonly bool showAutomaticGuide;
+    internal bool ShouldShowAutomaticGuide => showAutomaticGuide;
+    public Dictionary<string, string> Drafts { get; } = new();
     public PetSettings Settings { get; }
     public List<PetSkin> Skins { get; }
     public PetSkin Skin { get; private set; }
     public ConversationSession Session { get; }
     public ConversationQueue Queue { get; }
+    public DictationSession Dictation { get; }
     public GeminiLiveSession Live { get; }
     public ApiClient Api { get; }
     public PetWindow Pet { get; }
     public string DataDirectory { get; }
     public bool GuideLocked => guide != null;
+    public bool HasOpenPanel => GuideLocked || quickChat?.IsVisible == true || fullChat?.IsVisible == true || settingsWindow?.IsVisible == true || liveWindow?.IsVisible == true;
     public event Action? Changed;
-    public DesktopController(IClassicDesktopStyleApplicationLifetime desktop)
+    public DesktopController(IClassicDesktopStyleApplicationLifetime desktop, DesktopRuntime? runtime = null)
     {
         lifetime = desktop;
-        DataDirectory = Environment.GetEnvironmentVariable("DESKPET_DATA_DIR") ?? MacServices.DataDirectory;
+        runtime ??= new MacRuntime();
+        this.runtime = runtime;
+        DataDirectory = runtime.DataDirectory;
         Directory.CreateDirectory(DataDirectory);
-        MacServices.InstallSecretProtection();
+        runtime.InitializeProtection();
         store = new SettingsStore(Path.Combine(DataDirectory, "settings.json")); Settings = store.Load();
+        var onboarding = OnboardingUpgrade.Prepare(Settings, ReleaseInfo.DisplayVersion);
+        if (onboarding.Changed) store.Save(Settings);
+        showAutomaticGuide = onboarding.ShowGuide;
         Skins = SpriteAssets.LoadSkins(DataDirectory); Skin = Skins.FirstOrDefault(s => s.Id == Settings.SkinId) ?? Skins[0];
         PersonaProfiles.Activate(Settings, Skin.Id, Skin.Prompt);
         Api = new ApiClient();
-        Session = new ConversationSession(Api, MacServices.CreateSpeech(Api), MacServices.CreateRecorder, new HistoryStore(Path.Combine(DataDirectory, "history")), () => Settings.SaveChatHistory);
+        Session = new ConversationSession(Api, runtime.CreateSpeech(Api), runtime.CreateRecorder, new HistoryStore(Path.Combine(DataDirectory, "history")), () => Settings.SaveChatHistory);
         Session.SelectPersona(Skin.Id);
+        Dictation = new DictationSession(new ApiClient(), runtime.CreateRecorder, () => Settings);
         Queue = new ConversationQueue(Session, () => Settings, () => Skin.Name, Path.Combine(DataDirectory, "queue.json"));
-        Live = new GeminiLiveSession(() => new GeminiLiveSocket(), MacServices.CreateMicrophone, MacServices.CreateLiveOutput);
+        Live = new GeminiLiveSession(() => new GeminiLiveSocket(), runtime.CreateMicrophone, runtime.CreateLiveOutput);
         Live.TurnCommitted += (user, reply, status) => Session.AddLiveTurn(Session.PersonaId, user, reply, status);
         Session.StateChanged += Notify; Session.MessageAdded += _ => Notify(); Session.MessageUpdated += _ => Notify(); Session.HistoryChanged += Notify;
-        Queue.Changed += Notify; Live.StateChanged += Notify;
+        Queue.Changed += Notify; Live.StateChanged += Notify; Dictation.Changed += Notify;
         Pet = new PetWindow(this);
+        if (!runtime.ShowTray) return;
         using var icon = SpriteAssets.OpenAsset("pet.ico");
         tray = new TrayIcon { Icon = new WindowIcon(icon), ToolTipText = "DeskPet · " + Skin.Name, IsVisible = true };
         tray.Clicked += (_, _) => ShowPet();
@@ -59,18 +73,17 @@ internal sealed class DesktopController : IDisposable
     public void Start()
     {
         RegisterHotkeys();
-        if (Settings.OnboardingState != "complete" && Settings.OnboardingState != "skipped") Dispatcher.UIThread.Post(ShowGuide);
+        if (showAutomaticGuide) Dispatcher.UIThread.Post(ShowGuide);
         if (!string.IsNullOrWhiteSpace(store.Warning)) Dispatcher.UIThread.Post(() => Error(new InvalidOperationException(store.Warning)));
     }
     private void Notify() => Dispatcher.UIThread.Post(() => Changed?.Invoke());
     public void Save() { store.Save(Settings); Notify(); }
     public async Task SelectSkinAsync(PetSkin skin)
     {
-        if (GuideLocked) throw new InvalidOperationException("请先完成或跳过当前引导。");
-        await Queue.PauseAsync(); await Live.StopAsync(); await Session.StopAsync();
+        await Queue.PauseAsync(); await Dictation.CancelAsync(); await Live.StopAsync(); await Session.StopAsync();
         PersonaProfiles.SaveVoices(Settings); Skin = skin;
         PersonaProfiles.Activate(Settings, skin.Id, skin.Prompt); Session.SelectPersona(skin.Id);
-        Pet.SelectSkin(); Save(); tray.ToolTipText = "DeskPet · " + skin.Name;
+        Pet.SelectSkin(); Save(); if (tray != null) tray.ToolTipText = "DeskPet · " + skin.Name;
     }
     public void ShowPet() { if (!Pet.IsVisible) Pet.Show(); Pet.Clamp(); }
     public void ShowChat(bool quick)
@@ -89,10 +102,21 @@ internal sealed class DesktopController : IDisposable
         if (settingsWindow == null) { settingsWindow = new SettingsWindow(this); settingsWindow.Closed += (_, _) => settingsWindow = null; }
         settingsWindow.Show(); settingsWindow.Activate();
     }
+    public void ShowSettingsSection(string section) { ShowSettings(); settingsWindow!.SelectSection(section); }
+    public void ShowLive()
+    {
+        if (liveWindow == null) { liveWindow = new LiveWindow(this); liveWindow.Closed += (_, _) => liveWindow = null; }
+        liveWindow.Show(); liveWindow.Activate();
+    }
     public void ShowGuide()
     {
         if (guide != null) { guide.Activate(); return; }
-        guide = new GuideWindow(this); guide.Closed += (_, _) => { guide = null; Notify(); }; guide.Show();
+        Run(async () =>
+        {
+            await Queue.PauseAsync(); await Dictation.CancelAsync(); await Live.StopAsync(); await Session.StopAsync();
+            if (guide != null) { guide.Activate(); return; }
+            guide = new GuideWindow(this); guide.Closed += (_, _) => { guide = null; Notify(); }; guide.Show();
+        });
     }
     public void ShowAbout() => new AboutWindow(this).Show();
     public void RegisterHotkeys()
@@ -108,6 +132,8 @@ internal sealed class DesktopController : IDisposable
         }
     }
     public void Run(Func<Task> action) => _ = RunSafe(action);
+    public Task<bool> RequestMicrophoneAccessAsync() => runtime.RequestMicrophoneAccessAsync();
+    public async Task StopAsync() { await Dictation.CancelAsync(); await Queue.PauseAsync(); await Live.StopAsync(); }
     private async Task RunSafe(Func<Task> action) { try { await action(); } catch (OperationCanceledException) { } catch (Exception e) { Error(e); } }
     public void Error(Exception e)
     {
@@ -118,12 +144,12 @@ internal sealed class DesktopController : IDisposable
     public async Task ExitAsync()
     {
         if (exiting) return; exiting = true;
-        try { await Queue.PauseAsync(); await Live.StopAsync(); await Session.StopAsync(); Save(); await Session.FlushHistoryAsync(); lifetime.Shutdown(); }
+        try { await StopAsync(); await Session.StopAsync(); Save(); await Session.FlushHistoryAsync(); lifetime.Shutdown(); }
         catch { exiting = false; throw; }
     }
     public void Dispose()
     {
-        tray.Dispose(); foreach (var binding in hotkeys) binding.Dispose();
-        Queue.Dispose(); Live.Dispose(); Session.Dispose();
+        tray?.Dispose(); foreach (var binding in hotkeys) binding.Dispose();
+        Queue.Dispose(); Dictation.Dispose(); Live.Dispose(); Session.Dispose();
     }
 }

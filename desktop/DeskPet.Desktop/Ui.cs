@@ -20,7 +20,7 @@ internal static class Ui
         return panel;
     }
     public static TextBlock Text(string value, double size = 14) => new() { Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap };
-    public static TextBox Input(string value = "", string? hint = null) => new() { Text = value, Watermark = hint, MinWidth = 200 };
+    public static TextBox Input(string value = "", string? hint = null) => new() { Text = value, PlaceholderText = hint, MinWidth = 200 };
     public static Button Button(string label, Action action)
     {
         var button = new Button { Content = label };

@@ -4,10 +4,10 @@
   <p>四位桌面伙伴，陪你工作，也陪你闲聊。</p>
   <p>原画动作与互动 · 多服务商 AI 对话 · 听写、朗读与 Live</p>
   <p><a href="https://github.com/Eason4869/deskpet/releases/latest">下载 Windows 版</a> · <a href="#开始使用">开始使用</a> · <a href="docs/dialogue-setup.md">模型配置指南</a> · <a href="CHANGELOG.md">更新日志</a></p>
-  <p>当前版本 <a href="https://github.com/Eason4869/deskpet/releases/tag/v0.5.6">0.5.6</a> · Windows 10/11 x64</p>
+  <p>当前开发版本 <a href="https://github.com/Eason4869/deskpet/tree/v0.6.0">0.6.0</a> · 最新公开 Release <a href="https://github.com/Eason4869/deskpet/releases/tag/v0.5.6">0.5.6</a> · Windows 10/11 x64</p>
 </div>
 
-> 0.5.6 发布 Windows 安装包与免安装包：四宠新旧随机互动、配对拖放与统一下落、四格技能轮盘、随机悬停、空闲小憩及更少的散步。配置引导在首次启动或进入更高版本系列时自动打开一次。macOS 在独立分支开发，0.6.0 将引入 Mac 适配与规范包名；该版先提供代码与标签，暂不发布 Release，功能以 0.5.6 为基线。
+> 0.6.0 是基于 Windows 0.5.6 完整功能的开发标签，新增 macOS 适配与明确区分平台、CPU 的包名。该版只提供代码与 tag，**不创建 GitHub Release、不公开分发 Mac 安装包**；公开下载仍为 Windows 0.5.6。Mac 两架构已通过真实原生、UI 与预览打包 CI，完整功能及人工设备验收边界见 [Mac 就绪矩阵](docs/macos-readiness-0.6.0.md)。
 
 > **升级过渡：0.5.4 及更早正式版本的安装版，无法直接通过内置更新升级到 0.6.0 及后续版本。**请先手动安装 0.5.6，再使用内置更新；也可直接手动安装最新版。覆盖安装会保留原有 `data` 数据。0.5.6 沿用旧安装包名称，并已加入下一版规范名称的识别。便携 ZIP 名称保持兼容，不受本次安装包改名限制。
 
@@ -67,7 +67,15 @@
 2. **认识伙伴。**首次启动会打开 16 步配置引导，带你切换伙伴、编辑人格、拖动和互动，再配置可选的 AI 与语音服务。
 3. **按需接入 AI。**只想使用桌宠可以跳过模型与语音步骤；想聊天时，按下方流程添加服务商和模型。
 
-需要 .NET Framework 4.8，无需安装 Node.js。当前仅提供 Windows 安装包，macOS 将在后续版本推进。
+Windows 公开版需要 .NET Framework 4.8，无需安装 Node.js。当前公开下载仅有 Windows 0.5.6；macOS 0.6.0 为开发标签和可构建预览，没有公开 Release。
+
+### macOS 开发标签 0.6.0
+
+Mac 使用 Avalonia / .NET 10，复用 0.5.6 的模型、对话、队列、语音与伙伴业务；提供菜单栏、快速与完整聊天、设置、使用引导、Live 和关于与更新窗口。Mac 设置中的文字、听写、云朗读、Live 和语音分别配置，窗口布局与下面的 Windows 截图不同。0.5.6 升级到 0.6.0 属于新版本系列，会自动打开一次新版引导。
+
+可在 macOS 14+ 上按 [Mac 构建说明](installer/macos/README.md) 分别构建 Apple Silicon 与 Intel 自包含预览，无需 Docker。产物名为 `DeskPet-macOS-0.6.0-arm64-preview.dmg` / `.zip` 或 `DeskPet-macOS-0.6.0-x86_64-preview.dmg` / `.zip`，仅做 ad-hoc 签名，**未经 Apple Developer ID 签名或公证**。真实麦克风授权、实际听感、多屏与登录重启仍需人工验收；Windows DPAPI 密钥需要在 Mac 重新录入。
+
+Mac“关于与更新”只启用本机平台与 CPU 的规范附件；当前公开 Release 没有 Mac 包时，下载按钮保持禁用。Windows 更新也只识别规范 Windows 包。未来 0.6.0 Windows 构建名为 `DeskPet-Windows-Setup-0.6.0.exe` 和 `DeskPet-Windows-0.6.0.zip`，命名与兼容规则见 [发布包命名说明](docs/release-naming.md)。
 
 ### 配置引导就在真实设置页里
 

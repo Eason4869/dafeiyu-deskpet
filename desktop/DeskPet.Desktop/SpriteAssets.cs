@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Buffers.Binary;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -40,8 +41,9 @@ internal sealed class SpriteAssets : IDisposable
         var root = Path.Combine(data, "skins");
         if (Directory.Exists(root)) foreach (var folder in Directory.GetDirectories(root))
         {
+            if (Path.GetFileName(folder).StartsWith(".import-", StringComparison.Ordinal)) continue;
             try { using var source = File.OpenRead(Path.Combine(folder, "pet.json")); var skin = ReadManifest(source, Path.GetFileName(folder), folder); ValidateSkin(skin); skins.Add(skin); }
-            catch (Exception e) when (e is IOException or InvalidDataException or JsonException or ArgumentException or UnauthorizedAccessException) { System.Diagnostics.Trace.WriteLine("Skin load: " + e.GetType().Name); }
+            catch (Exception e) when (e is IOException or InvalidDataException or JsonException or ArgumentException or UnauthorizedAccessException or KeyNotFoundException or InvalidOperationException) { System.Diagnostics.Trace.WriteLine("Skin load: " + e.GetType().Name); }
         }
         return skins;
     }
@@ -75,6 +77,7 @@ internal sealed class SpriteAssets : IDisposable
     {
         if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative) || relative.Contains(':')) throw new InvalidDataException("外观资源路径无效。");
         var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("外观资源目录不接受符号链接。");
         var target = Path.GetFullPath(Path.Combine(fullRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
         if (!target.StartsWith(fullRoot, StringComparison.Ordinal)) throw new InvalidDataException("外观资源不能越过所在目录。");
         var current = target;
@@ -138,6 +141,10 @@ internal sealed class SpriteAssets : IDisposable
         {
             using var stream = skin.BuiltIn ? OpenAsset(path) : File.OpenRead(SafePath(skin.Folder!, path));
             if (stream.Length > 64L * 1024 * 1024) throw new InvalidDataException("单张外观图不能超过 64 MB。");
+            Span<byte> header = stackalloc byte[24]; stream.ReadExactly(header); stream.Position = 0;
+            if (!header[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) throw new InvalidDataException("外观图像必须是 PNG。");
+            var width = BinaryPrimitives.ReadUInt32BigEndian(header[16..20]); var height = BinaryPrimitives.ReadUInt32BigEndian(header[20..24]);
+            if (width == 0 || height == 0 || width > 8192 || height > 33280 || (long)width * height > 55000000) throw new InvalidDataException("外观 PNG 尺寸过大或无效。");
             image = new Bitmap(stream); images[key] = image;
         }
         return image;
@@ -152,6 +159,7 @@ internal sealed class SpriteAssets : IDisposable
         if (skin.Clips.TryGetValue(action, out var manifest)) return manifest with { Fps = Interactions.Contains(action) ? 8 : manifest.Fps };
         if (Interactions.Contains(action) && skin.BuiltIn) return new ClipSpec($"{skin.Id}-interactions.png", 4, 4, 8, action is "sleeping" or "lifted", Top: Array.IndexOf(Interactions, action) * 520);
         var row = Array.IndexOf(AnimationPlayer.States, action); if (row < 0) row = 0;
+        if (skin.BuiltIn && skin.Id is "dafeiyu" or "marfu" && row == 2) row = 1;
         var atlas = Get(skin, skin.Atlas!); var w = atlas.PixelSize.Width / 8; var h = atlas.PixelSize.Height / 11;
         return new ClipSpec(skin.Atlas!, 8, AnimationPlayer.Counts[row], 8, action is "idle" or "running" or "running-right" or "running-left", w, h, row * h);
     }
@@ -190,14 +198,16 @@ internal sealed class SpriteView : Control
 {
     public required SpriteAssets Assets { get; init; }
     public required PetSkin Skin { get; set; }
-    public ClipSpec? Clip { get; set; }
+    public new ClipSpec? Clip { get; set; }
     public int Frame { get; set; }
+    public bool MirrorX { get; set; }
     public override void Render(DrawingContext context)
     {
         base.Render(context);
         if (Clip == null) return;
         var r = SpriteAssets.Rect(Clip, Frame);
+        using var transform = context.PushTransform(MirrorX ? new Matrix(-1, 0, 0, 1, Bounds.Width, 0) : Matrix.Identity);
         context.DrawImage(Assets.Get(Skin, Clip.File), new Rect(r.X, r.Y, r.Width, r.Height), new Rect(Bounds.Size));
     }
-    public bool Hits(Point point) => Clip != null && Bounds.Width > 0 && Bounds.Height > 0 && Assets.Hit(Skin, Clip, Frame, point.X / Bounds.Width, point.Y / Bounds.Height);
+    public bool Hits(Point point) => Clip != null && Bounds.Width > 0 && Bounds.Height > 0 && Assets.Hit(Skin, Clip, Frame, MirrorX ? 1 - point.X / Bounds.Width : point.X / Bounds.Width, point.Y / Bounds.Height);
 }

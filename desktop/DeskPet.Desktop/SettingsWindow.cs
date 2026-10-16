@@ -10,10 +10,10 @@ internal sealed class SettingsWindow : Window
 {
     private readonly DesktopController owner;
     private readonly List<ProviderEditor> providers = new();
+    private readonly TabControl tabs = new();
     public SettingsWindow(DesktopController controller)
     {
         owner = controller; Title = "DeskPet · 设置"; Width = 790; Height = 760; MinWidth = 570; MinHeight = 420;
-        var tabs = new TabControl();
         var pages = new List<TabItem>();
         void Add(string title, Control content) => pages.Add(new TabItem { Header = title, Content = new ScrollViewer { Content = new Border { Padding = new Thickness(20), Child = content } } });
         Add("伙伴", Partner()); Add("桌面", Behavior());
@@ -21,6 +21,7 @@ internal sealed class SettingsWindow : Window
         Add("语音", Voice()); Add("数据", Storage()); tabs.ItemsSource = pages; Content = tabs;
         Closed += (_, _) => { foreach (var provider in providers) provider.Dispose(); };
     }
+    public void SelectSection(string section) => tabs.SelectedIndex = section switch { "partner" => 0, "behavior" => 1, "text" => 2, "asr" => 3, "speech" => 4, "live" => 5, "voice" => 6, "storage" => 7, _ => 0 };
     private Control Partner()
     {
         var choices = new ComboBox { ItemsSource = owner.Skins, SelectedItem = owner.Skin };
@@ -46,6 +47,7 @@ internal sealed class SettingsWindow : Window
         var panel = Ui.Column(Ui.Text("桌面行为", 20), Ui.Field("伙伴大小", scale),
             Ui.Check("始终置顶", s.Topmost, v => { s.Topmost = v; Apply(); }),
             Ui.Check("锁定位置", s.LockPosition, v => { s.LockPosition = v; Apply(); }),
+            Ui.Check("前台应用全屏时隐藏伙伴", s.HideOnFullscreen, v => { s.HideOnFullscreen = v; Apply(); }),
             Ui.Check("鼠标穿透（从菜单栏恢复）", s.ClickThrough, v => { s.ClickThrough = v; Apply(); }),
             Ui.Check("跟随鼠标", s.FollowCursor, v => { s.FollowCursor = v; Apply(); }),
             Ui.Check("偶尔散步（90～180 秒）", s.Wander, v => { s.Wander = v; Apply(); }),
@@ -59,6 +61,12 @@ internal sealed class SettingsWindow : Window
             panel.Children.Add(Ui.Check(entry.Item2, s.Hotkeys.GetValueOrDefault(entry.Item1) == "enabled", v => { s.Hotkeys[entry.Item1] = v ? "enabled" : "disabled"; owner.Save(); owner.RegisterHotkeys(); }));
         panel.Children.Add(Ui.Button("启用登录启动", () => { try { MacServices.SetLoginAtStartup(true); } catch (Exception e) { owner.Error(e); } }));
         panel.Children.Add(Ui.Button("关闭登录启动", () => { try { MacServices.SetLoginAtStartup(false); } catch (Exception e) { owner.Error(e); } }));
+        var min = new NumericUpDown { Minimum = 1, Maximum = 1440, Value = s.GreetingMinMinutes };
+        var max = new NumericUpDown { Minimum = 1, Maximum = 1440, Value = s.GreetingMaxMinutes };
+        panel.Children.Add(Ui.Check("偶尔主动打招呼", s.GreetingEnabled, v => { s.GreetingEnabled = v; owner.Save(); owner.Pet.ConfigureGreetings(); }));
+        panel.Children.Add(Ui.Check("使用 AI 生成问候（未配置时使用本地问候）", s.AiGreetingEnabled, v => { s.AiGreetingEnabled = v; owner.Save(); owner.Pet.ConfigureGreetings(); }));
+        panel.Children.Add(Ui.Field("问候最短间隔（分钟）", min)); panel.Children.Add(Ui.Field("问候最长间隔（分钟）", max));
+        panel.Children.Add(Ui.Button("保存问候间隔", () => { s.GreetingMinMinutes = (int)(min.Value ?? 30); s.GreetingMaxMinutes = Math.Max(s.GreetingMinMinutes, (int)(max.Value ?? 60)); owner.Save(); owner.Pet.ConfigureGreetings(); }));
         return panel;
     }
     private Control Voice()

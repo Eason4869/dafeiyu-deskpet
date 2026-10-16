@@ -3,14 +3,15 @@ using Dafeiyu;
 
 namespace DeskPet.Platform.Mac;
 
-internal sealed class MacAudioRecorder(bool streaming) : IAudioRecorder, IPcmMicrophone
+internal sealed class MacAudioRecorder(bool streaming, IMacMicrophone? capture = null) : IAudioRecorder, IPcmMicrophone
 {
+    private readonly IMacMicrophone capture = capture ?? new NativeMacMicrophone();
     private readonly object lifecycle = new();
     private readonly MemoryStream pcm = new();
     private IntPtr device;
     private Thread? worker;
     private volatile bool stopping;
-    private bool finished, disposed;
+    private bool started, finished, disposed;
     private Exception? failure;
     public event Action<byte[]>? PcmAvailable;
     public event Action<string>? Failed;
@@ -18,15 +19,15 @@ internal sealed class MacAudioRecorder(bool streaming) : IAudioRecorder, IPcmMic
 
     public void Start()
     {
-        MacServices.EnsureMac();
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            if (finished || device != IntPtr.Zero) throw new InvalidOperationException("录音器已经使用。");
-            if (MacServices.MicrophoneAccess != MicrophonePermission.Authorized)
+            if (started || finished || device != IntPtr.Zero) throw new InvalidOperationException("录音器已经使用。");
+            if (capture.Access != MicrophonePermission.Authorized)
                 throw new InvalidOperationException("没有麦克风权限，请在系统设置 > 隐私与安全性 > 麦克风中允许 DeskPet；文字对话仍可使用。");
-            device = Native.MicrophoneStart(out var error);
+            device = capture.Start(out var error);
             if (device == IntPtr.Zero) throw new InvalidOperationException($"无法启动麦克风（状态 {error}），请检查默认输入设备。");
+            started = true;
             worker = new Thread(Drain) { IsBackground = true, Name = "DeskPet Mac microphone" };
             worker.Start();
         }
@@ -39,7 +40,7 @@ internal sealed class MacAudioRecorder(bool streaming) : IAudioRecorder, IPcmMic
         {
             while (!stopping)
             {
-                var count = Native.MicrophoneRead(device, buffer, buffer.Length);
+                var count = capture.Read(device, buffer);
                 if (count < 0) throw new InvalidOperationException("麦克风设备已断开或录音已中断。");
                 if (count > 0)
                 {
@@ -51,6 +52,7 @@ internal sealed class MacAudioRecorder(bool streaming) : IAudioRecorder, IPcmMic
                         if (!streaming) pcm.Write(bytes);
                         PcmAvailable?.Invoke(bytes);
                     }
+                    if (stopping) break; // A consumer may dispose synchronously in PcmAvailable.
                     if (!streaming && pcm.Length >= 60 * 32000) break;
                 }
                 else if (progress.Elapsed > TimeSpan.FromSeconds(5)) throw new InvalidOperationException("麦克风连续 5 秒没有输入数据，请检查权限及输入设备。");
@@ -68,7 +70,7 @@ internal sealed class MacAudioRecorder(bool streaming) : IAudioRecorder, IPcmMic
             stopping = true;
             // The capture worker owns the handle until joined, including failure paths.
             // Device disappearance must release AVAudioEngine even before the UI reacts.
-            if (device != IntPtr.Zero) { Native.MicrophoneStop(device); device = IntPtr.Zero; }
+            if (device != IntPtr.Zero) { capture.Stop(device); device = IntPtr.Zero; }
         }
     }
     public Task<byte[]> FinishAsync() => Task.Run(() =>
@@ -88,7 +90,7 @@ internal sealed class MacAudioRecorder(bool streaming) : IAudioRecorder, IPcmMic
         if (finished) return;
         stopping = true;
         if (worker != Thread.CurrentThread) worker?.Join();
-        if (device != IntPtr.Zero) { Native.MicrophoneStop(device); device = IntPtr.Zero; }
+        if (device != IntPtr.Zero) { capture.Stop(device); device = IntPtr.Zero; }
         finished = true;
     }
     public void Dispose() { lock (lifecycle) { if (disposed) return; Release(); pcm.Dispose(); disposed = true; } }

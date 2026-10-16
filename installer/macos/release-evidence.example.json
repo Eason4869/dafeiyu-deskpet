@@ -1,0 +1,23 @@
+{
+  "version": "0.6.0",
+  "architectures": {
+    "arm64": {
+      "native_tests": {"passed": false, "evidence": ""},
+      "ui_smoke": {"passed": false, "evidence": ""},
+      "microphone_permissions": {"passed": false, "evidence": ""},
+      "audio_and_live": {"passed": false, "evidence": ""},
+      "multi_display": {"passed": false, "evidence": ""},
+      "login_items": {"passed": false, "evidence": ""},
+      "upgrade_preserves_data": {"passed": false, "evidence": ""}
+    },
+    "x86_64": {
+      "native_tests": {"passed": false, "evidence": ""},
+      "ui_smoke": {"passed": false, "evidence": ""},
+      "microphone_permissions": {"passed": false, "evidence": ""},
+      "audio_and_live": {"passed": false, "evidence": ""},
+      "multi_display": {"passed": false, "evidence": ""},
+      "login_items": {"passed": false, "evidence": ""},
+      "upgrade_preserves_data": {"passed": false, "evidence": ""}
+    }
+  }
+}

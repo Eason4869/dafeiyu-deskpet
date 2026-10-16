@@ -8,4 +8,4 @@ xcrun clang -arch "$arch" -mmacosx-version-min=14.0 -fobjc-arc -fblocks -Wall -W
   -dynamiclib DeskPetMac.m -o libDeskPetMac.dylib \
   -install_name @rpath/libDeskPetMac.dylib \
   -framework AppKit -framework AVFoundation -framework Carbon -framework Security -framework ServiceManagement
-lipo -verify_arch "$arch" libDeskPetMac.dylib
+lipo libDeskPetMac.dylib -verify_arch "$arch"

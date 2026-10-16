@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Dafeiyu;
 
@@ -8,7 +7,7 @@ internal sealed class MacSpeechOutput(ApiClient api) : IReplySpeech
 {
     private readonly object gate = new();
     private CancellationTokenSource? active;
-    private Process? say;
+    private readonly SayProcess say = new();
     private IntPtr wave;
     private int volume = 50;
     private bool disposed;
@@ -46,26 +45,18 @@ internal sealed class MacSpeechOutput(ApiClient api) : IReplySpeech
             lock (gate)
             {
                 if (wave != IntPtr.Zero) { Native.WaveStop(wave); wave = IntPtr.Zero; }
-                say?.Dispose(); say = null;
                 if (ReferenceEquals(active, reading)) active = null;
             }
         }
     }
     private async Task SpeakSystem(string text, CancellationToken token)
     {
-        // No shell and no text in argv: send private reply text through stdin.
-        var start = new ProcessStartInfo("/usr/bin/say") { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardError = true, CreateNoWindow = true };
-        start.ArgumentList.Add("--");
-        using var process = new Process { StartInfo = start };
-        lock (gate) { token.ThrowIfCancellationRequested(); if (!process.Start()) throw new InvalidOperationException("系统朗读无法启动。"); say = process; }
-        using var kill = token.Register(() => { try { if (!process.HasExited) process.Kill(); } catch (InvalidOperationException) { } });
-        // say's embedded speech control sets the utterance volume without changing system volume.
-        int currentVolume; lock (gate) currentVolume = volume;
-        await process.StandardInput.WriteAsync(("[[volm " + (currentVolume / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture) + "]]" + text.Replace("[[", "［［")).AsMemory(), token);
-        process.StandardInput.Close();
-        var errors = process.StandardError.ReadToEndAsync(token);
-        await process.WaitForExitAsync(token); await errors;
-        if (process.ExitCode != 0) throw new InvalidOperationException($"系统朗读失败（状态 {process.ExitCode}），请检查系统语音及音频输出。");
+        foreach (var phrase in SayProcess.SplitPhrases(text))
+        {
+            token.ThrowIfCancellationRequested();
+            int currentVolume; lock (gate) currentVolume = volume;
+            await say.SpeakAsync(phrase, currentVolume, token);
+        }
     }
     public void Stop() { lock (gate) { try { active?.Cancel(); } catch (ObjectDisposedException) { } } }
     public void Dispose() { lock (gate) { if (disposed) return; disposed = true; Stop(); } }

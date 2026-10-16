@@ -1,5 +1,14 @@
 ﻿# 更新日志
 
+## [0.6.0](https://github.com/Eason4869/deskpet/tree/v0.6.0) — 2026-10-16（开发标签）
+
+仅提供代码与 tag，不创建 GitHub Release、不公开分发本版安装包。最新公开 Release 仍为 Windows 0.5.6。
+
+- 完整继承 0.5.6 的 Windows 业务、引导升级、透明窗口恢复、录音故障、输入区对齐及设置原子替换重试修复；新增 Mac 适配，不引入另一套对话业务。
+- 完成 Avalonia / .NET 10 Mac 客户端的伙伴、聊天、设置、引导、Live、菜单栏及平台服务；分别构建 macOS 14+ 的 arm64、x86_64 自包含预览。
+- Mac 预览为 ad-hoc 签名、未经 Apple Developer ID 签名或公证；两架构真实原生、UI 与 ZIP/DMG 链路验证见 [就绪矩阵](docs/macos-readiness-0.6.0.md)。真实麦克风授权、听感、多屏及登录重启保留人工验收边界。
+- 从本版起 Windows 构建使用 `DeskPet-Windows-Setup-0.6.0.exe`；Mac 包名明确平台、版本、CPU 和 preview，应用更新入口只选择本机平台及 CPU 对应附件。0.6.0 属于新主／次版本系列，从 0.5.6 进入时自动显示一次新版引导。
+
 ## [0.5.6](https://github.com/Eason4869/deskpet/releases/tag/v0.5.6) — 2026-10-16
 
 发布 Windows 安装包、免安装包、源码、四位伙伴外观及完整 v2 模板。macOS 独立推进，0.6.0 增加适配并仅发布代码与标签；0.5.6 不包含 Mac 安装包。

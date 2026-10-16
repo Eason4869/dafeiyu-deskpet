@@ -353,8 +353,20 @@ namespace Dafeiyu
             {
                 using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
                 { new DataContractJsonSerializer(typeof(PetSettings)).WriteObject(stream, settings); stream.Flush(true); }
-                if (File.Exists(path)) File.Replace(temporary, path, null);
-                else File.Move(temporary, path);
+                for(int attempt=0;;attempt++)try
+                {
+                    if(File.Exists(path))File.Replace(temporary,path,null);else File.Move(temporary,path);
+                    break;
+                }
+                catch(IOException error)
+                {
+                    // Keep the atomic commit when a scanner or another short-lived
+                    // reader briefly denies delete sharing. Never delete the old
+                    // settings or retry permanent permission/storage errors.
+                    int code=error.HResult&0xffff;
+                    if(attempt>=3 || (code!=32 && code!=33 && code!=1175) || !File.Exists(temporary))throw;
+                    System.Threading.Thread.Sleep(25*(attempt+1));
+                }
                 Warning = "";
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }

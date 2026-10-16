@@ -17,7 +17,7 @@ namespace Dafeiyu
         readonly DictationSession dictation;readonly Button record,finishDictation,stopDictation;readonly FrameworkElement normalSurface;readonly Border recordingSurface;readonly DictationWaveform waveform;
         readonly System.Windows.Threading.DispatcherTimer meter=new System.Windows.Threading.DispatcherTimer{Interval=TimeSpan.FromMilliseconds(80)};
         readonly System.Diagnostics.Stopwatch recordingTime=new System.Diagnostics.Stopwatch();bool finishing;
-        string signature="",editingId;TextBox editor;bool resumeAfterEdit,closed,subscribed;int editRevision;
+        string signature="",editingId,lastDictationNotice="";TextBox editor;bool resumeAfterEdit,closed,subscribed;int editRevision;
         public bool HasEdit {get{return editingId!=null;}}
         public ConversationComposer(PetWindow pet,Window host,TextBox input,Button record,TextBlock status,bool compact)
         {
@@ -55,7 +55,7 @@ namespace Dafeiyu
             stopDictation=UiIcons.Button("stop-solid","停止听写");stopDictation.Name="StopDictation";stopDictation.Width=32;stopDictation.Height=32;stopDictation.MinHeight=32;stopDictation.Content=UiIcons.Image("stop-solid",Ui.Brush("#202329"));stopDictation.Margin=new Thickness(0,0,5,0);stopDictation.Click+=async delegate{await FinishDictation(false);};
             finishDictation=ChatUi.Action("send","发送听写");finishDictation.Name="FinishDictation";finishDictation.Width=finishDictation.Height=finishDictation.MinHeight=32;finishDictation.Background=Ui.Brush("#202329");finishDictation.BorderBrush=finishDictation.Background;finishDictation.Content=UiIcons.Image("send",Brushes.White);finishDictation.Click+=async delegate{await FinishDictation(true);};DockPanel.SetDock(finishDictation,Dock.Right);recordingControls.Children.Add(finishDictation);
             DockPanel.SetDock(stopDictation,Dock.Right);recordingControls.Children.Add(stopDictation);
-            waveform=new DictationWaveform();recordingControls.Children.Add(waveform);recordingBody.Children.Add(recordingControls);
+            waveform=new DictationWaveform{Height=32};recordingControls.Children.Add(waveform);recordingBody.Children.Add(recordingControls);
             recordingSurface=new Border{Child=recordingBody,Background=Brushes.White,BorderBrush=Ui.Line,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(22),Padding=new Thickness(8),Visibility=Visibility.Collapsed};Children.Add(recordingSurface);
             status.Margin=new Thickness(3,7,3,0);status.MinHeight=16;status.MaxHeight=38;Children.Add(status);
             Hint(record,"听写");Hint(stopDictation,"停止听写");Hint(finishDictation,"发送听写");record.Click+=delegate{Try(delegate{dictation.Start(this);recordingTime.Restart();waveform.Clear();});};
@@ -115,12 +115,13 @@ namespace Dafeiyu
         void Refresh()
         {
             if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(Refresh));return;}
-            RefreshAction();RefreshDictation();var items=queue.Items;
+            RefreshAction();var items=queue.Items;
             string next=String.Join("|",items.Select(m=>m.Id+":"+m.Text))+"/"+queue.IsPaused+"/"+editingId;
             queueBox.Visibility=items.Count==0?Visibility.Collapsed:Visibility.Visible;
             queueLabel.Text=(queue.IsPaused?"已暂停 · ":"排队中 · ")+items.Count+" 条";
             resume.Visibility=queue.IsPaused && items.Count>0 && editingId==null?Visibility.Visible:Visibility.Collapsed;resume.IsEnabled=!pet.LiveActive;
             if(!String.IsNullOrEmpty(queue.Notice))status.Text=queue.Notice;
+            RefreshDictation();
             if(signature==next)return;signature=next;reorder.Cancel();
             string draft=editor==null?null:editor.Text;rows.Children.Clear();editor=null;
             foreach(var item in items)
@@ -164,6 +165,9 @@ namespace Dafeiyu
             bool own=dictation.Owns(this);normalSurface.Visibility=own?Visibility.Collapsed:Visibility.Visible;recordingSurface.Visibility=own?Visibility.Visible:Visibility.Collapsed;
             finishDictation.IsEnabled=stopDictation.IsEnabled=own && dictation.Stage==DictationStage.Recording && !finishing;
             if(own){status.Text=dictation.Stage==DictationStage.Recognizing?"正在识别…":"";if(!meter.IsEnabled)meter.Start();}else{meter.Stop();}
+            string notice=dictation.LastNotice;
+            if(!own && !String.IsNullOrEmpty(notice) && notice!=lastDictationNotice)status.Text=notice;
+            lastDictationNotice=notice;
         }
         async System.Threading.Tasks.Task FinishDictation(bool send)
         {

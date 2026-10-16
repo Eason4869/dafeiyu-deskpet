@@ -71,8 +71,8 @@ namespace Dafeiyu
                 bool portable=!UpdateInstall.IsInstalledDirectory(directory);
                 var release=await feed.CheckAsync(ReleaseInfo.RepositoryUrl,useProxy,proxyAddress,portable,token);
                 if(!release.IsNewerThan(new Version(installedVersion))){Status="当前已是最新版本 "+installedVersion+"。";return;}
-                string version=release.VersionTag.TrimStart('v','V');string expected=(portable?"DeskPet-Windows-":"DeskPet-Setup-")+version+(portable?".zip":".exe");
-                if(release.AssetName!=expected || String.IsNullOrEmpty(release.Digest) || !release.Digest.StartsWith("sha256:",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("发现 "+release.VersionTag+"，但没有可验证的自动更新包。请到 GitHub Release 查看。");
+                string version=release.VersionTag.TrimStart('v','V');
+                if(!ReleaseInfo.WindowsUpdateAsset(release.AssetName,version,portable) || String.IsNullOrEmpty(release.Digest) || !release.Digest.StartsWith("sha256:",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("发现 "+release.VersionTag+"，但没有可验证的自动更新包。请到 GitHub Release 查看。");
                 string work=Path.Combine(pet.Store.DirectoryPath,"updates",Guid.NewGuid().ToString("N"));
                 IsDownloading=true;Status="正在下载 "+release.VersionTag+"…";Notify();
                 var reporter=new Progress<double>(value=>{if(!disposed && !token.IsCancellationRequested){Progress=value;Notify();}});

@@ -59,7 +59,21 @@ namespace Dafeiyu
                 while (!stopping) { ready.WaitOne(250); DrainReady(true); }
                 DrainReady(false);
             }
-            catch (Exception e) { workerError = e; if(streaming && Failed!=null) Failed("Live 麦克风录音中断，请检查输入设备。"); }
+            catch (Exception e)
+            {
+                bool report;
+                lock(deviceGate)
+                {
+                    // Stop/reset can race with collection. Only an unexpected
+                    // failure while actively capturing is a recording error.
+                    report=!stopping;
+                    if(report){workerError=e;stopping=true;}
+                }
+                var failed=Failed;
+                if(report && failed!=null)ThreadPool.QueueUserWorkItem(delegate {
+                    failed(streaming?"Live 麦克风录音中断，请检查输入设备。":"麦克风录音中断，请检查输入设备及权限。");
+                });
+            }
         }
         private void DrainReady(bool requeue)
         {

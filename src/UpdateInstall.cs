@@ -76,9 +76,9 @@ namespace Dafeiyu
             if(mode=="installed" && !IsInstalledDirectory(directory))throw new InvalidOperationException("安装记录与当前目录不符，无法自动安装。");
             if(VersionOf(job.TargetVersion)<=VersionOf(job.InstalledVersion))throw new InvalidOperationException("该版本无需更新。");
             string version=job.TargetVersion.TrimStart('v','V');
-            string name=(mode=="installed"?"DeskPet-Setup-":"DeskPet-Windows-")+version+(mode=="installed"?".exe":".zip");
+            string name=Path.GetFileName(package);
             Uri uri;string url=ReleaseInfo.RepositoryUrl+"/releases/download/v"+version+"/"+name;
-            if(Path.GetFileName(package)!=name || !Uri.TryCreate(job.AssetUrl,UriKind.Absolute,out uri) || !String.Equals(uri.AbsoluteUri,url,StringComparison.Ordinal) || uri.UserInfo.Length>0)throw new InvalidOperationException("自动更新只接受本仓库的正式发行包。");
+            if(!ReleaseInfo.WindowsUpdateAsset(name,version,mode=="portable") || !Uri.TryCreate(job.AssetUrl,UriKind.Absolute,out uri) || !String.Equals(uri.AbsoluteUri,url,StringComparison.Ordinal) || uri.UserInfo.Length>0)throw new InvalidOperationException("自动更新只接受本仓库的正式发行包。");
             if(job.Size<=0 || job.Size>300L*1024*1024 || !Regex.IsMatch(job.Digest??"","^[a-fA-F0-9]{64}$") || !File.Exists(package) || new FileInfo(package).Length!=job.Size || !String.Equals(Hash(package),job.Digest,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("更新包校验失败，已保留原版。请重新检查更新。");
         }
         static void EnsureNoLinks(string root,string path)

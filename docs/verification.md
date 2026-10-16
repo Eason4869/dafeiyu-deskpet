@@ -1,3 +1,32 @@
+# 0.5.6 Windows 发布验收（2026-10-16）
+
+A 线发布 Windows，B 线独立推进 0.6.0 Mac 适配与规范包名；0.6.0 仅提交与标签，暂不创建 Release。以下为当前 0.5.6 源码验证，历史记录单独保留。
+
+- CI 原 22 个目标与新增引导／录音故障目标共 24 组通过。版本系列引导 35 项覆盖数字比较、补丁去重、旧配置迁移、关闭／跳过／完成去重、降级及返回旧系列。
+- 最终批量回归暴露设置文件原子替换的短暂占用失败，独立 GUID 夹具原文件完整，与预览实例路径隔离。已对 Windows 共享／锁定／替换错误 32、33、1175 增加有界重试，继续使用原子替换；持续占用仍报错且保留原文件。真实 `FileStream` 删除共享锁回归先失败后通过，Windows 引导目标现为 39 项（引导策略 35 项与 Windows 文件锁 4 项）；非 Windows 仍执行全部 35 项引导策略，跳过原生共享锁语义检查。
+- 包名迁移最终回归：Update 96、Proxy 12、UpdateApply 24、Core 16、AutoUpdate 37、Python 命名 2 项通过。0.5.6 与 0.5.11 保持旧安装名；0.6.0 与更高版本采用 Windows 显式名称，程序与助手核验平台、版本和安装模式。
+- 当前 0.5.6 源编译的独立真实 worker 分别对 0.6.0 新名／旧别名完成安装、握手、等待旧进程、重启及保留数据，每套 8 项通过。测试使用独立 AppId 与 mutex，不覆盖用户现有安装。
+- 普通录音与 Live 的真实 WinMM 适配器故障检查 14 项通过：实际无效设备错误、正常停止不误报、会话释放与错误通知；测试没有申请麦克风。Conversation 12、Dictation 8 通过。
+- 真实 WPF 配置引导 79 项通过（不启用模拟手势）；鼠标 down 到达回执后再释放，避免夹具瞬时 down/up 的调度假设。四格技能轮盘 138 项通过，README 轮盘图取自本次真实窗口。
+- 最终隐藏／恢复修复保留透明窗口的 HWND，以零透明度、禁止视觉命中及整体鼠标穿透隐藏；恢复时保留原点击穿透设置和前台焦点。隐藏期间停止渲染、问候与自动小憩，取消捕获、拖放及弹出菜单。下表对应修复后的最终日志，先前失败与诊断记录不计为通过。
+- 新鲜源码 PackagingSmoke 含真实 Inno 编译通过：0.5.6 产物仍为旧名，便携 ZIP 可由真实更新助手应用，数据／历史／导入外观保留，源码无工作区与私有文件，文档、模板、版本与 SHA256 一致。
+
+| 最终检查 | 结果与证据 |
+| --- | --- |
+| StumbleSmoke | 1511 通过；四宠新旧动作、原生拖放与完整隐藏／恢复链。`work/A-0.5.6-StumbleSmoke-final.log` |
+| 隐藏／恢复原生专项 | 147 通过；四宠恢复后真实点击与拖放、隐藏时穿透和停止渲染、释放捕获及菜单、保持 HWND 与前台焦点。`work/A-0.5.6-StumbleSmoke-restore-regression.log` |
+| HoverSleepSmoke | 161 通过；四种原生悬停结果、节日候选，以及可控时钟下的小憩与唤醒。`work/A-0.5.6-HoverSleepSmoke-final.log` |
+| QuietTests | 58 通过；真实全屏前台、自动／手动隐藏、隐藏时修改设置不拦截鼠标、恢复用户穿透偏好。`work/A-0.5.6-QuietTests-final.log` |
+| UiSmoke | 104 通过；隐藏表面全透明、不可命中及恢复后的设置与窗口生命周期。`work/A-0.5.6-UiSmoke-final.log` |
+| OnboardingSmoke | 79 通过；当前配置引导的真实原生手势、分步保存及退出锁定释放。`work/A-0.5.6-OnboardingSmoke-final.log` |
+| OnboardingUpgradeTests | Windows 39 通过；包含短暂占用后保存成功、持续占用拒绝、原文件保留及临时文件清理。`work/A-settings-replace-OnboardingUpgradeTests.log`；先红证据 `work/A-onboarding-replace-red.log` |
+| ComposerSmoke | 87 通过；完整／快聊的严格按钮对齐、麦克风故障原因可见、草稿保留与不误发送；本次未运行 `--native-drag`。`work/A-recorder-ComposerSmoke-fixed.log` |
+| QueueTests | 24 通过；串行发送、重排、按伙伴隔离、加密持久化与恢复暂停。`work/A-0.5.6-QueueTests.log` |
+
+日志：`work/A-0.5.6-tests.log`、`work/A-0.5.6-naming-tests.log`、`work/A-recorder-*`、`work/A-0.5.6-OnboardingSmoke-native.log`、`work/A-0.5.6-ActionPaletteSmoke.log`。本机已有安装记录，不执行会覆盖该记录的正式安装器测试；安装升级流程使用隔离 AppId 夹具实测。云端 AI、真实麦克风听感与最终人物观感不由这些回归代替。
+
+---
+
 # 0.5.5 dev 快照检查（2026-10-16）
 
 当前状态见 [快照说明](0.5.5-dev-checkpoint.md)。Windows 预览已构建；InteractionTests 1005、StumbleSmoke 1445、Core 16、Profile 86、API 22、Conversation 12、Queue 24 通过；.NET 10 共用业务 251、Mac 平台托管测试 22 通过。原生拖放覆盖新旧配对及统一下落距离。下面 2882 项是更早的单套素材阶段记录，不能作为全部新改动的 UI 回归依据。macOS 完整前端不可编译，原生编译/运行、正式包、签名、公证均未完成；本次不创建 Release。

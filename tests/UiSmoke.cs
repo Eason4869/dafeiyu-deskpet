@@ -40,11 +40,14 @@ namespace Dafeiyu.Tests
                 byte[] pixel=new byte[4]; Render(pet).CopyPixels(new Int32Rect(0,0,1,1),pixel,4,0);
                 Require(pixel[3] == 0,"rendered corner is actually transparent");
                 pet.PlayAction("jumping",.7); Pump(.2); Require(pet.Animation.State == "jumping","jump action starts");
-                Pump(.7); Require(pet.Animation.State == "idle","jump action returns to idle");
+                var jumpClip=new AdditionalInteractions().Get(pet.Skin,"jumping");
+                Pump(jumpClip==null?.7:jumpClip.Duration+.15); Require(pet.Animation.State == "idle","jump action returns to idle after the complete clip");
                 pet.SetPaused(true); int frozen=pet.Animation.Frame; Pump(.4);
                 Require(pet.Animation.Frame == frozen,"pause freezes animation"); pet.SetPaused(false);
-                pet.HidePet(); Pump(.1); Require(!pet.IsVisible,"tray hide works");
-                pet.RestorePet(); Pump(.2); Require(pet.IsVisible,"tray restore works");
+                pet.HidePet(); Pump(.1); Require(!pet.IsPetVisible,"tray hide works");
+                Render(pet).CopyPixels(new Int32Rect((int)pet.ActualWidth/2,(int)pet.ActualHeight/2,1,1),pixel,4,0);
+                Require(pet.Opacity==0 && pixel[3]==0 && !pet.IsHitTestVisible,"hidden retained surface renders fully transparent and cannot receive visual input");
+                pet.RestorePet(); Pump(.2); Require(pet.IsPetVisible,"tray restore works");
                 pet.ShowSettings(); Pump(.3);
                 var preferences=app.Windows.OfType<SettingsWindow>().Single();
                 preferences.Width=700;preferences.Height=430;preferences.SelectPage(6);Pump(.15);var nav=Find<ListBox>(preferences,"SettingsNavigation");nav.ScrollIntoView(nav.Items[3]);Pump(.1);var about=(ListBoxItem)nav.Items[3];Rect navBounds=about.TransformToAncestor(preferences).TransformBounds(new Rect(about.RenderSize));Require(navBounds.Bottom<=preferences.ActualHeight,"About navigation remains reachable at minimum window height");preferences.Width=850;preferences.Height=790;preferences.SelectPage(0);Pump(.1);

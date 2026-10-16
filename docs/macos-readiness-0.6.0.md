@@ -6,7 +6,7 @@
 
 ## 版本与附件
 
-- Windows 与 Mac 版本均为 `0.6.0`；最终 Windows 业务基线须在 `0.5.6` 完成后合入并再次回归。
+- Windows 与 Mac 版本均为 `0.6.0`；已合入最终 Windows 0.5.6 基线 `eb04ade8ff5eaa601ffc20a26377bbf3162343b4`，包括设置替换有界重试、透明桌宠恢复、录音与输入区修复、新旧安装包命名兼容。集成后的三平台 CI 结果另行记录。
 - Apple Silicon：`DeskPet-macOS-0.6.0-arm64-preview.dmg`、同名 `.zip`。
 - Intel：`DeskPet-macOS-0.6.0-x86_64-preview.dmg`、同名 `.zip`。
 - Mac 从“关于与更新”只能启用与本机 CPU 对应的 Mac 附件；Windows 安装包、另一 CPU、模板与未知命名不能成为更新入口。

@@ -24,6 +24,7 @@ namespace Dafeiyu.Tests
                 string directory=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"auto-update-smoke",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
                 File.Copy(Assembly.GetExecutingAssembly().Location,Path.Combine(directory,UpdateInstall.ExecutableName));
                 pet=new PetWindow(new SpriteAtlas(),new PetSettings{AutoUpdate=false,FollowCursor=false,ReadReplies=false},new SettingsStore(Path.Combine(directory,"data","settings.json")),null);pet.Show();pet.ShowChat();Pump(.2);
+                CoordinatorPackageNames(pet);
                 using(var feed=new Feed())using(var controller=new UpdateCoordinator(pet,feed,job=>{throw new Exception("must not apply while chat is visible");},ReleaseInfo.DisplayVersion))
                 {
                     Task task=null;pet.Dispatcher.BeginInvoke(new Action(()=>task=controller.CheckAndUpdateAsync(false)));Wait(()=>task!=null && task.IsCompleted,6);task.GetAwaiter().GetResult();Pump(.4);
@@ -150,6 +151,21 @@ namespace Dafeiyu.Tests
             }
             catch(Exception e){Console.WriteLine("FAIL Auto update: "+e.Message);return 1;}
             finally{if(pet!=null)pet.Close();app.Shutdown();}
+        }
+        static void CoordinatorPackageNames(PetWindow pet)
+        {
+            using(var feed=new Feed())using(var controller=new UpdateCoordinator(pet,feed,job=>{throw new Exception("package contract probe must not apply");},"0.5.6"))
+            {
+                feed.Release.VersionTag="v0.6.0";
+                foreach(string invalid in new[]{"DeskPet-Windows-Setup-0.6.0.exe","DeskPet-Setup-0.6.0.exe","DeskPet-Windows-0.6.1.zip","DeskPet-macOS-0.6.0-arm64.zip"}) {
+                    feed.Release.AssetName=invalid;feed.Release.AssetUrl=ReleaseInfo.RepositoryUrl+"/releases/download/v0.6.0/"+invalid;
+                    Task check=controller.CheckAndUpdateAsync(false);Wait(()=>check.IsCompleted,4);check.GetAwaiter().GetResult();
+                    Check(feed.Downloads==0 && !controller.IsBusy && controller.Status.Contains("验证"),"coordinator rejects wrong platform/version/mode before download: "+invalid);
+                }
+                feed.Release.AssetName="DeskPet-Windows-0.6.0.zip";feed.Release.AssetUrl=ReleaseInfo.RepositoryUrl+"/releases/download/v0.6.0/"+feed.Release.AssetName;
+                Task valid=controller.CheckAndUpdateAsync(false);Wait(()=>valid.IsCompleted,4);valid.GetAwaiter().GetResult();
+                Check(feed.Downloads==1 && controller.IsReadyToInstall,"0.5.6 coordinator accepts the unchanged 0.6.0 portable contract");controller.Cancel();
+            }
         }
         static void Check(bool value,string text){if(!value)throw new Exception(text);passed++;Console.WriteLine("PASS "+text);}
         static T Find<T>(DependencyObject root,string name)where T:FrameworkElement{if(root is T && ((T)root).Name==name)return (T)root;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var found=Find<T>(VisualTreeHelper.GetChild(root,i),name);if(found!=null)return found;}return null;}

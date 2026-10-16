@@ -18,8 +18,8 @@ namespace Dafeiyu.Tests
         static int passed;
         [DllImport("user32.dll")]static extern bool SetCursorPos(int x,int y);
         [DllImport("user32.dll")]static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
-        [DllImport("user32.dll")]static extern IntPtr SendMessage(IntPtr h,int m,IntPtr w,IntPtr l);
-        [STAThread]public static int Main()
+        [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
+        [STAThread]public static int Main(string[] args)
         {
             var app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};PetWindow pet=null;
             string root=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"stumble-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
@@ -31,6 +31,16 @@ namespace Dafeiyu.Tests
                 var store=new SettingsStore(Path.Combine(root,"settings.json"));
                 cfg.StumbleEnabled=false;store.Save(cfg);Check(!store.Load().StumbleEnabled,"disabled preference survives save/load");
                 cfg.StumbleEnabled=true;pet=new PetWindow(null,cfg,store,null);pet.Show();Pump(.2);
+                HideDuringNativeCapture(pet);
+                if(args.Contains("--restore-only"))
+                {
+                    foreach(string id in new[]{"e-bao","dafeiyu","marfu","xiaobei"})
+                    {
+                        Check(pet.SelectSkin(pet.Catalog.Find(id)),"restore regression preset "+id);
+                        HideAndRestore(pet);NativeDrop(pet,true,"stumble");NativeDrop(pet,false,"landing",true);
+                    }
+                    Console.WriteLine("Restore regression: "+passed+" passed; real native clicks after four hide/restore cycles.");return 0;
+                }
                 foreach(string id in new[]{"e-bao","dafeiyu","marfu","xiaobei"})
                 {
                     typeof(PetWindow).GetField("random",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(pet,new VariantRandom(false));
@@ -67,7 +77,7 @@ namespace Dafeiyu.Tests
                         Contact(pet,clip,Path.Combine(root,id+"-"+name+".png"));
                     }
                     pet.PlayInteraction("stumble");pet.SetPaused(true);Check(!State(pet).Active,"pause cancels stumble "+id);pet.SetPaused(false);
-                    pet.PlayInteraction("stumble");pet.HidePet();Check(!State(pet).Active,"hide cancels stumble "+id);pet.RestorePet();
+                    pet.PlayInteraction("stumble");HideAndRestore(pet);
                     foreach(bool originalStyle in new[]{false,true}){NativeDrop(pet,true,"stumble",originalStyle);NativeDrop(pet,false,"landing",originalStyle);}
                     cfg.StumbleEnabled=false;NativeDrop(pet,true,"landing");cfg.StumbleEnabled=true;
                 }
@@ -78,6 +88,41 @@ namespace Dafeiyu.Tests
             }
             catch(Exception e){Console.WriteLine("FAIL stumble "+e);return 1;}
             finally{mouse_event(4,0,0,0,UIntPtr.Zero);SetCursorPos((int)original.X,(int)original.Y);if(pet!=null)pet.Close();Pump(.1);app.Shutdown();}
+        }
+        static void HideDuringNativeCapture(PetWindow pet)
+        {
+            pet.ContextMenu.IsOpen=true;Pump(.05);Check(pet.ContextMenu.IsOpen,"menu opened before hide regression");
+            pet.HidePet();Check(!pet.ContextMenu.IsOpen,"hide closes the context menu popup");pet.RestorePet();Pump(.1);
+            pet.PlayAction("idle",0);var point=OpaquePoint(pet);
+            ((HoverInteraction)Field(pet,"hover")).Update(true,true,false);
+            Check(SetCursorPos((int)point.X,(int)point.Y),"native capture regression pointer available");Pump(.1);
+            Pump(System.Windows.Forms.SystemInformation.DoubleClickTime/1000d+.06);
+            point=OpaquePoint(pet);SetCursorPos((int)point.X,(int)point.Y);Pump(.03);
+            try
+            {
+                mouse_event(2,0,0,0,UIntPtr.Zero);WaitUntil(()=> (bool)Field(pet,"dragging"),.8);
+                Check((bool)Field(pet,"dragging") && ((Image)pet.Content).IsMouseCaptured,"actual native down captures mouse before hide");
+                SetCursorPos((int)point.X-40,(int)point.Y-15);WaitUntil(()=> (bool)Field(pet,"moved"),.8);
+                Check((bool)Field(pet,"moved"),"native held pointer actually drags before hide");
+                pet.HidePet();
+                Check(!(bool)Field(pet,"dragging") && !((Image)pet.Content).IsMouseCaptured && System.Windows.Input.Mouse.Captured==null,"hide while dragging releases native mouse capture");
+            }
+            finally{mouse_event(4,0,0,0,UIntPtr.Zero);}
+            pet.RestorePet();Pump(.1);NativeDrop(pet,false,"landing");
+        }
+        static void HideAndRestore(PetWindow pet)
+        {
+            var hwnd=new WindowInteropHelper(pet).Handle;var foreground=GetForegroundWindow();
+            var point=OpaquePoint(pet);pet.HidePet();Pump(.1);
+            Check(!State(pet).Active,"hide cancels interaction "+pet.Skin.Id);
+            Check(!pet.IsPetVisible && pet.Opacity==0 && !pet.IsHitTestVisible,"hidden pet has no visible or interactive visual "+pet.Skin.Id);
+            Check(!DesktopInterop.IsWindowAtPoint(hwnd,point),"hidden pet passes native mouse through "+pet.Skin.Id);
+            double tick=(double)Field(pet,"previousTick");Pump(.1);
+            Check(tick==(double)Field(pet,"previousTick"),"hidden pet does not render "+pet.Skin.Id);
+            pet.RestorePet();Pump(.1);
+            Check(pet.IsPetVisible && pet.Opacity==1 && pet.IsHitTestVisible,"restored pet resumes visible interaction "+pet.Skin.Id);
+            Check(new WindowInteropHelper(pet).Handle==hwnd,"restore preserves window and session "+pet.Skin.Id);
+            Check(GetForegroundWindow()==foreground,"hide and restore preserve foreground focus "+pet.Skin.Id);
         }
         sealed class VariantRandom:Random
         {readonly bool original;public int Calls;public VariantRandom(bool useOriginal){original=useOriginal;}public override int Next(int max){Calls++;return original?0:max-1;}}
@@ -92,15 +137,17 @@ namespace Dafeiyu.Tests
             Check(SetCursorPos((int)point.X,(int)point.Y),"native pointer available");
             ((HoverInteraction)Field(pet,"hover")).Update(true,true,false);Pump(.1);
             Pump(System.Windows.Forms.SystemInformation.DoubleClickTime/1000d+.06);
+            point=OpaquePoint(pet);Check(SetCursorPos((int)point.X,(int)point.Y),"current pose native pointer available");Pump(.03);
             Check(DesktopInterop.IsWindowAtPoint(hwnd,point),"native drag belongs to fixture "+pet.Skin.Id);
-            int px=(int)point.X,py=(int)point.Y;
-            Console.WriteLine("Hit diagnostic: point="+point+" bounds="+DesktopInterop.Bounds(hwnd)+" nativeHit="+SendMessage(hwnd,0x84,IntPtr.Zero,new IntPtr((py<<16)|(px&0xffff)))+" offset="+Field(pet,"shownOffset")+" source="+Field(pet,"shownRow")+","+Field(pet,"shownCol")+" image="+((Image)pet.Content).ActualWidth+","+((Image)pet.Content).ActualHeight);
-            System.Windows.Input.MouseButtonEventHandler diagnostic=delegate(object sender,System.Windows.Input.MouseButtonEventArgs e){Console.WriteLine("Native down "+pet.Skin.Id+": count="+e.ClickCount+" button="+e.ChangedButton+" source="+e.OriginalSource);};
-            pet.PreviewMouseDown+=diagnostic;
-            mouse_event(2,0,0,0,UIntPtr.Zero);WaitUntil(()=> (bool)Field(pet,"dragging"),.8);pet.PreviewMouseDown-=diagnostic;
+            bool delivered=false;
+            System.Windows.Input.MouseButtonEventHandler observe=delegate(object sender,System.Windows.Input.MouseButtonEventArgs e){if(e.ChangedButton==System.Windows.Input.MouseButton.Left)delivered=true;};
+            pet.AddHandler(UIElement.PreviewMouseDownEvent,observe,true);
+            try
+            {
+            mouse_event(2,0,0,0,UIntPtr.Zero);WaitUntil(()=> (bool)Field(pet,"dragging"),.8);
+            Check(delivered,"real native button down reaches restored window "+pet.Skin.Id);
             Check((bool)Field(pet,"dragging"),"native button down starts dragging "+pet.Skin.Id+" state="+State(pet).Name);
             Check(SetCursorPos((int)point.X-60,(int)point.Y-25),"native pointer moves during drag");WaitUntil(()=> (bool)Field(pet,"moved"),.8);
-            Console.WriteLine("Drag diagnostic "+pet.Skin.Id+": interaction="+State(pet).Name+" dragging="+Field(pet,"dragging")+" moved="+Field(pet,"moved")+" cursor="+DesktopInterop.Cursor());
             Check(State(pet).Name=="lifted","native drag enters lifted "+pet.Skin.Id);
             Check((bool)Field(pet,"originalInteraction")==originalStyle,"drag chooses expected artwork version "+pet.Skin.Id);
             double releaseY=DesktopInterop.Bounds(hwnd).Top,fallHeight=DesktopInterop.Bounds(hwnd).Height;
@@ -110,6 +157,8 @@ namespace Dafeiyu.Tests
             Check(choice.Calls==(AdditionalInteractions.Supports(pet.Skin)?1:0),"drop never rolls artwork a second time "+pet.Skin.Id);
             Pump(.35);Check(Math.Abs(DesktopInterop.Bounds(hwnd).Top-releaseY-fallHeight*24/208)<1.1,"all drop versions have identical physical displacement "+pet.Skin.Id);
             pet.PlayAction("idle",0);
+            }
+            finally{mouse_event(4,0,0,0,UIntPtr.Zero);pet.RemoveHandler(UIElement.PreviewMouseDownEvent,observe);}
         }
         static object Field(PetWindow pet,string name){return typeof(PetWindow).GetField(name,BindingFlags.Instance|BindingFlags.NonPublic).GetValue(pet);}
         static Point OpaquePoint(PetWindow pet)

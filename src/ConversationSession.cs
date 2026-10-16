@@ -46,24 +46,35 @@ namespace Dafeiyu
         { api=transport;speech=output;microphone=recorderFactory;store=historyStore;saveEnabled=persistenceEnabled??delegate{return true;};History=new ConversationLog();histories[""]=History;LastNotice="";if(store!=null)store.WarningChanged+=OnWarningChanged; }
         private void OnWarningChanged() { if(!disposed && StateChanged!=null)StateChanged(); }
         private ConversationLog GetHistory(string id)
-        { ConversationLog history;if(!histories.TryGetValue(id,out history)){history=new ConversationLog();if(store!=null)history.Replace(store.Load(id));histories[id]=history;}return history; }
+        {
+            ConversationLog history;
+            lock(gate)if(histories.TryGetValue(id,out history))return history;
+            // Storage completion can publish warnings back into the session/queue.
+            // Never wait for that worker while holding the session gate.
+            var loaded=new ConversationLog();if(store!=null)loaded.Replace(store.Load(id));
+            lock(gate){if(histories.TryGetValue(id,out history))return history;histories[id]=loaded;return loaded;}
+        }
         private void Save(string id,ConversationLog history)
         { if(store!=null && saveEnabled())store.SaveAsync(id,history.Messages); }
         public void SelectPersona(string id)
         {
+            id=id??"";
+            lock(gate){if(active!=null)throw new InvalidOperationException("请先停止对话再切换伙伴。");if(disposed)throw new ObjectDisposedException("ConversationSession");}
+            var selected=GetHistory(id);
             lock(gate)
             {
                 if(active!=null) throw new InvalidOperationException("请先停止对话再切换伙伴。");
-                if(disposed)throw new ObjectDisposedException("ConversationSession");id=id??"";History=GetHistory(id);personaId=id;
+                if(disposed)throw new ObjectDisposedException("ConversationSession");History=selected;personaId=id;
             }
             if(HistoryChanged!=null)HistoryChanged();
         }
         public void AddLiveTurn(string id,string user,string reply,string status="complete")
         {
+            id=id??"";var history=GetHistory(id);
             lock(gate) {
                 if(disposed || (String.IsNullOrWhiteSpace(reply) && (status=="complete" || String.IsNullOrWhiteSpace(user))))return;
                 if(status!="complete" && status!="interrupted" && status!="cancelled" && status!="error")status="interrupted";
-                id=id??"";var history=GetHistory(id);ChatMessage input;var output=history.BeginTurn(String.IsNullOrWhiteSpace(user)?"（语音对话）":user,"live",out input);output=history.Update(output.Id,reply,status);Save(id,history);
+                ChatMessage input;var output=history.BeginTurn(String.IsNullOrWhiteSpace(user)?"（语音对话）":user,"live",out input);output=history.Update(output.Id,reply,status);Save(id,history);
                 if(id==personaId){Emit(input);if(output!=null)Emit(output);}
             }
         }
@@ -159,6 +170,7 @@ namespace Dafeiyu
             var request=op.Regenerating?op.History.ForRegeneration(op.ReplyId,persona):op.History.ForRequest(persona,text);
             if(!op.Regenerating)request.Last().SetAttachments(op.Attachments);
             if(op.SteeringContext!=null)request.InsertRange(request.Count-1,op.SteeringContext.Select(m=>m.Copy()));
+            ConversationLog.BudgetRequest(request);
             lock(gate) {
                 token.ThrowIfCancellationRequested();if(disposed)throw new OperationCanceledException(token);
                 op.ProcessingTime.Restart();

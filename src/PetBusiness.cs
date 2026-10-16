@@ -170,6 +170,19 @@ namespace Dafeiyu
                 var previous=new ConversationLog();previous.Replace(messages.Take(index-1).ToList());var request=previous.ForRequest(persona,user.Content);request.Last().SetAttachments(user.Attachments);return request;
             }
         }
+        // Reserve space for schemas, protocol envelopes and observations. The
+        // current user message is never trimmed; only whole prior turns leave.
+        public static void BudgetRequest(List<ChatMessage> request)
+        {
+            Func<ChatMessage,long> size=m=>Encoding.UTF8.GetByteCount(m.Content??"")+ChatAttachment.StoredSize(m.Attachments)+1024;
+            while(request.Sum(size)>7L*1024*1024)
+            {
+                int first=request.FindIndex(m=>m.Role!="system");
+                if(first<0 || first>=request.Count-1)throw new ApiException("当前消息与附件超过请求预算，请减少附件后重试。");
+                string turn=request[first].TurnId;request.RemoveAt(first);
+                if(first<request.Count-1 && request[first].Role=="assistant" && request[first].TurnId==turn)request.RemoveAt(first);
+            }
+        }
         public void Clear() { lock(gate)messages.Clear(); }
     }
 }

@@ -11,6 +11,8 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../docs/third-party-notices.md" Link="docs/third-party-notices.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../docs/conversation-agent.md" Link="docs/conversation-agent.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
@@ -18,6 +20,7 @@
     <ProjectReference Include="../DeskPet.Core/DeskPet.Core.csproj" />
     <ProjectReference Include="../DeskPet.Platform.Mac/DeskPet.Platform.Mac.csproj" />
     <AvaloniaResource Include="../../assets/*.png" Link="Assets/%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/avatars/**/*.png" Link="Assets/avatars/%(RecursiveDir)%(Filename)%(Extension)" />
     <AvaloniaResource Include="../../assets/additional/*.png" Link="Assets/additional/%(Filename)%(Extension)" />
     <AvaloniaResource Include="../../assets/companion-animations/**/*.png" Link="Assets/companion-animations/%(RecursiveDir)%(Filename)%(Extension)" />
     <AvaloniaResource Include="../../assets/bundled-skins/xiaobei/**/*.png" Link="Assets/bundled-skins/xiaobei/%(RecursiveDir)%(Filename)%(Extension)" />

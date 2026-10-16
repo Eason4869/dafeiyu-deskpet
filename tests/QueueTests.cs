@@ -46,6 +46,21 @@ namespace Dafeiyu.Tests
                 session.SelectPersona("other");Check(queue.Items.Count==0,"queues are isolated by companion");session.SelectPersona("e-bao");Check(queue.Items.Count==1,"companion queue survives switching");
             }
             await Reordering(cfg);
+            string attachmentPath=Path.Combine(Path.GetDirectoryName(path),"附件.txt");File.WriteAllText(attachmentPath,"queue attachment");var attachment=ChatAttachment.Read(attachmentPath);
+            var attachmentApi=new Api{WaitForCancellation="hold"};string attachmentQueuePath=path+".attachments";
+            using(var session=new ConversationSession(attachmentApi,new Speech(),()=>null))
+            using(var queue=new ConversationQueue(session,()=>cfg,()=>"E包",attachmentQueuePath))
+            {
+                queue.Enqueue("hold");await Until(()=>attachmentApi.Calls.Count==1);queue.Enqueue("",new[]{attachment});await queue.PauseAsync();File.Delete(attachmentPath);
+                Check(queue.Items.Single().Attachments.Single().Text=="queue attachment","attachment-only queue keeps a snapshot after source deletion");
+            }
+            var restoredApi=new Api();using(var session=new ConversationSession(restoredApi,new Speech(),()=>null))
+            using(var queue=new ConversationQueue(session,()=>cfg,()=>"E包",attachmentQueuePath))
+            {
+                Check(queue.IsPaused && queue.Items.Single().Attachments.Single().Name=="附件.txt","encrypted pending attachments restore paused");queue.Resume();await Until(()=>!queue.IsRunning && queue.Items.Count==0);
+                Check(restoredApi.Requests.Last().Last().Attachments.Single().Text=="queue attachment","restored attachment reaches the actual model request");
+                Check(session.History.Messages.First().Attachments.Single().Text=="queue attachment","sent attachments remain in user history");
+            }
             using(var session=new ConversationSession(new Api(),new Speech(),()=>null))
             using(var queue=new ConversationQueue(session,()=>cfg,()=>"E包",path))
             {session.SelectPersona("e-bao");Check(queue.IsPaused && queue.Items.Single().Text=="still waiting" && !session.IsBusy,"restart restores queue paused without automatic network request");}

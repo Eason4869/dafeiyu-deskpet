@@ -44,8 +44,8 @@ namespace Dafeiyu
             cancel=Ui.Button("取消更新");cancel.Name="CancelUpdate";cancel.Click+=delegate{updates.Cancel();};actions.Children.Add(cancel);update.Children.Add(actions);
             progress=new ProgressBar{Name="UpdateProgress",Minimum=0,Maximum=100,Height=5,Margin=new Thickness(0,12,0,0),Visibility=Visibility.Collapsed};update.Children.Add(progress);
             progressLabel=Ui.Text("",11,Ui.Blue);update.Children.Add(progressLabel);routeLabel=Ui.Text("",11,Ui.Muted);routeLabel.Name="UpdateRoute";routeLabel.Margin=new Thickness(0,6,0,0);update.Children.Add(routeLabel);
-            var automatic=Ui.Toggle("启动时自动检查并更新",pet.Settings.AutoUpdate,v=>{pet.Settings.AutoUpdate=v;updates.AutomaticChanged();});automatic.Name="AutoUpdate";automatic.Margin=new Thickness(0,16,0,5);update.Children.Add(automatic);
-            update.Children.Add(Ui.Text("每天最多自动检查一次，空闲时完成安装与重启。",11,Ui.Muted));panel.Children.Add(GlassSurface.Card(update));
+            var automatic=Ui.Toggle("自动更新",pet.Settings.AutoUpdate,v=>{pet.Settings.AutoUpdate=v;updates.AutomaticChanged();});automatic.Name="AutoUpdate";automatic.Margin=new Thickness(0,16,0,5);update.Children.Add(automatic);
+            panel.Children.Add(GlassSurface.Card(update));
             var network=new Expander{Name="UpdateNetwork",Header="网络加速",IsExpanded=false,Margin=new Thickness(0,0,0,18),FontSize=14,Foreground=Ui.Ink};
             var networkBody=new StackPanel{Margin=new Thickness(2,10,0,0)};
             direct=Choice("不使用 GitHub 加速","UpdateDirect","UpdateNetworkMode",!pet.Settings.UpdateUseProxy && !pet.Settings.UpdateUseMirror);networkBody.Children.Add(direct);

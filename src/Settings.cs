@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
@@ -131,12 +131,21 @@ namespace Dafeiyu
     [DataContract]
     public sealed class PetSettings
     {
-        public const int OnboardingLastStep=15;
+        public const int OnboardingLastStep=16;
         [DataMember] public string OnboardingState { get; set; }
         [DataMember] public int OnboardingStep { get; set; }
         [DataMember] public int OnboardingVersion { get; set; }
         [DataMember] public string LastOnboardingSeries { get; set; }
         [DataMember] public bool SaveChatHistory { get; set; }
+        [DataMember] public bool AgentEnabled { get; set; }
+        [DataMember] public bool AgentFullAccess { get; set; }
+        [DataMember] public bool AgentBackupFiles { get; set; }
+        [DataMember] public int AgentMaxTurns { get; set; }
+        [DataMember] public int AgentTimeoutMinutes { get; set; }
+        [DataMember] public bool AgentDetailedProcess { get; set; }
+        [DataMember] public string AgentWorkspace { get; set; }
+        [DataMember] public bool AgentPlanMode { get; set; }
+        [DataMember] public string AgentGoal { get; set; }
         [DataMember] public bool QuietMode { get; set; }
         [DataMember] public bool HideOnFullscreen { get; set; }
         [DataMember] public bool ClickThrough { get; set; }
@@ -190,6 +199,9 @@ namespace Dafeiyu
         {
             OnboardingState="new";OnboardingStep=0;OnboardingVersion=1;LastOnboardingSeries="";
             SaveChatHistory=true; QuietMode=false; HideOnFullscreen=true; ClickThrough=false; LockPosition=false;
+            AgentFullAccess=true;AgentBackupFiles=true;AgentMaxTurns=12;AgentTimeoutMinutes=10;AgentDetailedProcess=false;
+            AgentEnabled=false;AgentWorkspace=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"data","agent-workspace");
+            AgentPlanMode=false;AgentGoal="";
             Hotkeys=new Dictionary<string,string> { {"quick","Ctrl+Alt+Space"},{"hide","Ctrl+Alt+H"},{"quiet","Ctrl+Alt+D"},{"passthrough","Ctrl+Alt+P"} };
             Scale = 1.25; Volume = 50; Topmost = true; FollowCursor = true; Wander = false; StumbleEnabled=true;AutoSleepEnabled=true;
             GreetingEnabled=true; AiGreetingEnabled=false; GreetingMinMinutes=30; GreetingMaxMinutes=60;
@@ -209,6 +221,9 @@ namespace Dafeiyu
         public void Normalize()
         {
             if(OnboardingState!="new" && OnboardingState!="deferred" && OnboardingState!="skipped" && OnboardingState!="completed")OnboardingState="completed";
+            if(String.IsNullOrWhiteSpace(AgentWorkspace))AgentWorkspace=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"data","agent-workspace");
+            AgentMaxTurns=Math.Max(1,Math.Min(48,AgentMaxTurns));AgentTimeoutMinutes=Math.Max(1,Math.Min(60,AgentTimeoutMinutes));
+            AgentGoal=(AgentGoal??"").Trim();if(AgentGoal.Length>4000)AgentGoal=AgentGoal.Substring(0,4000);
             // Version 1 inserts the double-click lesson before the old service steps.
             if(OnboardingVersion<1){OnboardingStep=Math.Max(0,Math.Min(12,OnboardingStep));if(OnboardingStep>=7)OnboardingStep++;OnboardingVersion=1;}
             OnboardingStep=Math.Max(0,Math.Min(OnboardingLastStep,OnboardingStep));
@@ -300,7 +315,7 @@ namespace Dafeiyu
             if(VoiceProfiles!=null)foreach(var pair in VoiceProfiles)if(pair.Value!=null)voiceProfiles[pair.Key]=pair.Value.Copy();
             var providers=new List<TextProviderSettings>();if(TextProviders!=null)foreach(var provider in TextProviders)if(provider!=null)providers.Add(provider.Copy());
             var audioProviders=new Dictionary<string,ServiceProviderSettings>();if(AudioProviders!=null)foreach(var pair in AudioProviders)if(pair.Value!=null)audioProviders[pair.Key]=pair.Value.Copy();
-            return new PetSettings { AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,LastOnboardingSeries=LastOnboardingSeries,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
+            return new PetSettings { AgentFullAccess=AgentFullAccess,AgentBackupFiles=AgentBackupFiles,AgentMaxTurns=AgentMaxTurns,AgentTimeoutMinutes=AgentTimeoutMinutes,AgentDetailedProcess=AgentDetailedProcess,AgentPlanMode=AgentPlanMode,AgentGoal=AgentGoal,AgentEnabled=AgentEnabled,AgentWorkspace=AgentWorkspace,AudioProviders=audioProviders,TextProviders=providers,ActiveTextProviderId=ActiveTextProviderId,OnboardingState=OnboardingState,OnboardingStep=OnboardingStep,OnboardingVersion=OnboardingVersion,LastOnboardingSeries=LastOnboardingSeries,SaveChatHistory=SaveChatHistory,QuietMode=QuietMode,HideOnFullscreen=HideOnFullscreen,ClickThrough=ClickThrough,LockPosition=LockPosition,Hotkeys=new Dictionary<string,string>(Hotkeys),Scale=Scale,Volume=Volume,Topmost=Topmost,FollowCursor=FollowCursor,Wander=Wander,SkinId=SkinId,X=X,Y=Y,
                 AutoSleepEnabled=AutoSleepEnabled,StumbleEnabled=StumbleEnabled,GreetingEnabled=GreetingEnabled,AiGreetingEnabled=AiGreetingEnabled,GreetingMinMinutes=GreetingMinMinutes,GreetingMaxMinutes=GreetingMaxMinutes,
                 ReadReplies=ReadReplies,UseCloudVoice=UseCloudVoice,VoiceUsesTextService=VoiceUsesTextService,VoiceName=VoiceName,SystemPrompt=SystemPrompt,
                 SpeechUsesTextService=SpeechUsesTextService,VoiceMode=VoiceMode,LiveVoice=LiveVoice,Live=Live.Copy(),PersonaProfileVersion=PersonaProfileVersion,VoiceProfileVersion=VoiceProfileVersion,VoiceProfiles=voiceProfiles,

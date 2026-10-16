@@ -13,7 +13,7 @@ namespace Dafeiyu.Tests
             Run("text completes a pair, resolves pet name and reads reply",async delegate {
                 var api=new FakeApi(); var speech=new FakeSpeech(); using(var s=Create(api,speech)) {
                     var cfg=Configured(); cfg.SystemPrompt="你是{pet_name}"; await s.SendTextAsync("你好",cfg,"E包");
-                    Check(s.History.Messages.Count==2 && api.Messages[0].Content=="你是E包" && speech.Calls==1 && !s.IsBusy,"bad successful flow"); }
+                    Check(s.History.Messages.Count==2 && api.Messages[0].Content.StartsWith("你是E包\n") && api.Messages[0].Content.Contains("纯对话模式") && speech.Calls==1 && !s.IsBusy,"bad successful flow"); }
             });
             Run("cancelled model retains incomplete display without successful context",async delegate {
                 var api=new FakeApi {Delay=1000}; var speech=new FakeSpeech(); using(var s=Create(api,speech)) {

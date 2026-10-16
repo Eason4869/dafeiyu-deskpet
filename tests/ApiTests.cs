@@ -15,6 +15,36 @@ namespace Dafeiyu.Tests
         private static int passed, failed;
         public static int Main()
         {
+            Run("attachments and reasoning use separate protocol fields in JSON and streaming fallback",async delegate {
+                string directory=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"attachment-api-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
+                string note=Path.Combine(directory,"中文说明.txt"),image=Path.Combine(directory,"图片.png"),pdf=Path.Combine(directory,"文档.pdf");
+                File.WriteAllText(note,"文件里的中文",new UTF8Encoding(false));File.WriteAllBytes(image,Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5XcAAAAASUVORK5CYII="));File.WriteAllText(pdf,"%PDF-1.4\nfixture");
+                var message=new ChatMessage("user","请检查附件");message.SetAttachments(new[]{ChatAttachment.Read(note),ChatAttachment.Read(image),ChatAttachment.Read(pdf)});message.SetReasoning("never replay reasoning",1000);File.Delete(note);
+                foreach(bool anthropic in new[]{false,true})foreach(bool stream in new[]{false,true})
+                {
+                    string response=anthropic?"{\"content\":[{\"type\":\"thinking\",\"thinking\":\"核对条件\"},{\"type\":\"text\",\"text\":\"完成\"}]}":"{\"choices\":[{\"message\":{\"reasoning_content\":\"核对条件\",\"content\":\"完成\"}}]}";
+                    using(var server=new Fixture(response))using(var api=new ApiClient())
+                    {
+                        var cfg=Connection(server.Url,"test");cfg.Protocol=anthropic?"anthropic":"auto";string thoughts="",answer="";
+                        Equal("完成",await api.ChatWithReasoningAsync(cfg,new[]{message},d=>answer+=d,d=>thoughts+=d,stream,CancellationToken.None));await server.Done;Equal("核对条件",thoughts);Equal(stream?"完成":"",answer);
+                        Assert(!server.Body.Contains("never replay reasoning") && server.Body.Contains("文件里的中文"),"attachment text missing or reasoning replayed");
+                        var body=(Dictionary<string,object>)new JavaScriptSerializer().DeserializeObject(server.Body);var input=(Dictionary<string,object>)((object[])body["messages"])[0];var parts=(object[])input["content"];
+                        Equal("text",((Dictionary<string,object>)parts[0])["type"]);Equal(anthropic?"image":"image_url",((Dictionary<string,object>)parts[1])["type"]);Equal(anthropic?"document":"file",((Dictionary<string,object>)parts[2])["type"]);
+                        Equal(stream,body["stream"]);
+                    }
+                }
+            });
+            Run("attachment validation rejects bad formats limits and invalid encoding",async delegate {
+                string directory=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"attachment-validation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
+                foreach(string name in new[]{"bad.png","bad.exe","bad.txt","huge.txt"})
+                {
+                    string path=Path.Combine(directory,name);File.WriteAllBytes(path,name=="huge.txt"?new byte[ChatAttachment.MaximumBytes+1]:new byte[]{255,0,1});
+                    bool rejected=false;try{ChatAttachment.Read(path);}catch(ApiException){rejected=true;}Assert(rejected,"invalid file accepted: "+name);
+                }
+                string valid=Path.Combine(directory,"ok.txt");File.WriteAllText(valid,"ok");var file=ChatAttachment.Read(valid);bool tooMany=false;try{ChatAttachment.Snapshot(new[]{file,file,file,file,file});}catch(ApiException){tooMany=true;}Assert(tooMany,"five files accepted");
+                string word=Path.Combine(directory,"测试.docx");using(var zip=System.IO.Compression.ZipFile.Open(word,System.IO.Compression.ZipArchiveMode.Create))using(var writer=new StreamWriter(zip.CreateEntry("word/document.xml").Open()))writer.Write("<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:p><w:r><w:t>Word 中文内容</w:t></w:r></w:p></w:document>");
+                Assert(ChatAttachment.Read(word).Text.Contains("Word 中文内容"),"DOCX text missing");await Task.FromResult(0);
+            });
             Run("model listing uses GET without requiring a selected model and preserves endpoint prefixes",async delegate {
                 using(var server=new Fixture("{\"data\":[{\"id\":\" z-model \"},{\"id\":\"a-model\"},{\"id\":\"a-model\"},{\"id\":\"\"},{\"id\":12}]}"))using(var api=new ApiClient())
                 {var cfg=Connection(server.Url+"/v1/chat/completions","");var result=await api.ListModelsAsync(cfg,CancellationToken.None);await server.Done;Equal("GET /v1/models HTTP/1.1",server.Headers.Split(new[]{"\r\n"},StringSplitOptions.None)[0]);Equal("Bearer dummy-key",server.Authorization);Equal("",server.Body);Equal(2,result.Count);Equal("a-model",result[0]);Equal("z-model",result[1]);Equal("",cfg.Model);}

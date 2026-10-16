@@ -16,6 +16,8 @@ namespace Dafeiyu
     public static class OnboardingUpgrade
     {
         public const string LegacySeries="0.5";
+        public const int WorkGuideVersion=2;
+        public const int WorkGuideStep=14;
         public static OnboardingUpgradeResult Prepare(PetSettings settings,string version)
         {
             if(settings==null)throw new ArgumentNullException("settings");
@@ -24,12 +26,19 @@ namespace Dafeiyu
             bool first=String.IsNullOrEmpty(settings.LastOnboardingSeries) && settings.OnboardingState=="new";
             Version recorded;
             if(!TrySeries(settings.LastOnboardingSeries,out recorded))recorded=new Version(0,5);
-            bool show=first || current.CompareTo(recorded)>0;
+            bool seriesUpgrade=current.CompareTo(recorded)>0;
+            Version release;Version.TryParse(version.Trim(),out release);
+            bool hasWorkGuide=release.CompareTo(new Version(0,6,1))>=0;
+            // One content revision within 0.6 starts at the new lessons; future
+            // patches stay silent and downgrades never consume another guide.
+            bool workUpgrade=!first && !seriesUpgrade && current.Equals(new Version(0,6)) && recorded.Equals(current) && hasWorkGuide && settings.OnboardingVersion<WorkGuideVersion;
+            bool show=first || seriesUpgrade || workUpgrade;
             string series=Format(show?current:recorded);
             bool changed=settings.LastOnboardingSeries!=series;
             settings.LastOnboardingSeries=series;
             if(show) {
-                settings.OnboardingState="new";settings.OnboardingStep=0;settings.OnboardingVersion=1;
+                settings.OnboardingState="new";settings.OnboardingStep=workUpgrade?WorkGuideStep:0;
+                settings.OnboardingVersion=Math.Max(settings.OnboardingVersion,hasWorkGuide?WorkGuideVersion:1);
                 changed=true;
             }
             return new OnboardingUpgradeResult(changed,show);

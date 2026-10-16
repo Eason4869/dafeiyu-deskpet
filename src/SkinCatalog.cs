@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -77,6 +77,7 @@ namespace Dafeiyu
     }
     public sealed class SkinCatalog
     {
+        private static readonly Dictionary<string,BitmapSource> avatars=new Dictionary<string,BitmapSource>();
         private readonly string directory;
         private readonly List<SkinDefinition> skins=new List<SkinDefinition>();
         public IList<SkinDefinition> Skins { get { return skins.AsReadOnly(); } }
@@ -200,6 +201,31 @@ namespace Dafeiyu
             }
         }
         private static int BigEndian(byte[] b,int i) { return (b[i]<<24)|(b[i+1]<<16)|(b[i+2]<<8)|b[i+3]; }
+        public static BitmapSource GetAvatar(SkinDefinition skin)
+        {
+            // Imported designs keep their own artwork, even when their ID matches a preset.
+            if(!skin.Embedded && !skin.Bundled)return GetPreview(skin);
+            lock(avatars)
+            {
+                BitmapSource cached;if(avatars.TryGetValue(skin.Id,out cached))return cached;
+                using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("Dafeiyu.Avatar."+skin.Id))
+                {
+                    if(stream==null)return GetPreview(skin);
+                    var image=new BitmapImage();image.BeginInit();image.CacheOption=BitmapCacheOption.OnLoad;image.DecodePixelWidth=256;image.StreamSource=stream;image.EndInit();image.Freeze();avatars.Add(skin.Id,image);return image;
+                }
+            }
+        }
+        public static DataTemplate AvatarTemplate()
+        {
+            var row=new FrameworkElementFactory(typeof(System.Windows.Controls.StackPanel));row.SetValue(System.Windows.Controls.StackPanel.OrientationProperty,System.Windows.Controls.Orientation.Horizontal);
+            var image=new FrameworkElementFactory(typeof(System.Windows.Controls.Image));image.SetValue(FrameworkElement.WidthProperty,28.0);image.SetValue(FrameworkElement.HeightProperty,28.0);image.SetValue(UIElement.ClipProperty,new System.Windows.Media.RectangleGeometry(new Rect(0,0,28,28),5.6,5.6));image.SetValue(FrameworkElement.MarginProperty,new Thickness(0,0,9,0));image.SetBinding(System.Windows.Controls.Image.SourceProperty,new System.Windows.Data.Binding{Converter=new AvatarConverter()});row.AppendChild(image);
+            var name=new FrameworkElementFactory(typeof(System.Windows.Controls.TextBlock));name.SetBinding(System.Windows.Controls.TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);row.AppendChild(name);return new DataTemplate{VisualTree=row};
+        }
+        sealed class AvatarConverter:System.Windows.Data.IValueConverter
+        {
+            public object Convert(object value,Type targetType,object parameter,System.Globalization.CultureInfo culture){return value is SkinDefinition?GetAvatar((SkinDefinition)value):null;}
+            public object ConvertBack(object value,Type targetType,object parameter,System.Globalization.CultureInfo culture){throw new NotSupportedException();}
+        }
         public static BitmapSource GetPreview(SkinDefinition skin)
         {
             if(skin.Illustrated) return IllustratedPack.ReadImage(IllustratedPack.AssetPath(skin.Source,skin.Manifest.Preview),480,520);

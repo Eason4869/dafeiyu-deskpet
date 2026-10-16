@@ -136,7 +136,7 @@ internal sealed class SpriteAssets : IDisposable
     }
     public Bitmap Get(PetSkin skin, string path)
     {
-        var key = skin.Id + "/" + path;
+        var key = ImageKey(skin, path);
         if (!images.TryGetValue(key, out var image))
         {
             using var stream = skin.BuiltIn ? OpenAsset(path) : File.OpenRead(SafePath(skin.Folder!, path));
@@ -149,6 +149,9 @@ internal sealed class SpriteAssets : IDisposable
         }
         return image;
     }
+    private static string ImageKey(PetSkin skin, string path) => (skin.BuiltIn ? "builtin/" + skin.Id : "custom/" + Path.GetFullPath(skin.Folder!)) + "/" + path;
+    public static string? AvatarPath(PetSkin skin) => skin.BuiltIn && skin.Id is "e-bao" or "dafeiyu" or "marfu" or "xiaobei" ? "avatars/" + skin.Id + ".png" : null;
+    public Bitmap? GetAvatar(PetSkin skin) => AvatarPath(skin) is { } path ? Get(skin, path) : null;
     public ClipSpec Resolve(PetSkin skin, string action, bool original)
     {
         if (skin.BuiltIn && PairedActions.Contains(action))
@@ -171,7 +174,7 @@ internal sealed class SpriteAssets : IDisposable
     public static PixelRect Rect(ClipSpec spec, int frame) => new(frame % spec.Columns * spec.Width, spec.Top + frame / spec.Columns * spec.Height, spec.Width, spec.Height);
     private byte[] Mask(PetSkin skin, ClipSpec spec, int frame)
     {
-        var key = (skin.Id + "/" + spec.File + "/" + spec.Top, frame);
+        var key = (ImageKey(skin, spec.File) + "/" + spec.Top, frame);
         if (masks.TryGetValue(key, out var result)) return result;
         var bytes = new byte[spec.Width * spec.Height * 4];
         var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);

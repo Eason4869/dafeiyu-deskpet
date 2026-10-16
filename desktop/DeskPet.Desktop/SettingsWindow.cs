@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Dafeiyu;
 using DeskPet.Platform.Mac;
@@ -11,20 +13,27 @@ internal sealed class SettingsWindow : Window
     private readonly DesktopController owner;
     private readonly List<ProviderEditor> providers = new();
     private readonly TabControl tabs = new();
+    private readonly SpriteAssets avatarAssets = new();
     public SettingsWindow(DesktopController controller)
     {
         owner = controller; Title = "DeskPet · 设置"; Width = 790; Height = 760; MinWidth = 570; MinHeight = 420;
         var pages = new List<TabItem>();
         void Add(string title, Control content) => pages.Add(new TabItem { Header = title, Content = new ScrollViewer { Content = new Border { Padding = new Thickness(20), Child = content } } });
         Add("伙伴", Partner()); Add("桌面", Behavior());
-        foreach (var item in new[] { ("文字服务", "text"), ("听写", "asr"), ("云朗读", "speech"), ("Live", "live") }) { var editor = new ProviderEditor(owner, item.Item2); providers.Add(editor); Add(item.Item1, editor); }
-        Add("语音", Voice()); Add("数据", Storage()); tabs.ItemsSource = pages; Content = tabs;
-        Closed += (_, _) => { foreach (var provider in providers) provider.Dispose(); };
+        foreach (var item in new[] { ("模型配置", "text"), ("听写", "asr"), ("云朗读", "speech"), ("Live", "live") }) { var editor = new ProviderEditor(owner, item.Item2); providers.Add(editor); Add(item.Item1, editor); }
+        Add("工作设置", new WorkSettingsView(owner, this)); Add("语音", Voice()); Add("数据", Storage()); tabs.ItemsSource = pages; Content = tabs;
+        Closed += (_, _) => { foreach (var provider in providers) provider.Dispose(); avatarAssets.Dispose(); };
     }
-    public void SelectSection(string section) => tabs.SelectedIndex = section switch { "partner" => 0, "behavior" => 1, "text" => 2, "asr" => 3, "speech" => 4, "live" => 5, "voice" => 6, "storage" => 7, _ => 0 };
+    public void SelectSection(string section) => tabs.SelectedIndex = section switch { "partner" => 0, "behavior" => 1, "text" => 2, "asr" => 3, "speech" => 4, "live" => 5, "work" => 6, "voice" => 7, "storage" => 8, _ => 0 };
     private Control Partner()
     {
-        var choices = new ComboBox { ItemsSource = owner.Skins, SelectedItem = owner.Skin };
+        var choices = new ComboBox { ItemsSource = owner.Skins, SelectedItem = owner.Skin,
+            ItemTemplate = new FuncDataTemplate<PetSkin>((skin, _) =>
+            {
+                if (skin == null) return new TextBlock();
+                var name = Ui.Text(skin.Name); name.VerticalAlignment = VerticalAlignment.Center;
+                return Ui.Row(new AvatarView { Assets = avatarAssets, Skin = skin }, name);
+            }) };
         var prompt = Ui.Input(owner.Settings.SystemPrompt); prompt.AcceptsReturn = true; prompt.Height = 250; prompt.TextWrapping = Avalonia.Media.TextWrapping.Wrap;
         choices.SelectionChanged += (_, _) => { if (choices.SelectedItem is PetSkin skin) owner.Run(async () => { await owner.SelectSkinAsync(skin); prompt.Text = owner.Settings.SystemPrompt; }); };
         return Ui.Column(Ui.Text("当前伙伴", 20), choices, Ui.Field("人格（此伙伴独立保存，最多 8000 字）", prompt),

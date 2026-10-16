@@ -1,4 +1,7 @@
-# DeskPet 内置 Agent 接入计划
+﻿# DeskPet 内置 Agent 接入计划
+
+> 历史设计，已被 [原生 Agent 实现](native-agent-design.md) 取代。本轮使用程序内 C# 原生工具循环，不采用本文的 OpenCode 桥接方案。
+
 
 日期：2026-10-16。状态：方案草案，尚未实现、未安装任何 agent、未调用真实模型。
 

@@ -81,19 +81,39 @@ namespace Dafeiyu
         [DataMember] public string TurnId { get; private set; }
         [DataMember] public string Role { get; private set; }
         [DataMember] public string Content { get; private set; }
+        [DataMember] public string Reasoning { get; private set; }
+        [DataMember] public long ReasoningMilliseconds { get; private set; }
+        [DataMember] public bool WorkMode { get; private set; }
+        [DataMember] public DateTime? ProcessingStartedAt { get; private set; }
+        [DataMember] public long ProcessingMilliseconds { get; private set; }
+        [DataMember] public List<ChatAttachment> Attachments { get; private set; }
+        [DataMember] public List<AgentToolEvent> ToolEvents { get; private set; }
         [DataMember] public string Status { get; private set; }
         [DataMember] public string Source { get; private set; }
         [DataMember] public DateTime Timestamp { get; private set; }
         public ChatMessage(string role, string content) : this(role,content,Guid.NewGuid().ToString("N"),"complete","text") { }
         public ChatMessage(string role,string content,string turnId,string status,string source)
         { Id=Guid.NewGuid().ToString("N");TurnId=turnId;Role=role;Content=content??"";Status=status;Source=source;Timestamp=DateTime.UtcNow; }
-        public ChatMessage Copy() { return (ChatMessage)MemberwiseClone(); }
+        public ChatMessage Copy() { var copy=(ChatMessage)MemberwiseClone();copy.SetAttachments(Attachments);copy.SetTools(ToolEvents);return copy; }
+        internal void SetTools(IEnumerable<AgentToolEvent> tools) { ToolEvents=tools==null?null:tools.Select(t=>t.Copy()).ToList(); }
+        internal void SetAttachments(IEnumerable<ChatAttachment> files) { Attachments=files==null?null:files.Select(f=>f.Copy()).ToList(); }
+        internal void SetReasoning(string text,long milliseconds) { Reasoning=text??"";ReasoningMilliseconds=milliseconds; }
+        internal void StartProcessing(bool workMode) { WorkMode=workMode;ProcessingStartedAt=DateTime.UtcNow;ProcessingMilliseconds=0; }
+        internal void SetProcessingTime(long milliseconds) { ProcessingMilliseconds=Math.Max(0,milliseconds); }
+        public string ProcessingLabel(DateTime now)
+        {
+            long milliseconds=Status=="pending" && ProcessingStartedAt.HasValue?Math.Max(ProcessingMilliseconds,(long)(now.ToUniversalTime()-ProcessingStartedAt.Value).TotalMilliseconds):ProcessingMilliseconds;
+            long seconds=Math.Max(0,milliseconds/1000);
+            string duration=seconds>=3600?(seconds/3600)+"小时 "+(seconds%3600/60)+"分 "+(seconds%60)+"秒":seconds>=60?(seconds/60)+"分 "+(seconds%60)+"秒":seconds+"秒";
+            return (WorkMode?"处理时间 ":"思考时间 ")+duration;
+        }
         internal void Update(string content,string status) { Content=content??"";Status=status; }
         internal void Normalize()
         {
             Id=String.IsNullOrEmpty(Id)?Guid.NewGuid().ToString("N"):Id;
             TurnId=String.IsNullOrEmpty(TurnId)?Id:TurnId;Content=Content??"";Source=Source??"text";
             if(Status=="pending")Status="interrupted";
+            if(ToolEvents!=null)foreach(var item in ToolEvents.Where(t=>t!=null && t.Status=="running")){item.Status="error";item.Summary+=" · 已中断";}
             if(Status!="complete" && Status!="interrupted" && Status!="cancelled" && Status!="error")Status="interrupted";
         }
     }
@@ -114,15 +134,17 @@ namespace Dafeiyu
         {
             lock(gate) { string turn=Guid.NewGuid().ToString("N");var u=new ChatMessage("user",text,turn,"complete",source);var a=new ChatMessage("assistant","",turn,"pending",source);messages.Add(u);messages.Add(a);Trim();user=u.Copy();return a.Copy(); }
         }
-        public ChatMessage Update(string id,string content,string status)
+        public ChatMessage StartProcessing(string id,bool workMode) { lock(gate){var message=messages.Find(m=>m.Id==id);if(message==null)return null;message.StartProcessing(workMode);return message.Copy();} }
+        public ChatMessage Update(string id,string content,string status,string reasoning=null,long reasoningMilliseconds=0,IEnumerable<AgentToolEvent> tools=null,long? processingMilliseconds=null)
         {
-            lock(gate) { var message=messages.Find(m=>m.Id==id);if(message==null)return null;message.Update(content,status);Trim();return message.Copy(); }
+            lock(gate) { var message=messages.Find(m=>m.Id==id);if(message==null)return null;message.Update(content,status);if(reasoning!=null)message.SetReasoning(reasoning,reasoningMilliseconds);if(tools!=null)message.SetTools(tools);if(processingMilliseconds.HasValue)message.SetProcessingTime(processingMilliseconds.Value);Trim();return message.Copy(); }
         }
+        public void Attach(string id,IEnumerable<ChatAttachment> files) { lock(gate){var message=messages.Find(m=>m.Id==id);if(message!=null)message.SetAttachments(files);} }
         public void Replace(IList<ChatMessage> restored)
         { lock(gate) { messages.Clear();if(restored!=null)foreach(var m in restored){if(m==null || (m.Role!="user" && m.Role!="assistant"))continue;var copy=m.Copy();copy.Normalize();messages.Add(copy);}Trim(); } }
         private void Trim()
         {
-            while(messages.Count>0 && (messages.Select(m=>m.TurnId).Distinct().Count()>200 || messages.Sum(m=>(long)Encoding.UTF8.GetByteCount(m.Content)+512)>8*1024*1024))
+            while(messages.Count>0 && (messages.Select(m=>m.TurnId).Distinct().Count()>200 || messages.Sum(m=>(long)Encoding.UTF8.GetByteCount(m.Content)+Encoding.UTF8.GetByteCount(m.Reasoning??"")+ChatAttachment.StoredSize(m.Attachments)+512)>8*1024*1024))
             { string turn=messages[0].TurnId;messages.RemoveAll(m=>m.TurnId==turn); }
         }
         public List<ChatMessage> ForRequest(string persona, string user)
@@ -138,6 +160,15 @@ namespace Dafeiyu
                 result.AddRange(pairs);
             }
             result.Add(new ChatMessage("user", user)); return result;
+        }
+        public List<ChatMessage> ForRegeneration(string replyId,string persona)
+        {
+            lock(gate)
+            {
+                int index=messages.FindIndex(m=>m.Id==replyId && m.Role=="assistant");if(index<1)throw new InvalidOperationException("找不到这条回复。");
+                var user=messages[index-1];if(user.Role!="user" || user.TurnId!=messages[index].TurnId)throw new InvalidOperationException("这条回复没有对应的用户消息。");
+                var previous=new ConversationLog();previous.Replace(messages.Take(index-1).ToList());var request=previous.ForRequest(persona,user.Content);request.Last().SetAttachments(user.Attachments);return request;
+            }
         }
         public void Clear() { lock(gate)messages.Clear(); }
     }

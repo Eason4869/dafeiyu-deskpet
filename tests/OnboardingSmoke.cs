@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -93,10 +93,16 @@ namespace Dafeiyu.Tests
                 Check(guide.Step==13,"shortcut is final step");((TextBox)preferences.FindControl("Hotkeyquick")).Text="not-a-shortcut";Pump(.2);Check(!Find<Button>(guide,"GuideNext").IsEnabled,"invalid shortcut disables finish");((TextBox)preferences.FindControl("Hotkeyquick")).Clear();Capture(guide,Path.Combine(folder,"guide-final-step.png"));Press(guide,"GuideNext");
                 Check(guide.Step==14 && guide.IsVisible,"shortcut continues to current conversation guidance");
                 Check(quick.IsVisible && !Find<Button>(quick,"SendQuickMessage").IsEnabled && !Find<Button>(quick,"VoiceRecord").IsEnabled,"conversation guidance previews actual UI without sending or recording");Capture(guide,Path.Combine(folder,"guide-conversation.png"));
-                Press(guide,"GuideNext");Check(guide.Step==15 && !quick.IsVisible && preferences.IsOnAboutPage,"network guidance follows conversation preview");
+                Press(guide,"GuideNext");Check(guide.Step==15 && !quick.IsVisible && preferences.FindControl("WorkSettingsPanel")!=null,"work settings follows conversation preview and opens its real controls");
+                var workPanel=(WorkSettingsPanel)preferences.FindControl("WorkSettingsPanel");
+                Check(workPanel.IsEnabled && preferences.FindControl("AgentAccessMode").IsEnabled && !preferences.FindControl("SettingsNavigation").IsEnabled,"work lesson permits actual settings while keeping unrelated navigation locked");
+                ((TextBox)preferences.FindControl("AgentMaxTurns")).Text="0";Press(guide,"GuideNext");Check(guide.Step==15,"invalid work settings cannot advance or silently save");
+                ((TextBox)preferences.FindControl("AgentMaxTurns")).Text="7";((CheckBox)preferences.FindControl("AgentPlanMode")).IsChecked=true;
+                Capture(guide,Path.Combine(folder,"guide-work-settings.png"));Press(guide,"GuideNext");
+                Check(guide.Step==16 && preferences.IsOnAboutPage && pet.Settings.AgentMaxTurns==7 && pet.Settings.AgentPlanMode,"work settings save before network lesson without executing a task");
                 var network=(Expander)preferences.FindControl("UpdateNetwork");Check(network.IsExpanded && network.IsEnabled && !preferences.FindControl("CheckUpdates").IsEnabled && !preferences.FindControl("UninstallApplication").IsEnabled,"network lesson permits configuration but blocks update and uninstall");
                 ((RadioButton)preferences.FindControl("UpdateMirror")).IsChecked=true;((RadioButton)preferences.FindControl("CustomUpdateMirror")).IsChecked=true;var mirrorAddress=(TextBox)preferences.FindControl("UpdateMirrorAddress");mirrorAddress.Text="invalid";Pump(.2);Check(!Find<Button>(guide,"GuideNext").IsEnabled,"invalid network address blocks finish");
-                var about=(AboutPanel)Field(preferences,"about");about.MirrorProbe=(address,token)=>System.Threading.Tasks.Task.FromResult(0);var probe=about.TestMirrorsAsync();while(!probe.IsCompleted)Pump(.05);probe.GetAwaiter().GetResult();((RadioButton)preferences.FindControl("BuiltinUpdateMirror1")).IsChecked=true;Pump(.2);Capture(guide,Path.Combine(folder,"guide-network.png"));Press(guide,"GuideBack");Check(guide.Step==14 && !network.IsExpanded,"back restores previous network collapse state");Press(guide,"GuideNext");Press(guide,"GuideNext");
+                var about=(AboutPanel)Field(preferences,"about");about.MirrorProbe=(address,token)=>System.Threading.Tasks.Task.FromResult(0);var probe=about.TestMirrorsAsync();while(!probe.IsCompleted)Pump(.05);probe.GetAwaiter().GetResult();((RadioButton)preferences.FindControl("BuiltinUpdateMirror1")).IsChecked=true;Pump(.2);Capture(guide,Path.Combine(folder,"guide-network.png"));Press(guide,"GuideBack");Check(guide.Step==15 && !network.IsExpanded,"back restores previous network collapse state");Press(guide,"GuideNext");Press(guide,"GuideNext");
                 Check(settings.OnboardingState=="completed" && Field(pet,"guide")==null && preferences.FindControl("SettingsNavigation").IsEnabled && ((UIElement)pet.Content).IsEnabled,"finish restores settings and pet interaction");
                 Check(!network.IsExpanded && settings.UpdateMirrorAddress=="https://gh-proxy.com" && !pet.Updates.IsBusy,"network choice saves without automatic test or update and restores collapsed UI");
                 Check(!pet.LiveActive && !pet.Conversation.IsBusy && pet.Conversation.History.Messages.Count==0,"guide does not connect Live, record or send messages automatically");

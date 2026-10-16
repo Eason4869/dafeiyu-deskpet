@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,7 +23,7 @@ namespace Dafeiyu
             var heading=new StackPanel();var title=Ui.Text(pet.Skin.Name,compact?16:24);title.FontWeight=FontWeights.SemiBold;heading.Children.Add(title);heading.Children.Add(Ui.Text(compact?"快速语音通话":"Live 语音通话",11,Ui.Muted));header.Children.Add(heading);root.Children.Add(header);
             var center=new Grid{Margin=new Thickness(0,compact?2:12,0,compact?4:12)};center.RowDefinitions.Add(new RowDefinition());center.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             var stage=new Grid{MaxWidth=compact?146:330,MaxHeight=compact?146:330};orbit=new VoiceOrbit{Name="LiveVoiceOrbit",ClipToBounds=true};stage.Children.Add(orbit);
-            var avatar=new Image{Source=SkinCatalog.GetPreview(pet.Skin),Width=compact?66:118,Height=compact?76:132,Stretch=Stretch.Uniform};RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);stage.Children.Add(avatar);center.Children.Add(stage);
+            var avatar=new Image{Source=SkinCatalog.GetAvatar(pet.Skin),Width=compact?66:118,Height=compact?66:118,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,compact?66:118,compact?66:118),compact?13.2:23.6,compact?13.2:23.6)};RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);stage.Children.Add(avatar);center.Children.Add(stage);
             var captions=new StackPanel{Margin=new Thickness(0,10,0,0)};mode=Ui.Text("准备连接",15,Ui.Blue);mode.HorizontalAlignment=HorizontalAlignment.Center;captions.Children.Add(mode);
             status=Ui.Text("",11,Ui.Muted);status.Name="LiveCallStatus";status.TextAlignment=TextAlignment.Center;status.Margin=new Thickness(0,5,0,10);captions.Children.Add(status);
             subtitle=Ui.Text("说话时，声音会在这里变成字幕。",14);subtitle.Name="LiveCallTranscript";subtitle.TextAlignment=TextAlignment.Center;

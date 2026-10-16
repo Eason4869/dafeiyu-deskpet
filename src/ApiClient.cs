@@ -25,7 +25,11 @@ namespace Dafeiyu
     {
         Task<string> ChatStreamAsync(ConnectionSettings settings, IList<ChatMessage> messages, Action<string> onDelta, CancellationToken cancel);
     }
-    public sealed class ApiClient : IConversationApi, IStreamingConversationApi
+    public interface IReasoningConversationApi
+    {
+        Task<string> ChatWithReasoningAsync(ConnectionSettings settings,IList<ChatMessage> messages,Action<string> onDelta,Action<string> onReasoning,bool stream,CancellationToken cancel);
+    }
+    public sealed partial class ApiClient : IConversationApi, IStreamingConversationApi, IReasoningConversationApi
     {
         private readonly HttpClient http;
         private readonly TimeSpan requestTimeout;
@@ -124,32 +128,38 @@ namespace Dafeiyu
             }
         }
         public async Task<string> ChatAsync(ConnectionSettings settings, IList<ChatMessage> messages, CancellationToken cancel)
+        { return await ChatReplyAsync(settings,messages,null,cancel).ConfigureAwait(false); }
+        public Task<string> ChatWithReasoningAsync(ConnectionSettings settings,IList<ChatMessage> messages,Action<string> onDelta,Action<string> onReasoning,bool stream,CancellationToken cancel)
+        { return stream?ReadChatStreamAsync(settings,messages,onDelta,cancel,onReasoning):ChatReplyAsync(settings,messages,onReasoning,cancel); }
+        private async Task<string> ChatReplyAsync(ConnectionSettings settings, IList<ChatMessage> messages, Action<string> onReasoning, CancellationToken cancel)
         {
             var serialized = new List<object>();
             string system=""; bool anthropic=settings.Protocol=="anthropic";
             foreach (ChatMessage message in messages)
-            { if(anthropic && message.Role=="system") system+=message.Content+"\n"; else serialized.Add(new { role=message.Role,content=message.Content }); }
+            { if(anthropic && message.Role=="system") system+=message.Content+"\n"; else serialized.Add(new { role=message.Role,content=ChatAttachment.Content(message,anthropic) }); }
             object body=anthropic ? (object)new { model=settings.Model,messages=serialized,system=system.Trim(),max_tokens=4096,stream=false } : new {model=settings.Model,messages=serialized,stream=false};
             using (var request = Request(settings, ChatPath(settings), Json(body)))
             {
                 byte[] bytes = await SendAsync(settings,request, MaxJsonBytes, cancel).ConfigureAwait(false);
-                return ParseChatReply(bytes, anthropic);
+                return ParseChatReply(bytes, anthropic,onReasoning);
             }
         }
-        internal static string ParseChatReply(byte[] bytes, bool anthropic)
+        internal static string ParseChatReply(byte[] bytes, bool anthropic,Action<string> onReasoning=null)
         {
             try
             {
-                var json = ObjectJson(bytes); string content;
+                var json = ObjectJson(bytes); string content;var reasoning=new StringBuilder();
                 if(anthropic)
                 {
                     var text = new StringBuilder();
                     foreach(object block in (object[])json["content"])
-                    { var item = (Dictionary<string,object>)block; if((item["type"] as string) == "text") text.Append(item["text"] as string); }
+                    { var item = (Dictionary<string,object>)block; if((item["type"] as string) == "text") text.Append(item["text"] as string);else if((item["type"] as string)=="thinking")reasoning.Append(item["thinking"] as string); }
                     content = text.ToString();
                 }
-                else content = ChoiceMessage(json)["content"] as string;
+                else {var message=ChoiceMessage(json);content=message["content"] as string;object value;if(message.TryGetValue("reasoning_content",out value) || message.TryGetValue("reasoning",out value))reasoning.Append(value as string);}
                 if(String.IsNullOrWhiteSpace(content) || content.Length > 50000) throw new FormatException();
+                if(reasoning.Length>50000)throw new FormatException();
+                if(onReasoning!=null && reasoning.Length>0)onReasoning(reasoning.ToString());
                 return content.Trim();
             }
             catch(Exception e)
@@ -159,10 +169,12 @@ namespace Dafeiyu
             }
         }
         public async Task<string> ChatStreamAsync(ConnectionSettings settings, IList<ChatMessage> messages, Action<string> onDelta, CancellationToken cancel)
+        { return await ReadChatStreamAsync(settings,messages,onDelta,cancel,null).ConfigureAwait(false); }
+        private async Task<string> ReadChatStreamAsync(ConnectionSettings settings, IList<ChatMessage> messages, Action<string> onDelta, CancellationToken cancel,Action<string> onReasoning)
         {
             var serialized = new List<object>(); string system = ""; bool anthropic = settings.Protocol == "anthropic";
             foreach(ChatMessage message in messages)
-            { if(anthropic && message.Role == "system") system += message.Content + "\n"; else serialized.Add(new { role = message.Role, content = message.Content }); }
+            { if(anthropic && message.Role == "system") system += message.Content + "\n"; else serialized.Add(new { role = message.Role, content = ChatAttachment.Content(message,anthropic) }); }
             object body = anthropic ? (object)new { model = settings.Model, messages = serialized, system = system.Trim(), max_tokens = 4096, stream = true } : new { model = settings.Model, messages = serialized, stream = true };
             using(var request = Request(settings, ChatPath(settings), Json(body)))
             using(var proxyHttp = settings.UseProxy ? ProxyConfiguration.CreateHttpClient(settings.ProxyAddress, false) : null)
@@ -178,7 +190,7 @@ namespace Dafeiyu
                         CheckResponse(response, true);
                         if(response.Content.Headers.ContentLength > MaxJsonBytes) throw new ApiException("服务返回的内容过大，请缩短本次请求。");
                         using(Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                            return await ChatStream.ReadAsync(stream, anthropic, onDelta, token, MaxJsonBytes).ConfigureAwait(false);
+                            return await ChatStream.ReadAsync(stream, anthropic, onDelta, token, MaxJsonBytes,onReasoning).ConfigureAwait(false);
                     }
                 }
                 catch(OperationCanceledException)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,19 +27,19 @@ namespace Dafeiyu
         private bool closed,showingWelcome,reloading;
         private int visibleTurns=50;
         private readonly Button earlier,export;
-        private readonly Dictionary<string,TextBox> rendered=new Dictionary<string,TextBox>();
-        private readonly Dictionary<string,TextBlock> statusLabels=new Dictionary<string,TextBlock>();
+        private readonly Dictionary<string,ChatMessageView> rendered=new Dictionary<string,ChatMessageView>();
         private readonly Dictionary<string,ChatMessage> displayed=new Dictionary<string,ChatMessage>();
         private readonly MessageUpdatePump messagePump;
         public ChatWindow(PetWindow companion)
         {
             pet=companion;session=pet.Conversation;Ui.Window(this,"桌面伙伴 · 对话",700,860);MinWidth=520;MinHeight=560;
+            Background=Brushes.White;
             var root=new Grid {Margin=new Thickness(22,18,22,18)};
             root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             var header=new DockPanel {Margin=new Thickness(0,0,0,16)};
-            var settings=UiIcons.Button("settings","AI 配置");settings.Margin=new Thickness(10,0,0,0);settings.VerticalAlignment=VerticalAlignment.Center;
+            var settings=UiIcons.Button("settings","模型配置");settings.Margin=new Thickness(10,0,0,0);settings.VerticalAlignment=VerticalAlignment.Center;
             settings.Click+=delegate {pet.ShowSettings(true);};DockPanel.SetDock(settings,Dock.Right);header.Children.Add(settings);
-            avatar=new Image {Name="ChatAvatar",Width=34,Height=40,Stretch=Stretch.Uniform,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);header.Children.Add(avatar);
+            avatar=new Image {Name="ChatAvatar",Width=34,Height=34,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,34,34),6.8,6.8),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);header.Children.Add(avatar);
             var identity=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};identity.Children.Add(UiIcons.Speech(pet));header.Children.Add(identity);root.Children.Add(header);
             messages=new StackPanel {Margin=new Thickness(2,8,2,12)};scroll=Ui.Scroll(messages);scroll.Name="ChatHistoryScroll";
             var messageArea=new Grid();messageArea.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messageArea.RowDefinitions.Add(new RowDefinition());
@@ -57,10 +57,10 @@ namespace Dafeiyu
             Loaded+=delegate {input.Focus();};
         }
         public void RefreshAppearance()
-        {if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetPreview(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(composer!=null)composer.RefreshModels();}
+        {if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetAvatar(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(composer!=null)composer.RefreshModels();}
         public void ReloadHistory(bool scrollToBottom=true)
         {
-            reloading=true;messages.Children.Clear();rendered.Clear();statusLabels.Clear();displayed.Clear();showingWelcome=false;
+            reloading=true;messages.Children.Clear();rendered.Clear();displayed.Clear();showingWelcome=false;
             var turns=session.History.Messages.GroupBy(m=>m.TurnId).ToList();
             foreach(var turn in turns.Skip(Math.Max(0,turns.Count-visibleTurns)))foreach(var message in turn)AddMessage(message);
             earlier.IsEnabled=turns.Count>visibleTurns;export.IsEnabled=turns.Count>0;
@@ -78,21 +78,18 @@ namespace Dafeiyu
         {
             if(closed || !rendered.ContainsKey(message.Id))return;
             bool follow=scroll.ScrollableHeight-scroll.VerticalOffset<32;
-            displayed[message.Id]=message;rendered[message.Id].Text=message.Content;statusLabels[message.Id].Text=MessagePresentation.Status(message.Status);
+            displayed[message.Id]=message;rendered[message.Id].Update(message);
             if(follow)Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(delegate{if(!closed)scroll.ScrollToEnd();}));
         }
         private void Welcome()
-        {showingWelcome=true;var panel=new StackPanel {Margin=new Thickness(26,28,26,26)};var character=new Image{Source=SkinCatalog.GetPreview(pet.Skin),Width=154,Height=164,Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left};RenderOptions.SetBitmapScalingMode(character,BitmapScalingMode.HighQuality);panel.Children.Add(character);var heading=Ui.Text("一起聊聊今天的想法",24);heading.FontWeight=FontWeights.SemiBold;panel.Children.Add(heading);panel.Children.Add(Ui.Text("聊代码、设计，或刚想到的小点子。\n每位伙伴拥有各自的人格与会话。",13,Ui.Muted));var starters=new WrapPanel{Margin=new Thickness(0,18,0,0)};foreach(string idea in new[]{"帮我梳理一个想法","一起检查这段代码"}){string value=idea;var button=Ui.Button(idea);button.Margin=new Thickness(0,0,8,8);button.Click+=delegate {input.Text=value;input.Focus();};starters.Children.Add(button);}panel.Children.Add(starters);messages.Children.Add(panel);}
+        {showingWelcome=true;var panel=new StackPanel {Margin=new Thickness(26,28,26,26)};var character=new Image{Source=SkinCatalog.GetAvatar(pet.Skin),Width=154,Height=154,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,154,154),30.8,30.8),HorizontalAlignment=HorizontalAlignment.Left};RenderOptions.SetBitmapScalingMode(character,BitmapScalingMode.HighQuality);panel.Children.Add(character);var heading=Ui.Text("一起聊聊今天的想法",24);heading.FontWeight=FontWeights.SemiBold;panel.Children.Add(heading);panel.Children.Add(Ui.Text("聊代码、设计，或刚想到的小点子。\n每位伙伴拥有各自的人格与会话。",13,Ui.Muted));var starters=new WrapPanel{Margin=new Thickness(0,18,0,0)};foreach(string idea in new[]{"帮我梳理一个想法","一起检查这段代码"}){string value=idea;var button=Ui.Button(idea);button.Margin=new Thickness(0,0,8,8);button.Click+=delegate {input.Text=value;input.Focus();};starters.Children.Add(button);}panel.Children.Add(starters);messages.Children.Add(panel);}
         private void AddMessage(ChatMessage message)
         {
             if(closed)return;if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(delegate {AddMessage(message);}));return;}
             if(!session.History.Messages.Any(m=>m.Id==message.Id))return;if(rendered.ContainsKey(message.Id)){UpdateMessage(message);return;}bool follow=scroll.ScrollableHeight-scroll.VerticalOffset<32;
             if(showingWelcome){messages.Children.Clear();showingWelcome=false;}bool user=message.Role=="user";if(!reloading && !follow && user)visibleTurns=Math.Min(200,visibleTurns+1);displayed[message.Id]=message;
-            var panel=new StackPanel();var heading=new DockPanel();if(!user){var copy=Ui.Button("复制");copy.MinHeight=23;copy.Padding=new Thickness(7,0,7,0);copy.Margin=new Thickness(0);copy.FontSize=10;copy.Click+=delegate {try{Clipboard.SetText(displayed[message.Id].Content);}catch(System.Runtime.InteropServices.COMException){ShowStatus("剪贴板正忙，请再试一次。");}};DockPanel.SetDock(copy,Dock.Right);heading.Children.Add(copy);}heading.Children.Add(Ui.Text(user?"你":pet.Skin.Name,10,user?Ui.Pale:Ui.Muted));panel.Children.Add(heading);
-            var text=new TextBox {Text=message.Content,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,AcceptsReturn=true,BorderThickness=new Thickness(0),Background=Brushes.Transparent,Foreground=user?Brushes.White:Ui.Ink,Padding=new Thickness(0,5,0,0),FontSize=14,MaxHeight=420,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};panel.Children.Add(text);rendered[message.Id]=text;
-            var state=Ui.Text(MessagePresentation.Status(message.Status),10,Ui.Muted);statusLabels[message.Id]=state;if(!user)panel.Children.Add(state);
-            var bubble=new Border {Child=panel,Background=user?Ui.Blue:Brushes.White,BorderBrush=user?Ui.Blue:Ui.Line,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(14),Padding=new Thickness(14,10,14,12),Margin=user?new Thickness(52,0,0,16):new Thickness(0,0,24,16),Tag=message.Id};messages.Children.Add(bubble);
-            while(messages.Children.Count>visibleTurns*2){var old=messages.Children[0] as Border;if(old!=null){string id=old.Tag as string;if(id!=null){rendered.Remove(id);statusLabels.Remove(id);displayed.Remove(id);}}messages.Children.RemoveAt(0);}
+            var view=new ChatMessageView(message,messages,pet,this);rendered[message.Id]=view;messages.Children.Add(view);
+            while(messages.Children.Count>visibleTurns*2){var old=messages.Children[0] as Border;if(old!=null){string id=old.Tag as string;if(id!=null){rendered.Remove(id);displayed.Remove(id);}}messages.Children.RemoveAt(0);}
             if(!reloading){earlier.IsEnabled=session.History.Messages.Select(m=>m.TurnId).Distinct().Count()>visibleTurns;export.IsEnabled=true;if(follow)Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(delegate{if(!closed)scroll.ScrollToEnd();}));}
         }
         private void RefreshState()

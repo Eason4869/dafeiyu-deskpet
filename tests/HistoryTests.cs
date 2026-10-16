@@ -126,7 +126,7 @@ namespace Dafeiyu.Tests
         static async Task PersonaSnapshotAsync()
         {
             var api=new StreamingApi();var cfg=Configured();cfg.SystemPrompt="original persona";using(var session=new ConversationSession(api,new TestSpeech(),delegate{return null;})) {
-                session.SelectPersona("e-bao");var task=session.SendTextAsync("text",cfg,"E包");await api.Started.Task;cfg.SystemPrompt="changed persona";cfg.SkinId="marfu";bool blocked=false;try{session.SelectPersona("marfu");}catch(InvalidOperationException){blocked=true;}api.Finish.TrySetResult("old answer");await task;Check(blocked && api.RequestMessages[0].Content=="original persona","active request lost snapshot or allowed persona switch");session.SelectPersona("marfu");Check(session.History.Messages.Count==0,"answer mutated later persona");session.SelectPersona("e-bao");Check(session.History.Messages.Last().Content=="old answer","answer lost original persona");
+                session.SelectPersona("e-bao");var task=session.SendTextAsync("text",cfg,"E包");await api.Started.Task;cfg.SystemPrompt="changed persona";cfg.SkinId="marfu";bool blocked=false;try{session.SelectPersona("marfu");}catch(InvalidOperationException){blocked=true;}api.Finish.TrySetResult("old answer");await task;Check(blocked && api.RequestMessages[0].Content.StartsWith("original persona\n") && !api.RequestMessages[0].Content.Contains("changed persona"),"active request lost snapshot or allowed persona switch");session.SelectPersona("marfu");Check(session.History.Messages.Count==0,"answer mutated later persona");session.SelectPersona("e-bao");Check(session.History.Messages.Last().Content=="old answer","answer lost original persona");
             }
         }
         static async Task IncompleteLiveAsync()

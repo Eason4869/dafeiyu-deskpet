@@ -14,7 +14,8 @@ namespace Dafeiyu
         [DataMember] public string Id {get;set;}
         [DataMember] public string Text {get;set;}
         [DataMember] public List<ChatMessage> Context {get;set;}
-        public QueuedMessage Copy(){return new QueuedMessage{Id=Id,Text=Text,Context=Context==null?null:Context.Select(m=>m.Copy()).ToList()};}
+        [DataMember] public List<ChatAttachment> Attachments {get;set;}
+        public QueuedMessage Copy(){return new QueuedMessage{Id=Id,Text=Text,Attachments=ChatAttachment.Snapshot(Attachments),Context=Context==null?null:Context.Select(m=>m.Copy()).ToList()};}
     }
     // One queue belongs to the shared session, so closing or expanding a chat
     // window cannot duplicate requests. Only explicit Resume restarts disk queues.
@@ -70,10 +71,11 @@ namespace Dafeiyu
             }
         }
         void Announce(){if(!disposed && Changed!=null)Changed();}
-        public void Enqueue(string text)
+        public void Enqueue(string text,IList<ChatAttachment> attachments=null)
         {
+            var files=ChatAttachment.Snapshot(attachments);if(String.IsNullOrWhiteSpace(text) && files.Count>0)text="请查看附件。";
             text=Validate(text);ApiClient.ValidateConnection(settings().Text,ApiClient.ChatPath(settings().Text));
-            lock(gate){Writable();if(Current.Count>=20)throw new InvalidOperationException("最多排队 20 条，请先处理或删除一些消息。");bool fresh=Current.Count==0 && !running && !session.IsBusy;var entry=new QueuedMessage{Id=Guid.NewGuid().ToString("N"),Text=text};Current.Add(entry);try{Save();}catch{Current.Remove(entry);throw;}if(fresh)paused.Remove(session.PersonaId);Notice="";}
+            lock(gate){Writable();if(Current.Count>=20)throw new InvalidOperationException("最多排队 20 条，请先处理或删除一些消息。");bool fresh=Current.Count==0 && !running && !session.IsBusy;var entry=new QueuedMessage{Id=Guid.NewGuid().ToString("N"),Text=text,Attachments=files};Current.Add(entry);try{Save();}catch{Current.Remove(entry);throw;}if(fresh)paused.Remove(session.PersonaId);Notice="";}
             Announce();Kick();
         }
         public void Edit(string id,string text)
@@ -102,14 +104,15 @@ namespace Dafeiyu
         {
             Task wait;lock(gate){pauseRevision++;paused.Add(session.PersonaId);wait=runTask;}Announce();await session.StopAsync();await wait;
         }
-        public async Task InterruptAsync(string text,string queuedId=null)
+        public async Task InterruptAsync(string text,string queuedId=null,IList<ChatAttachment> attachments=null)
         {
+            var files=ChatAttachment.Snapshot(attachments);if(String.IsNullOrWhiteSpace(text) && files.Count>0)text="请查看附件。";
             text=Validate(text);ApiClient.ValidateConnection(settings().Text,ApiClient.ChatPath(settings().Text));
             string persona;Task wait;QueuedMessage entry;List<ChatMessage> preceding;int revision;
             lock(gate)
             {
                 Writable();if(steering)throw new InvalidOperationException("正在切换回复，请稍候。");persona=session.PersonaId;
-                entry=queuedId==null?new QueuedMessage{Id=Guid.NewGuid().ToString("N"),Text=text}:Current.SingleOrDefault(m=>m.Id==queuedId);
+                entry=queuedId==null?new QueuedMessage{Id=Guid.NewGuid().ToString("N"),Text=text,Attachments=files}:Current.SingleOrDefault(m=>m.Id==queuedId);
                 if(entry==null)throw new InvalidOperationException("这条消息已开始发送。");if(queuedId==null && Current.Count>=20)throw new InvalidOperationException("队列已满，请先删除一条消息。");
                 // Persist the new instruction before stopping a request or clearing its draft.
                 if(queuedId==null){Current.Add(entry);try{Save();}catch{Current.Remove(entry);throw;}}
@@ -156,7 +159,7 @@ namespace Dafeiyu
                         entry=Current[0];Current.RemoveAt(0);try{Save();}catch{Current.Insert(0,entry);paused.Add(persona);Notice="排队内容保存失败，已暂停。请检查数据目录权限。";return;}inFlight=entry;
                     }
                     Announce();
-                    try{await session.SendTextAsync(entry.Text,settings(),name(),entry.Context);}
+                    try{await session.SendTextAsync(entry.Text,settings(),name(),entry.Context,entry.Attachments);}
                     catch(OperationCanceledException){lock(gate)paused.Add(persona);return;}
                     catch(Exception e)
                     {

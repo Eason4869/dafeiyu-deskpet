@@ -17,6 +17,34 @@ namespace Dafeiyu.Tests
         private const string Done = "data: [DONE]\n\n";
         public static int Main()
         {
+            Run("reasoning streams separately before the answer for both protocols", async delegate {
+                foreach(bool anthropic in new[]{false,true})
+                {
+                    string reasoning="先核对条件🌙", actual="", answer="";
+                    string body=anthropic
+                        ? "data: {\"type\":\"content_block_start\",\"content_block\":{\"type\":\"thinking\",\"thinking\":\"先\"}}\n\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"核对条件🌙\"}}\n\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"答复\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n"
+                        : "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"先核对\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"reasoning\":\"条件🌙\",\"content\":\"答复\"}}]}\n\n"+Done;
+                    var method=typeof(ChatStream).GetMethod("ReadAsync",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic,null,new[]{typeof(Stream),typeof(bool),typeof(Action<string>),typeof(CancellationToken),typeof(int),typeof(Action<string>)},null);
+                    Assert(method!=null,"missing separate reasoning stream callback");
+                    using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(body)))
+                    {
+                        var task=(Task<string>)method.Invoke(null,new object[]{stream,anthropic,(Action<string>)(d=>{Assert(actual==reasoning,"answer arrived before reasoning");answer+=d;}),CancellationToken.None,2*1024*1024,(Action<string>)(d=>actual+=d)});
+                        Equal("答复",await task);Equal(reasoning,actual);Equal("答复",answer);
+                    }
+                }
+            });
+            Run("reasoning has its own size bound and survives an interrupted stream", async delegate {
+                foreach(bool oversized in new[]{false,true})
+                {
+                    string text=oversized?new string('x',50001):"部分思考",received="";
+                    string data="data: {\"choices\":[{\"delta\":{\"reasoning_content\":\""+text+"\"}}]}\n\n";
+                    using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(data)))
+                    {
+                        await Fails(()=>ChatStream.ReadAsync(stream,false,null,CancellationToken.None,2*1024*1024,d=>received+=d),oversized?"过长":"中断");
+                        Equal(oversized?"":text,received);
+                    }
+                }
+            });
             Run("OpenAI exposes split Unicode before the final network packet", async delegate {
                 using(var fixture = new Fixture(First, Done, true)) using(var api = new ApiClient(TimeSpan.FromSeconds(4)))
                 {

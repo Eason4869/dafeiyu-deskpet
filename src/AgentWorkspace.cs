@@ -1,0 +1,537 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+using Microsoft.Win32.SafeHandles;
+
+namespace Dafeiyu
+{
+    [DataContract]
+    public sealed class AgentToolEvent
+    {
+        [DataMember] public string Id { get; set; }
+        [DataMember] public string Name { get; set; }
+        [DataMember] public string Summary { get; set; }
+        [DataMember] public string Status { get; set; }
+        [DataMember] public long ElapsedMilliseconds { get; set; }
+        public AgentToolEvent Copy() { return (AgentToolEvent)MemberwiseClone(); }
+    }
+
+    // Restricted mode grants authority only to Root; full mode follows the user's OS permissions.
+    // No shell commands or file deletion are exposed. Explorer opens directories only.
+    public sealed class AgentWorkspace
+    {
+        private const int MaxFileBytes = 1024 * 1024;
+        private const int MaxResultChars = 24000;
+        private const string BackupFolder = ".deskpet-agent-backups";
+        private static readonly Encoding Utf8 = new UTF8Encoding(false, true);
+        private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
+        private readonly string prefix;
+        private int calls;
+        public string Root { get; private set; }
+        public bool RestrictToRoot { get; private set; }
+        public bool BackupEnabled { get; set; }
+        public int MaximumTurns { get; set; }
+        public int TimeoutMinutes { get; set; }
+        internal Action<string> DirectoryOpener { get; set; }
+        public object[] OpenAITools { get; private set; }
+        public object[] AnthropicTools { get; private set; }
+        private bool readOnly;
+        public bool PlanMode {get{return readOnly;}set{readOnly=value;BuildSchemas();}}
+        public bool ReadOnly {get{return PlanMode;}set{PlanMode=value;}}
+
+        public AgentWorkspace(string root) : this(root, true) { }
+        public AgentWorkspace(string root, bool restrictToRoot)
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+                throw new PlatformNotSupportedException("当前文件 Agent 仅支持 Windows；请关闭文件 Agent 后使用普通聊天。");
+            if (String.IsNullOrWhiteSpace(root) || !Path.IsPathRooted(root))
+                throw new ArgumentException("工作目录必须是明确选择的绝对路径。");
+            RestrictToRoot = restrictToRoot;
+            BackupEnabled = true; MaximumTurns = 12; TimeoutMinutes = 10;
+            DirectoryOpener = OpenExplorer;
+            ValidateSyntax(root, true, !restrictToRoot);
+            string full = Path.GetFullPath(root), drive = Path.GetPathRoot(full);
+            Root = String.Equals(full.TrimEnd('\\', '/'), drive.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase) ? drive : full.TrimEnd('\\', '/');
+            prefix = Root.TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+            string volume = Path.GetPathRoot(Root).TrimEnd('\\', '/');
+            if ((restrictToRoot && String.Equals(Root.TrimEnd('\\', '/'), volume, StringComparison.OrdinalIgnoreCase)) || !Directory.Exists(Root))
+                throw new ArgumentException("请选择已存在的项目目录，不能选择磁盘根目录。");
+            if (restrictToRoot) foreach (string protectedRoot in ProtectedRoots())
+            {
+                if (String.IsNullOrEmpty(protectedRoot)) continue;
+                string p = Path.GetFullPath(protectedRoot).TrimEnd('\\', '/');
+                if (IsWithin(Root, p) || String.Equals(Root, p, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("不能将系统目录设为 Agent 工作目录。");
+            }
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (restrictToRoot && !String.IsNullOrEmpty(home) && (String.Equals(Root, home, StringComparison.OrdinalIgnoreCase) || IsWithin(home, Root)))
+                throw new ArgumentException("请选择具体项目目录，不能选择整个用户目录或其上级。");
+            ValidateSegments(Root);
+            using (LockDirectories(Root, false)) { }
+            BuildSchemas();
+        }
+
+        public Task<string> ExecuteAsync(string name, string argumentsJson, CancellationToken token)
+        {
+            return Task.Run(delegate
+            {
+                token.ThrowIfCancellationRequested();
+                gate.Wait(token);
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    if(readOnly && name!="list_files" && name!="read_file" && name!="search_files")return "错误：当前为计划模式，只能读取和分析文件，不能创建、修改或打开目录。";
+                    if (++calls > 256) return "错误：本工作区已达到 256 次工具调用上限，请重新选择工作目录。";
+                    if (argumentsJson == null || argumentsJson.Length > MaxFileBytes * 2 + 4096)
+                        return "错误：工具参数缺失或过长。";
+                    var serializer = new JavaScriptSerializer { MaxJsonLength = MaxFileBytes * 2 + 4096, RecursionLimit = 12 };
+                    var args = serializer.DeserializeObject(argumentsJson) as Dictionary<string, object>;
+                    if (args == null) return "错误：工具参数必须是 JSON 对象。";
+                    string path = Resolve(GetString(args, "path", "."));
+                    if (name == "list_files") return ListFiles(path, token);
+                    if (name == "read_file") return ReadFile(path, GetInt(args, "offset", 0, 0, 1000000), GetInt(args, "limit", 200, 1, 1000), token);
+                    if (name == "search_files") return Search(path, GetString(args, "query", null), token);
+                    if (name == "create_directory")
+                    {
+                        token.ThrowIfCancellationRequested();
+                        using (LockDirectories(path, true)) { return "已创建目录 " + Relative(path) + "。"; }
+                    }
+                    if (name == "open_directory")
+                    {
+                        using (LockDirectories(path, false))
+                        {
+                            token.ThrowIfCancellationRequested(); DirectoryOpener(path);
+                            return "已在资源管理器打开目录 " + Relative(path) + "。";
+                        }
+                    }
+                    if (name == "write_file") return WriteFile(path, GetString(args, "content", null), token);
+                    if (name == "edit_file")
+                    {
+                        string oldText = GetString(args, "old_text", null), newText = GetString(args, "new_text", null);
+                        if (oldText.Length == 0) throw new ArgumentException("old_text 不能为空。");
+                        using (LockDirectories(Path.GetDirectoryName(path), false))
+                        {
+                            string content = ReadText(path, token);
+                            int start = content.IndexOf(oldText, StringComparison.Ordinal);
+                            if (start < 0) return "错误：未找到 old_text，请先读取当前文件。";
+                            if (content.IndexOf(oldText, start + oldText.Length, StringComparison.Ordinal) >= 0)
+                                return "错误：old_text 匹配多处，请提供更完整的上下文。";
+                            return WriteFile(path, content.Substring(0, start) + newText + content.Substring(start + oldText.Length), token);
+                        }
+                    }
+                    return "错误：未知工具。可用工具：list_files、read_file、write_file、edit_file、search_files、create_directory、open_directory。";
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (DecoderFallbackException) { return "错误：文件不是有效的 UTF-8 文本，未进行写入。"; }
+                catch (EncoderFallbackException) { return "错误：内容包含无效 Unicode 字符，未进行写入。"; }
+                catch (ArgumentException ex) { return "错误：" + ex.Message; }
+                catch (UnauthorizedAccessException) { return RestrictToRoot ? "错误：拒绝访问。请使用工作目录内的普通文件，禁止链接、受保护目录和越界路径。" : "错误：拒绝访问。请检查系统访问权限；禁止设备路径、链接及硬链接。"; }
+                catch (FileNotFoundException) { return "错误：文件不存在，请先用 list_files 查看目录。"; }
+                catch (DirectoryNotFoundException) { return "错误：目录不存在，请先用 list_files 查看目录。"; }
+                catch (IOException) { return "错误：文件操作失败，文件可能被占用或工作目录已变化。"; }
+                catch (System.ComponentModel.Win32Exception) { return "错误：无法打开资源管理器，请确认目录和系统权限。"; }
+                catch (InvalidOperationException) { return "错误：JSON 参数无效或操作超出限制。"; }
+                finally { gate.Release(); }
+            }, token);
+        }
+
+        private string Resolve(string input)
+        {
+            ValidateSyntax(input, true, !RestrictToRoot);
+            string path = Path.GetFullPath(Path.IsPathRooted(input) ? input : Path.Combine(Root, input));
+            if (RestrictToRoot && !String.Equals(path, Root, StringComparison.OrdinalIgnoreCase) && !IsWithin(path, Root))
+                throw new UnauthorizedAccessException();
+            ValidateSegments(path);
+            string relative = Relative(path);
+            if (RestrictToRoot) foreach (string part in relative.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries))
+                if (String.Equals(part, BackupFolder, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException();
+            return path;
+        }
+
+        private static void ValidateSyntax(string path, bool allowDrive, bool allowParent)
+        {
+            if (String.IsNullOrWhiteSpace(path) || path.Length > 240 || path.StartsWith("\\") || path.StartsWith("//"))
+                throw new ArgumentException("路径无效：禁止 UNC、设备路径和过长路径。");
+            for (int i = 0; i < path.Length; i++)
+                if (Char.IsControl(path[i]) || path[i] == '*' || path[i] == '?' || path[i] == '"' || path[i] == '<' || path[i] == '>' || path[i] == '|' ||
+                    (path[i] == ':' && !(allowDrive && i == 1 && Char.IsLetter(path[0]) && path.Length > 2 && (path[2] == '\\' || path[2] == '/'))))
+                    throw new ArgumentException("路径包含无效字符或备用数据流。");
+            foreach (string part in path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if ((!allowParent && part == "..") || (part != "." && part != ".." && (part.EndsWith(".") || part.EndsWith(" "))))
+                    throw new ArgumentException("禁止上级目录跳转及不明确的文件名。");
+                string device = part.Split('.')[0].ToUpperInvariant();
+                if (device == "CON" || device == "PRN" || device == "AUX" || device == "NUL" || device == "CONIN$" || device == "CONOUT$" ||
+                    (device.Length == 4 && (device.StartsWith("COM") || device.StartsWith("LPT")) && "123456789¹²³".IndexOf(device[3]) >= 0))
+                    throw new ArgumentException("禁止设备文件名。");
+            }
+        }
+
+        private void ValidateSegments(string path)
+        {
+            if (!RestrictToRoot) return;
+            foreach (string part in path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries))
+                if (String.Equals(part, ".git", StringComparison.OrdinalIgnoreCase) || String.Equals(part, "$Recycle.Bin", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(part, "System Volume Information", StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException();
+        }
+
+        private static IEnumerable<string> ProtectedRoots()
+        {
+            yield return Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            yield return Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            yield return Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            yield return Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        }
+
+        private static bool IsWithin(string path, string root) { return path.StartsWith(root.TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase); }
+        private string Relative(string path) { return String.Equals(path, Root, StringComparison.OrdinalIgnoreCase) ? "." : IsWithin(path, Root) ? path.Substring(prefix.Length).Replace('\\', '/') : path; }
+
+        private string ListFiles(string path, CancellationToken token)
+        {
+            using (LockDirectories(path, false))
+            {
+                var output = new StringBuilder();
+                int count = 0;
+                foreach (string entry in Directory.EnumerateFileSystemEntries(path))
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (++count > 200) { output.AppendLine("[已截断：最多列出 200 项]"); break; }
+                    string leaf = Path.GetFileName(entry);
+                    if ((RestrictToRoot && leaf.Equals(".git", StringComparison.OrdinalIgnoreCase)) || leaf.Equals(BackupFolder, StringComparison.OrdinalIgnoreCase)) continue;
+                    FileAttributes attributes = File.GetAttributes(entry);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) { output.AppendLine("[跳过链接] " + leaf); continue; }
+                    output.AppendLine(((attributes & FileAttributes.Directory) != 0 ? "[目录] " : "[文件] ") + leaf);
+                }
+                return output.Length == 0 ? "目录为空。" : Clip(output.ToString());
+            }
+        }
+
+        private string ReadFile(string path, int offset, int limit, CancellationToken token)
+        {
+            using (LockDirectories(Path.GetDirectoryName(path), false))
+            {
+                string content = ReadText(path, token);
+                var output = new StringBuilder();
+                using (var reader = new StringReader(content))
+                {
+                    string line; int number = 0, emitted = 0;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (number++ < offset) continue;
+                        if (++emitted > limit || output.Length + line.Length > MaxResultChars - 100) { output.AppendLine("[已截断：请使用 offset/limit 分段读取]"); break; }
+                        output.Append(number).Append(": ").AppendLine(line);
+                    }
+                }
+                return output.Length == 0 ? "文件为空，或 offset 已超过文件末尾。" : Clip(output.ToString());
+            }
+        }
+
+        private string Search(string path, string query, CancellationToken token)
+        {
+            if (String.IsNullOrEmpty(query) || query.Length > 1000) throw new ArgumentException("query 应为 1 至 1000 个字符的普通文本。");
+            var queue = new Queue<KeyValuePair<string, int>>();
+            queue.Enqueue(new KeyValuePair<string, int>(path, 0));
+            var output = new StringBuilder(); int visited = 0, matches = 0;
+            while (queue.Count > 0)
+            {
+                token.ThrowIfCancellationRequested();
+                var item = queue.Dequeue();
+                using (LockDirectories(item.Key, false))
+                {
+                    foreach (string entry in Directory.EnumerateFileSystemEntries(item.Key))
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (++visited > 1500) return Clip(output + "\n[已截断：最多检查 1500 项]");
+                        string leaf = Path.GetFileName(entry);
+                        if ((RestrictToRoot && leaf.Equals(".git", StringComparison.OrdinalIgnoreCase)) || leaf.Equals(BackupFolder, StringComparison.OrdinalIgnoreCase)) continue;
+                        FileAttributes attributes = File.GetAttributes(entry);
+                        if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                        if ((attributes & FileAttributes.Directory) != 0)
+                        {
+                            if (item.Value < 12) queue.Enqueue(new KeyValuePair<string, int>(entry, item.Value + 1));
+                            continue;
+                        }
+                        string content;
+                        try { content = ReadText(entry, token); }
+                        catch (IOException) { continue; }
+                        catch (UnauthorizedAccessException) { continue; }
+                        catch (ArgumentException) { continue; }
+                        using (var reader = new StringReader(content))
+                        {
+                            string line; int number = 0;
+                            while ((line = reader.ReadLine()) != null)
+                            {
+                                token.ThrowIfCancellationRequested(); number++;
+                                if (line.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                                output.Append(Relative(entry)).Append(':').Append(number).Append(": ").AppendLine(line.Length > 400 ? line.Substring(0, 400) + "…" : line);
+                                if (++matches >= 100 || output.Length >= MaxResultChars - 600) return Clip(output + "[已截断：结果达到上限]");
+                            }
+                        }
+                    }
+                }
+            }
+            return output.Length == 0 ? "未找到匹配文本（仅搜索 UTF-8 文本，深度最多 12 层）。" : Clip(output.ToString());
+        }
+
+        private string ReadText(string path, CancellationToken token)
+        {
+            byte[] bytes = ReadBytes(path, token);
+            return DecodeText(bytes);
+        }
+        private static string DecodeText(byte[] bytes)
+        {
+            int start = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+            string result = Utf8.GetString(bytes, start, bytes.Length - start);
+            if (result.IndexOf('\0') >= 0) throw new ArgumentException("文件包含二进制数据，仅支持 UTF-8 文本。");
+            return result;
+        }
+
+        private byte[] ReadBytes(string path, CancellationToken token)
+        {
+            using (SafeFileHandle handle = Open(path, 0x80000000, 1, 3, 0x00200000))
+            {
+                VerifyFinalPath(handle, path);
+                FileInfoNative info = Inspect(handle);
+                if ((info.Attributes & (uint)(FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0 || info.Links > 1)
+                    throw new UnauthorizedAccessException();
+                if (info.SizeHigh != 0 || info.SizeLow > MaxFileBytes) throw new ArgumentException("文件超过 1 MiB 限制，请缩小工作范围。");
+                using (var stream = new FileStream(handle, FileAccess.Read))
+                using (var data = new MemoryStream())
+                {
+                    byte[] buffer = new byte[8192]; int n;
+                    while ((n = stream.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (data.Length + n > MaxFileBytes) throw new ArgumentException("文件超过 1 MiB 限制。");
+                        data.Write(buffer, 0, n);
+                    }
+                    return data.ToArray();
+                }
+            }
+        }
+
+        private string WriteFile(string path, string content, CancellationToken token)
+        {
+            if (path == Root) throw new ArgumentException("写入路径必须是文件。");
+            byte[] bytes = Utf8.GetBytes(content);
+            if (bytes.Length > MaxFileBytes) throw new ArgumentException("写入内容超过 1 MiB 限制。");
+            if (content.IndexOf('\0') >= 0) throw new ArgumentException("写入内容必须是 UTF-8 文本。");
+            using (LockDirectories(Path.GetDirectoryName(path), true))
+            {
+                token.ThrowIfCancellationRequested();
+                bool exists = File.Exists(path);
+                string backupName = null;
+                string backupPath = null;
+                if (exists)
+                {
+                    // Keep the original bytes, including BOM; decoding also refuses accidental binary overwrites.
+                    byte[] previous = ReadBytes(path, token);
+                    DecodeText(previous);
+                    if (BackupEnabled)
+                    {
+                        string backupDir = Path.Combine(RestrictToRoot ? Root : Path.GetDirectoryName(path), BackupFolder);
+                        using (LockDirectories(backupDir, true))
+                        {
+                            int total = 0; long size = 0;
+                            foreach (string backup in Directory.EnumerateFiles(backupDir))
+                            {
+                                token.ThrowIfCancellationRequested();
+                                if (++total >= 200) throw new ArgumentException("备份达到 200 份上限，请手动整理工作目录中的备份。");
+                                size += new FileInfo(backup).Length;
+                                if (size + previous.Length > 64L * MaxFileBytes) throw new ArgumentException("备份达到 64 MiB 上限，请手动整理备份。");
+                            }
+                            backupName = Guid.NewGuid().ToString("N") + ".bak";
+                            backupPath = Path.Combine(backupDir, backupName);
+                            WriteNew(backupPath, previous, token);
+                        }
+                    }
+                }
+                else if (Directory.Exists(path)) throw new ArgumentException("写入路径是目录。");
+                string temp = Path.Combine(Path.GetDirectoryName(path), ".deskpet-write-" + Guid.NewGuid().ToString("N") + ".tmp");
+                try
+                {
+                    // Keep ownership of the temporary file through the atomic rename. Rename by
+                    // handle replaces the directory entry, and never opens a replacement link target.
+                    using (SafeFileHandle handle = Open(temp, 0x40010000, 0, 1, 0x00200000))
+                    using (var stream = new FileStream(handle, FileAccess.Write))
+                    {
+                        WriteContents(stream, bytes, token);
+                        token.ThrowIfCancellationRequested();
+                        Rename(handle, path, exists);
+                    }
+                }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+                return "已写入 " + Relative(path) + "（" + bytes.Length + " 字节）" + (backupName == null ? "。" : "；原文件备份：" + Relative(backupPath) + "。");
+            }
+        }
+
+        private static void WriteNew(string path, byte[] bytes, CancellationToken token)
+        {
+            using (SafeFileHandle handle = Open(path, 0x40000000, 0, 1, 0x00200000))
+            using (var stream = new FileStream(handle, FileAccess.Write))
+            {
+                WriteContents(stream, bytes, token);
+            }
+        }
+        private static void WriteContents(FileStream stream, byte[] bytes, CancellationToken token)
+        {
+            for (int position = 0; position < bytes.Length; position += 8192)
+            {
+                token.ThrowIfCancellationRequested();
+                stream.Write(bytes, position, Math.Min(8192, bytes.Length - position));
+            }
+            stream.Flush(true);
+        }
+        private static void Rename(SafeFileHandle handle, string path, bool replace)
+        {
+            byte[] name = Encoding.Unicode.GetBytes(path);
+            int lengthOffset = IntPtr.Size == 8 ? 16 : 8;
+            int nameOffset = lengthOffset + 4;
+            IntPtr info = Marshal.AllocHGlobal(nameOffset + name.Length + 2);
+            try
+            {
+                for (int i = 0; i < nameOffset + name.Length + 2; i++) Marshal.WriteByte(info, i, 0);
+                Marshal.WriteInt32(info, 0, replace ? 1 : 0);
+                Marshal.WriteInt32(info, lengthOffset, name.Length);
+                Marshal.Copy(name, 0, new IntPtr(info.ToInt64() + nameOffset), name.Length);
+                if (!SetFileInformationByHandle(handle, 3, info, (uint)(nameOffset + name.Length + 2)))
+                    throw new IOException("原子重命名失败。");
+            }
+            finally { Marshal.FreeHGlobal(info); }
+        }
+
+        // Hold handles without write/delete sharing for every ancestor until completion.
+        // This blocks both directory swaps and setting reparse data in place.
+        private DirectoryLocks LockDirectories(string target, bool create)
+        {
+            var paths = new List<string>();
+            for (var directory = new DirectoryInfo(target); directory != null; directory = directory.Parent) paths.Add(directory.FullName);
+            paths.Reverse();
+            var locks = new DirectoryLocks();
+            try
+            {
+                foreach (string path in paths)
+                {
+                    if (!Directory.Exists(path))
+                    {
+                        if (!create || (RestrictToRoot && !IsWithin(path, Root))) throw new DirectoryNotFoundException();
+                        Directory.CreateDirectory(path);
+                    }
+                    SafeFileHandle handle = Open(path, 0, 1, 3, 0x02200000);
+                    locks.Handles.Add(handle);
+                    VerifyFinalPath(handle, path);
+                    FileInfoNative info = Inspect(handle);
+                    if ((info.Attributes & (uint)FileAttributes.ReparsePoint) != 0 || (info.Attributes & (uint)FileAttributes.Directory) == 0)
+                        throw new UnauthorizedAccessException();
+                }
+                return locks;
+            }
+            catch { locks.Dispose(); throw; }
+        }
+
+        private sealed class DirectoryLocks : IDisposable
+        {
+            public readonly List<SafeFileHandle> Handles = new List<SafeFileHandle>();
+            public void Dispose() { for (int i = Handles.Count - 1; i >= 0; i--) Handles[i].Dispose(); }
+        }
+
+        private static SafeFileHandle Open(string path, uint access, uint sharing, uint creation, uint flags)
+        {
+            SafeFileHandle handle = CreateFile(path, access, sharing, IntPtr.Zero, creation, flags, IntPtr.Zero);
+            if (!handle.IsInvalid) return handle;
+            int error = Marshal.GetLastWin32Error(); handle.Dispose();
+            if (error == 2) throw new FileNotFoundException();
+            if (error == 3) throw new DirectoryNotFoundException();
+            if (error == 5 || error == 1920) throw new UnauthorizedAccessException();
+            throw new IOException("文件句柄操作失败。");
+        }
+        private static FileInfoNative Inspect(SafeFileHandle handle)
+        {
+            FileInfoNative info;
+            if (!GetFileInformationByHandle(handle, out info)) throw new IOException("无法验证文件句柄。");
+            return info;
+        }
+        private void VerifyFinalPath(SafeFileHandle handle, string expected)
+        {
+            var buffer = new StringBuilder(1024);
+            uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+            if (length == 0 || length >= buffer.Capacity) throw new UnauthorizedAccessException();
+            string actual = buffer.ToString();
+            if (actual.StartsWith("\\\\?\\", StringComparison.Ordinal)) actual = actual.Substring(4);
+            // Reject DOS short-name aliases as well as unexpected object redirection.
+            if (!String.Equals(actual.TrimEnd('\\', '/'), Path.GetFullPath(expected).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException();
+            ValidateSegments(actual);
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileInfoNative
+        {
+            public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+            public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+        }
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFile(string name, uint access, uint sharing, IntPtr security, uint creation, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out FileInfoNative info);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int infoClass, IntPtr info, uint length);
+
+        private static void OpenExplorer(string directory)
+        {
+            string explorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+            int trailing = 0;
+            for (int i = directory.Length - 1; i >= 0 && directory[i] == '\\'; i--) trailing++;
+            string argument = "\"" + directory + new string('\\', trailing) + "\"";
+            using (Process process = Process.Start(new ProcessStartInfo(explorer, argument) { UseShellExecute = false })) { }
+        }
+
+        private static string GetString(Dictionary<string, object> args, string key, string fallback)
+        {
+            object value;
+            if (!args.TryGetValue(key, out value)) { if (fallback != null) return fallback; throw new ArgumentException("缺少参数 " + key + "。"); }
+            string text = value as string;
+            if (text == null) throw new ArgumentException(key + " 必须是字符串。");
+            return text;
+        }
+        private static int GetInt(Dictionary<string, object> args, string key, int fallback, int min, int max)
+        {
+            object value; if (!args.TryGetValue(key, out value)) return fallback;
+            if (!(value is int) || (int)value < min || (int)value > max) throw new ArgumentException(key + " 必须是 " + min + " 至 " + max + " 的整数。");
+            return (int)value;
+        }
+        private static string Clip(string value) { return value.Length <= MaxResultChars ? value : value.Substring(0, MaxResultChars - 20) + "\n[结果已截断]"; }
+        private void BuildSchemas()
+        {
+            var openai = new List<object>(); var anthropic = new List<object>();
+            AddSchema(openai, anthropic, "list_files", "列出工作目录中的文件和子目录，最多 200 项。", new Dictionary<string, object> { { "path", Property("string", "相对于工作目录的路径，默认 .") } }, new string[0]);
+            AddSchema(openai, anthropic, "read_file", "读取 UTF-8 文件，最多 1 MiB；返回行号。offset 从 0 开始，limit 默认为 200。", new Dictionary<string, object> { { "path", Property("string", "文件路径") }, { "offset", Property("integer", "跳过行数，0 至 1000000") }, { "limit", Property("integer", "读取行数，1 至 1000") } }, new[] { "path" });
+            AddSchema(openai, anthropic, "write_file", "创建或完整覆盖 UTF-8 文件，最多 1 MiB；根据备份设置保存原文件，自动创建子目录。", new Dictionary<string, object> { { "path", Property("string", "文件路径") }, { "content", Property("string", "完整文件内容") } }, new[] { "path", "content" });
+            AddSchema(openai, anthropic, "edit_file", "将文件中唯一一次出现的 old_text 替换为 new_text；根据备份设置保存原文件。", new Dictionary<string, object> { { "path", Property("string", "文件路径") }, { "old_text", Property("string", "唯一匹配的旧文本，包含必要上下文") }, { "new_text", Property("string", "替换文本") } }, new[] { "path", "old_text", "new_text" });
+            AddSchema(openai, anthropic, "search_files", "递归搜索 UTF-8 文本（忽略大小写的普通文本），最多 1500 项、12 层、100 处结果；跳过链接和自动备份目录。", new Dictionary<string, object> { { "path", Property("string", "搜索目录，默认 .") }, { "query", Property("string", "搜索文本，最多 1000 字符") } }, new[] { "query" });
+            if(readOnly){openai.RemoveAt(3);openai.RemoveAt(2);anthropic.RemoveAt(3);anthropic.RemoveAt(2);}
+            else
+            {
+                AddSchema(openai, anthropic, "create_directory", "创建目录及所需父目录，不删除任何文件。", new Dictionary<string, object> { { "path", Property("string", "目录路径") } }, new[] { "path" });
+                AddSchema(openai, anthropic, "open_directory", "在 Windows 资源管理器中打开现有目录，只接受目录。", new Dictionary<string, object> { { "path", Property("string", "已有目录路径") } }, new[] { "path" });
+            }
+            OpenAITools = openai.ToArray(); AnthropicTools = anthropic.ToArray();
+        }
+        private static object Property(string type, string description) { return new { type = type, description = description }; }
+        private static void AddSchema(List<object> openai, List<object> anthropic, string name, string description, Dictionary<string, object> properties, string[] required)
+        {
+            var schema = new { type = "object", properties = properties, required = required, additionalProperties = false };
+            openai.Add(new { type = "function", function = new { name = name, description = description, parameters = schema } });
+            anthropic.Add(new { name = name, description = description, input_schema = schema });
+        }
+    }
+}

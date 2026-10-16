@@ -6,7 +6,7 @@
 
 ## 版本与附件
 
-- Windows 与 Mac 版本均为 `0.6.0`；已合入最终 Windows 0.5.6 基线 `eb04ade8ff5eaa601ffc20a26377bbf3162343b4`，包括设置替换有界重试、透明桌宠恢复、录音与输入区修复、新旧安装包命名兼容。集成后的三平台 CI 结果另行记录。
+- Windows 与 Mac 版本均为 `0.6.0`；已合入最终 Windows 0.5.6 基线 `eb04ade8ff5eaa601ffc20a26377bbf3162343b4`，包括设置替换有界重试、透明桌宠恢复、录音与输入区修复、新旧安装包命名兼容。最终集成后的三平台 CI 证据见下文。
 - Apple Silicon：`DeskPet-macOS-0.6.0-arm64-preview.dmg`、同名 `.zip`。
 - Intel：`DeskPet-macOS-0.6.0-x86_64-preview.dmg`、同名 `.zip`。
 - Mac 从“关于与更新”只能启用与本机 CPU 对应的 Mac 附件；Windows 安装包、另一 CPU、模板与未知命名不能成为更新入口。
@@ -57,6 +57,20 @@
 
 实际 CI 排查修复了 `lipo` 输入参数顺序、`Contents/MacOS` 内托管 DLL 的显式签名、`ditto` 保留归档签名元数据、`hdiutil` 瞬时 busy 的有界重试，以及队列测试对 20ms 调度恢复时间的不成立假设。后者以 300ms 调度延迟复现红灯，再改用原请求等待取消的夹具通过共享 291 项与 Windows QueueTests 24 项；没有改变生产队列行为。
 
-CI 内已经核验 ZIP/DMG 签名、架构、manifest 和实际启动。本机还已下载两架构的四个包，逐包 SHA256 与构建报告一致；ZIP CRC、内部路径、Info.plist、build-info 的 0.6.0/CPU/提交、执行权限、291 项共享业务报告和真实 UI 报告均通过二次核对。这是补充证据，不是当前“只打开发标签”的额外交付门槛。合入最终 0.5.6 Windows 基线后须再运行集成检查，不能把当前分支的验证结果冒充最终标签的新检查。
+上述 `bf71a3c` 制品还已在本机下载两架构的四个包，逐包 SHA256 与构建报告一致；ZIP CRC、内部路径、Info.plist、build-info 的 0.6.0/CPU/提交、执行权限、291 项共享业务报告和真实 UI 报告均通过二次核对。这是补充证据，不是当前“只打开发标签”的额外交付门槛；该轮结果与下方最终 A 基线集成验证分别记录。
+
+## 最终 A 基线集成验证
+
+合并提交 `7a4024bc8fabb5144b31707452cc2cb282913d9a` 已包含完整 A 基线。首轮 [Mac 集成 CI 38852736256](https://github.com/Eason4869/deskpet/actions/runs/38852736256) 的 arm64 通过，Intel 在 `QueueTests.cs:24` 因暂停发生在假 API 真正开始前、待发送列表仍有两项而使 `.Single()` 失败。此为测试时序假设，未修改生产队列行为。
+
+最终源码提交 `f310a73d3ecf810c40d0eb039ea60534c4f1fc09` 仅补齐测试中的真实 API 进入回执及完成 gate，保留原有 24 项队列断言，没有延长盲等或放宽断言。随后同一源码的 [Windows CI 38853104983](https://github.com/Eason4869/deskpet/actions/runs/38853104983) 和 [双 Mac CI 38853104955](https://github.com/Eason4869/deskpet/actions/runs/38853104955) 均完整通过。
+
+- Windows：24 组测试、应用编译、全新源码打包及真实 0.6.0 更新引擎校验通过，确认更新保留备份、配置、历史和外观。更新命名 96 项、引导／设置替换 39 项、录音故障 14 项均通过。
+- Mac 两架构分别重新通过：共享业务 291、原生 50、P/Invoke 23、录音生命周期 10、朗读进程 4、Headless 1474 项；真实 bundled UI 报告均为 0.6.0、对应 CPU、7 个窗口、64 组动画，不访问生产 Keychain 或请求麦克风权限。
+- 最终 Mac ZIP 与 DMG 均经过 CI 内的架构、manifest、解压／挂载后严格签名及实际启动检查，产物仍明确为 ad-hoc、`notarized=false` 的 preview。未把前一轮本地下载的哈希冒充本轮哈希；最终四个大包未重复下载，不作为本次仅 tag 的新增门槛。
+
+本节之后的提交若仅补充本说明，应与上述已验证源码区分；最终 PR 仍须通过其自身最新 CI，0.6.0 不创建 Release。
+
+## 正式签名门槛
 
 `release` 打包模式要求 Developer ID Application 身份、Keychain 中的公证 profile 和两架构人工验收证据。缺少凭据或证据直接失败；`release-evidence.example.json` 保持未通过的模板。preview 模式关闭 Hardened Runtime 以允许无 Team ID 的 ad-hoc 运行库加载；正式签名模式保留 Hardened Runtime 和 JIT entitlement，按原生库→app→app 公证/staple→归档→DMG 签名公证/staple 的顺序执行。

@@ -57,6 +57,6 @@
 
 实际 CI 排查修复了 `lipo` 输入参数顺序、`Contents/MacOS` 内托管 DLL 的显式签名、`ditto` 保留归档签名元数据、`hdiutil` 瞬时 busy 的有界重试，以及队列测试对 20ms 调度恢复时间的不成立假设。后者以 300ms 调度延迟复现红灯，再改用原请求等待取消的夹具通过共享 291 项与 Windows QueueTests 24 项；没有改变生产队列行为。
 
-CI 内已经核验 ZIP/DMG 签名、架构、manifest 和实际启动。本机的下载后二次校验是补充证据，不是当前“只打开发标签”的额外交付门槛。合入最终 0.5.6 Windows 基线后须再运行集成检查，不能把当前分支的验证结果冒充最终标签的新检查。
+CI 内已经核验 ZIP/DMG 签名、架构、manifest 和实际启动。本机还已下载两架构的四个包，逐包 SHA256 与构建报告一致；ZIP CRC、内部路径、Info.plist、build-info 的 0.6.0/CPU/提交、执行权限、291 项共享业务报告和真实 UI 报告均通过二次核对。这是补充证据，不是当前“只打开发标签”的额外交付门槛。合入最终 0.5.6 Windows 基线后须再运行集成检查，不能把当前分支的验证结果冒充最终标签的新检查。
 
 `release` 打包模式要求 Developer ID Application 身份、Keychain 中的公证 profile 和两架构人工验收证据。缺少凭据或证据直接失败；`release-evidence.example.json` 保持未通过的模板。preview 模式关闭 Hardened Runtime 以允许无 Team ID 的 ad-hoc 运行库加载；正式签名模式保留 Hardened Runtime 和 JIT entitlement，按原生库→app→app 公证/staple→归档→DMG 签名公证/staple 的顺序执行。

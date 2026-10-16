@@ -31,10 +31,13 @@ namespace Dafeiyu
         private readonly Dictionary<string,ChatMessage> displayed=new Dictionary<string,ChatMessage>();
         private readonly MessageUpdatePump messagePump;
         private readonly AgentTaskPanel taskPanel;
+        readonly Grid workspaceShell,messageArea,conversationSurface;readonly ContentControl inspectorHost;readonly Border inspector;readonly AgentWorkspaceNavigation navigation;
+        bool workspaceLayout,inspectorLayout,compactTaskExpanded;readonly double normalMaxHeight;
         public ChatWindow(PetWindow companion)
         {
             pet=companion;session=pet.Conversation;Ui.Window(this,"桌面伙伴 · 对话",700,860);MinWidth=520;MinHeight=560;
             Background=Brushes.White;
+            normalMaxHeight=MaxHeight;
             var root=new Grid {Margin=new Thickness(22,18,22,18)};
             root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             var header=new DockPanel {Margin=new Thickness(0,0,0,16)};
@@ -43,7 +46,7 @@ namespace Dafeiyu
             avatar=new Image {Name="ChatAvatar",Width=34,Height=34,Stretch=Stretch.Uniform,Clip=new RectangleGeometry(new Rect(0,0,34,34),6.8,6.8),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};RenderOptions.SetBitmapScalingMode(avatar,BitmapScalingMode.HighQuality);DockPanel.SetDock(avatar,Dock.Left);header.Children.Add(avatar);
             var identity=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};identity.Children.Add(UiIcons.Speech(pet));header.Children.Add(identity);root.Children.Add(header);
             messages=new StackPanel {Margin=new Thickness(2,8,2,12)};scroll=Ui.Scroll(messages);scroll.Name="ChatHistoryScroll";
-            var messageArea=new Grid();messageArea.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messageArea.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messageArea.RowDefinitions.Add(new RowDefinition());
+            conversationSurface=root;messageArea=new Grid();messageArea.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messageArea.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});messageArea.RowDefinitions.Add(new RowDefinition());
             var historyTools=new DockPanel{LastChildFill=false};
             earlier=Ui.Button("加载更早记录");earlier.Name="HistoryEarlier";earlier.FontSize=11;earlier.Click+=delegate{double offset=scroll.VerticalOffset,extent=scroll.ExtentHeight;visibleTurns+=50;ReloadHistory(false);Dispatcher.BeginInvoke(DispatcherPriority.Loaded,new Action(delegate{scroll.UpdateLayout();scroll.ScrollToVerticalOffset(offset+Math.Max(0,scroll.ExtentHeight-extent));}));};historyTools.Children.Add(earlier);
             export=Ui.Button("导出记录");export.Name="ExportChat";export.FontSize=11;export.Click+=delegate{Export();};DockPanel.SetDock(export,Dock.Right);historyTools.Children.Add(export);messageArea.Children.Add(historyTools);
@@ -53,13 +56,30 @@ namespace Dafeiyu
             input=Ui.Field("",true);input.Name="MessageInput";input.MaxLength=8000;
             record=UiIcons.Button("mic","听写");record.Name="VoiceRecord";
             clear=UiIcons.Button("trash","清空当前聊天记录");clear.Name="ClearChat";clear.Margin=new Thickness(6,0,0,0);clear.Click+=delegate {try{session.Clear();ShowStatus("已清空当前会话。");}catch(Exception e){ShowError(e);}};DockPanel.SetDock(clear,Dock.Right);historyTools.Children.Add(clear);
-            composer=new ConversationComposer(pet,this,input,record,status,false);var composerSurface=composer;composerSurface.Margin=new Thickness(0,12,0,0);Grid.SetRow(composerSurface,2);root.Children.Add(composerSurface);Content=root;
+            composer=new ConversationComposer(pet,this,input,record,status,false);var composerSurface=composer;composerSurface.Margin=new Thickness(0,12,0,0);Grid.SetRow(composerSurface,2);root.Children.Add(composerSurface);
+            workspaceShell=new Grid();workspaceShell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(0)});workspaceShell.ColumnDefinitions.Add(new ColumnDefinition());workspaceShell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(0)});
+            Grid.SetColumn(root,1);workspaceShell.Children.Add(root);
+            navigation=new AgentWorkspaceNavigation(pet,delegate{scroll.ScrollToEnd();input.Focus();},delegate{taskPanel.IsExpanded=true;taskPanel.Focus();});navigation.Visibility=Visibility.Collapsed;workspaceShell.Children.Add(navigation);
+            inspectorHost=new ContentControl{VerticalContentAlignment=VerticalAlignment.Stretch,HorizontalContentAlignment=HorizontalAlignment.Stretch};
+            var inspectorBody=new Grid();inspectorBody.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});inspectorBody.RowDefinitions.Add(new RowDefinition());var inspectorTitle=Ui.Text("任务与变更",15);inspectorTitle.FontWeight=FontWeights.SemiBold;inspectorTitle.Margin=new Thickness(16,24,16,18);inspectorBody.Children.Add(inspectorTitle);Grid.SetRow(inspectorHost,1);inspectorBody.Children.Add(inspectorHost);
+            inspector=new Border{Name="AgentWorkspaceInspector",Child=inspectorBody,BorderBrush=Ui.Line,BorderThickness=new Thickness(1,0,0,0),Background=Ui.Brush("#FCFCFD"),Visibility=Visibility.Collapsed};Grid.SetColumn(inspector,2);workspaceShell.Children.Add(inspector);Content=workspaceShell;
+            StateChanged+=delegate{RefreshWorkspaceLayout();};SizeChanged+=delegate{RefreshWorkspaceLayout();};
             messagePump=new MessageUpdatePump(session,UpdateMessage);ReloadHistory();session.MessageAdded+=AddMessage;session.HistoryChanged+=HistoryChanged;session.StateChanged+=RefreshState;pet.Live.StateChanged+=RefreshState;RefreshAppearance();RefreshState();
-            Closed+=delegate {closed=true;taskPanel.Dispose();messagePump.Dispose();session.MessageAdded-=AddMessage;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;};
+            Closed+=delegate {closed=true;navigation.Dispose();taskPanel.Dispose();messagePump.Dispose();session.MessageAdded-=AddMessage;session.HistoryChanged-=HistoryChanged;session.StateChanged-=RefreshState;pet.Live.StateChanged-=RefreshState;};
             Loaded+=delegate {input.Focus();};
         }
+        void RefreshWorkspaceLayout()
+        {
+            if(workspaceShell==null || closed)return;bool wide=WindowState==WindowState.Maximized;bool showInspector=wide && ActualWidth>=1120;
+            if(workspaceLayout!=wide){if(wide)compactTaskExpanded=taskPanel.IsExpanded;workspaceLayout=wide;MaxHeight=wide?Double.PositiveInfinity:normalMaxHeight;conversationSurface.MaxWidth=wide?1000:Double.PositiveInfinity;navigation.Visibility=wide?Visibility.Visible:Visibility.Collapsed;}
+            workspaceShell.ColumnDefinitions[0].Width=new GridLength(wide?Math.Min(240,Math.Max(190,ActualWidth*.17)):0);workspaceShell.ColumnDefinitions[2].Width=new GridLength(showInspector?Math.Min(360,Math.Max(280,ActualWidth*.23)):0);
+            if(inspectorLayout==showInspector)return;bool follow=scroll.ScrollableHeight-scroll.VerticalOffset<32;double offset=scroll.VerticalOffset;inspectorLayout=showInspector;
+            if(showInspector){messageArea.Children.Remove(taskPanel);inspectorHost.Content=taskPanel;taskPanel.SetWorkspaceLayout(true);taskPanel.IsExpanded=true;inspector.Visibility=Visibility.Visible;}
+            else{inspectorHost.Content=null;taskPanel.SetWorkspaceLayout(false);Grid.SetRow(taskPanel,1);messageArea.Children.Add(taskPanel);taskPanel.IsExpanded=compactTaskExpanded;inspector.Visibility=Visibility.Collapsed;}
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded,new Action(delegate{if(closed)return;if(follow)scroll.ScrollToEnd();else scroll.ScrollToVerticalOffset(offset);}));
+        }
         public void RefreshAppearance()
-        {if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetAvatar(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(composer!=null)composer.RefreshModels();if(taskPanel!=null && !session.IsBusy)session.LoadAgentTask(pet.Settings);}
+        {if(!(Content is LiveCallView))Title=pet.Skin.Name+" · 对话";avatar.Source=SkinCatalog.GetAvatar(pet.Skin);avatar.ToolTip=pet.Skin.Name;if(composer!=null)composer.RefreshModels();if(taskPanel!=null && !session.IsBusy)session.LoadAgentTask(pet.Settings);if(navigation!=null)navigation.Refresh();}
         public void ReloadHistory(bool scrollToBottom=true)
         {
             reloading=true;messages.Children.Clear();rendered.Clear();displayed.Clear();showingWelcome=false;

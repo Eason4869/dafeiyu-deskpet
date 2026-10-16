@@ -46,10 +46,12 @@ SSE 正文和推理逐块回调；工具参数在内存中按调用索引拼接�
 
 本次查阅 [OpenCode 固定提交 bc5ebf0](https://github.com/anomalyco/opencode/tree/bc5ebf00a4c169ece10f276e6ce02eaf18c326e6) 中的工具目录、read/glob/edit/shell、permission、snapshot、file-mutation、tool-output、session runner 与 compaction，以及 MIT 许可证。参考工具边界、分页读取、命令生命周期和有界上下文原则，以原生 C# 独立实现，未嵌入外部 CLI、服务或新增运行时 EXE。
 
-交互参考 [Codex App](https://openai.com/index/introducing-the-codex-app/) 的任务与执行结果呈现，以及 [Mimo Code Desktop](https://github.com/mimo-code-desktop/mimo-code-desktop/blob/main/README.zh.md) 的桌面工作流。后者采用 PolyForm Noncommercial，本项目仅参考交互需求，没有复制其代码或界面资源。保留 DeskPet 原有 WPF UI，新增可折叠任务面板、命令设置及文件前后预览。
+交互参考 [Codex App](https://openai.com/index/introducing-the-codex-app/) 的任务与执行结果呈现，以及 [Mimo Code Desktop](https://github.com/mimo-code-desktop/mimo-code-desktop/blob/main/README.zh.md) 的桌面工作流。后者采用 PolyForm Noncommercial，本项目仅参考交互需求，没有复制其代码或界面资源。保留 DeskPet 默认窗口的 WPF UI；最大化时按用户补充要求显示项目/任务导航和任务详情侧栏，复用同一会话与输入框。新增可折叠任务面板、命令设置及文件前后预览。
 
 WindowsCommandRunner 使用挂起进程创建、加入 kill-on-close Job Object 后恢复线程，失败时终止挂起进程；stdout/stderr 独立排空并限制存储，退出/取消/超时清理后代。命令程序和参数来自用户设置，模型只能传 command_id；这是权限控制，不是隔离项目脚本副作用的系统沙箱。
 
 AgentChanges 记录读取哈希、写入前后哈希和原备份。跨文件补丁先预校验全部条目，每个文件原子替换；不承诺整个补丁事务回滚。中途失败明确报告部分完成，已修改文件与备份仍可查看。修改前后检查外部变化，恢复需匹配当前哈希及备份哈希；这些检查不构成对恶意并发写入者的操作系统级 CAS 保证。
 
 AgentTaskStore 按伙伴/项目键加密原子保存，检查点最多 8 MiB。损坏记录保留并阻止覆盖，用户明确清除后重建。启动仅恢复状态，继续任务由用户触发，执行历史不自动重放。计划模式仅允许文件读取与任务元数据记录，命令及文件修改同时在 schema 与执行层禁用。
+
+检查点保存失败时按伙伴/项目保留最新待保存快照，刷新不会用旧磁盘状态覆盖，警告仅在成功保存或明确清除后消失。单任务变更上限 256，执行层在修改前拒绝越限，保存和加载使用一致的验证规则。

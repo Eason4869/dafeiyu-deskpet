@@ -13,15 +13,17 @@ namespace Dafeiyu
     internal sealed class AgentTaskPanel : Expander,IDisposable
     {
         readonly PetWindow pet;readonly ConversationSession session;readonly StackPanel body=new StackPanel();
+        readonly ScrollViewer detailScroll;
         readonly TextBlock heading=Ui.Text("任务进度",12,Ui.Muted);readonly TextBlock notice=Ui.Text("",11,Ui.Muted);
         bool disposed,queued;string signature="";
         public AgentTaskPanel(PetWindow companion)
         {
             pet=companion;session=pet.Conversation;Name="AgentTaskDetails";Header=heading;Margin=new Thickness(0,5,0,7);Visibility=Visibility.Collapsed;
-            ChatUi.ProcessExpander(this);var scroll=Ui.Scroll(body);scroll.MaxHeight=220;Content=scroll;
+            ChatUi.ProcessExpander(this);detailScroll=Ui.Scroll(body);detailScroll.MaxHeight=220;Content=detailScroll;
             session.AgentTaskChanged+=Changed;session.StateChanged+=Changed;session.HistoryChanged+=Changed;
             session.LoadAgentTask(pet.Settings);Refresh();
         }
+        internal void SetWorkspaceLayout(bool wide){detailScroll.MaxHeight=wide?Double.PositiveInfinity:220;Margin=wide?new Thickness(14,0,14,14):new Thickness(0,5,0,7);}
         void Changed(){if(disposed || queued)return;queued=true;Dispatcher.BeginInvoke(new Action(delegate{queued=false;if(!disposed)Refresh();}));}
         void Refresh()
         {
@@ -29,7 +31,7 @@ namespace Dafeiyu
             bool busy=session.IsBusy;string running=task.Tools.LastOrDefault(t=>t.Status=="running")==null?"处理中":"执行工具中";
             string status=task.Status=="complete"?"已完成":task.Status=="running"?running:task.Status=="cancelled"?"已停止":task.Status=="interrupted"?"已中断":"需要处理";
             heading.Text="任务 · "+status+"   "+task.Plan.Count(p=>p.Status=="complete")+"/"+task.Plan.Count+" 步   "+task.Changes.Count+" 个文件";
-            string next=new System.Web.Script.Serialization.JavaScriptSerializer{MaxJsonLength=8*1024*1024}.Serialize(task)+"|"+busy+"|"+pet.Settings.AgentEnabled;
+            string next=new System.Web.Script.Serialization.JavaScriptSerializer{MaxJsonLength=8*1024*1024}.Serialize(task)+"|"+busy+"|"+pet.Settings.AgentEnabled+"|"+session.AgentTaskWarning;
             if(next==signature)return;signature=next;body.Children.Clear();
             var goal=Ui.Text(task.Goal,12);goal.Margin=new Thickness(0,3,0,7);body.Children.Add(goal);
             if(task.Plan.Count>0){var plan=new StackPanel{Name="AgentTaskPlan"};foreach(var step in task.Plan){var line=Ui.Text((step.Status=="complete"?"✓ ":step.Status=="in_progress"?"• ":"○ ")+step.Text,12,step.Status=="in_progress"?Ui.Ink:Ui.Muted);line.Margin=new Thickness(0,2,0,2);plan.Children.Add(line);}body.Children.Add(plan);}
@@ -46,7 +48,7 @@ namespace Dafeiyu
             if(!String.IsNullOrEmpty(task.Notice))body.Children.Add(Ui.Text(task.Notice,11,Ui.Muted));
             var actions=new WrapPanel{Margin=new Thickness(0,7,0,2)};var resume=Small("继续任务","ContinueAgentTask");resume.IsEnabled=!busy && pet.Settings.AgentEnabled && task.Status!="running";resume.Click+=async delegate{try{pet.InputQueue.Hold();await session.ResumeAgentTaskAsync(pet.Settings,pet.Skin.Name);}catch(Exception e){Error(e);}};actions.Children.Add(resume);
             var settings=Small("命令设置","OpenAgentCommandSettings");settings.Click+=delegate{pet.ShowWorkSettings();};actions.Children.Add(settings);
-            var clear=Small("清除任务记录","ClearAgentCheckpoint");clear.IsEnabled=!busy;clear.Click+=async delegate{try{await session.ClearAgentTaskAsync(pet.Settings);}catch(Exception e){Error(e);}};actions.Children.Add(clear);body.Children.Add(actions);body.Children.Add(notice);
+            var clear=Small("清除任务记录","ClearAgentCheckpoint");clear.IsEnabled=!busy;clear.Click+=async delegate{try{await session.ClearAgentTaskAsync(pet.Settings);}catch(Exception e){Error(e);}};actions.Children.Add(clear);if(!String.IsNullOrEmpty(session.AgentTaskWarning)){var retry=Small("重试保存","RetryAgentCheckpoint");retry.IsEnabled=!busy;retry.Click+=async delegate{try{await session.RetryAgentTaskSaveAsync();notice.Text=String.IsNullOrEmpty(session.AgentTaskWarning)?"任务记录已保存。":session.AgentTaskWarning;}catch(Exception e){Error(e);}};actions.Children.Add(retry);}body.Children.Add(actions);body.Children.Add(notice);
         }
         async Task ShowDiff(string path)
         {

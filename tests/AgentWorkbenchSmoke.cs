@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -37,10 +37,23 @@ namespace Dafeiyu.Tests
                 Check(All<TextBlock>(panel).Any(t=>t.Text.Contains("check") && t.Text.Contains("0")),"actual command exit zero appears in task details");
                 Check(All<Button>(panel).Any(b=>b.Name=="ContinueAgentTask"),"checkpoint continuation is an explicit action");
                 Save(chat,Path.Combine(output,"chat-700.png"));chat.Width=520;chat.Height=720;Pump();Save(chat,Path.Combine(output,"chat-520.png"));
+                var input=All<TextBox>(chat).Single(t=>t.Name=="MessageInput");input.Text="keep this draft";
+                chat.WindowState=WindowState.Maximized;Pump();Check(All<FrameworkElement>(chat).Any(e=>e.Name=="AgentWorkspaceSidebar" && e.IsVisible),"maximized chat reveals functional project and task navigation");
+                Check(All<FrameworkElement>(chat).Any(e=>e.Name=="AgentWorkspaceInspector" && e.IsVisible) && All<Expander>(chat).Count(e=>e.Name=="AgentTaskDetails")==1,"maximized inspector reuses the same live task controls");Save(chat,Path.Combine(output,"chat-maximized.png"));
+                panel.IsExpanded=false;All<Button>(chat).Single(b=>b.Name=="WorkspaceTaskDetails").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(panel.IsExpanded,"sidebar task navigation expands the actual inspector");
+                All<Button>(chat).Single(b=>b.Name=="WorkspaceConversation").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(input.IsKeyboardFocusWithin && input.Text=="keep this draft","sidebar conversation navigation focuses the existing draft");
+                All<Button>(chat).Single(b=>b.Name=="WorkspaceProjectSettings").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();var preferences=app.Windows.OfType<SettingsWindow>().Single();Check(All<WorkSettingsPanel>(preferences).Any(p=>p.IsVisible),"sidebar project action opens the real work settings section");preferences.Close();
+
+                chat.WindowState=WindowState.Normal;Pump();Check(!All<FrameworkElement>(chat).Any(e=>e.Name=="AgentWorkspaceSidebar" && e.IsVisible) && input.Text=="keep this draft" && All<Expander>(chat).Single(e=>e.Name=="AgentTaskDetails")==panel,"restoring normal size keeps draft and original compact task layout");Save(chat,Path.Combine(output,"chat-restored.png"));
                 var diff=All<Button>(panel).First(b=>b.Name=="ShowAgentDiff");diff.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
                 var viewer=app.Windows.Cast<Window>().FirstOrDefault(w=>w.Name=="AgentChangePreview");Check(viewer!=null,"change details open actual before/current content");Save(viewer,Path.Combine(output,"change.png"));viewer.Close();
-                var restore=All<Button>(panel).First(b=>b.Name=="RestoreAgentFile");restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>!session.IsBusy && File.ReadAllText(Path.Combine(project,"one.txt"))=="before");
-                Check(session.CurrentAgentTask.Changes.Any(c=>c.Status=="restored"),"explicit restore updates the persisted task state");
+                session.FlushHistoryAsync().GetAwaiter().GetResult();string checkpoint=Directory.GetFiles(Path.Combine(output,"data","history","agent-tasks"),"*.task").Single();
+                using(var held=new FileStream(checkpoint,FileMode.Open,FileAccess.Read,FileShare.Read)){
+                    var restore=All<Button>(panel).First(b=>b.Name=="RestoreAgentFile");restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>!session.IsBusy && File.ReadAllText(Path.Combine(project,"one.txt"))=="before");session.FlushHistoryAsync().GetAwaiter().GetResult();
+                }
+                session.LoadAgentTask(cfg);Pump();Check(session.CurrentAgentTask.Changes.Any(c=>c.Status=="restored") && session.AgentTaskWarning.Length>0,"UI reload preserves unsaved restore state and its warning");
+                All<Button>(panel).Single(b=>b.Name=="RetryAgentCheckpoint").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Wait(()=>session.AgentTaskWarning.Length==0);session.FlushHistoryAsync().GetAwaiter().GetResult();
+                Check(new AgentTaskStore(Path.GetDirectoryName(checkpoint)).Load(pet.Skin.Id,project).Changes.Any(c=>c.Status=="restored"),"explicit restore persists after storage becomes writable");
                 Console.WriteLine("Agent workbench smoke: "+checks+" passed; screenshots="+output);return 0;
             }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}finally{if(chat!=null)chat.Close();if(pet!=null)pet.Close();app.Shutdown();}
         }

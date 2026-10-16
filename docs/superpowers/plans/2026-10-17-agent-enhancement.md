@@ -1,4 +1,4 @@
-# DeskPet Agent Enhancement Implementation Plan
+﻿# DeskPet Agent Enhancement Implementation Plan
 
 > **For agentic workers:** Use superpowers:executing-plans inline, task by task. The user explicitly authorized implementation after planning; no additional plan approval is required. A fresh whole-branch reviewer checks the result before delivery.
 
@@ -74,3 +74,9 @@
 - [ ] Run the full Windows CI test list plus new tests, application build, packaging and available portable tests; inspect every failure.
 - [ ] Document real user workflow, command authority/output limits and recovery behavior; record pinned references and license-safe independent implementation.
 - [ ] Request fresh code review; fix important findings with regressions, rerun affected suites, commit and provide build/screenshots/plan links. No push, release or installed-app replacement is authorized.
+
+### Task 8: Maximized workspace (user scope addition)
+**Files:** ChatWindow.cs, AgentTaskPanel.cs, AgentWorkspaceNavigation.cs; AgentWorkbenchSmoke.cs.
+- Keep 700px/520px normal window unchanged. On WindowState.Maximized show left project/current-task navigation and right task/change/command inspector, reuse live controls and central conversation/composer.
+- Restore hides both side columns and moves same task panel back, keeping draft, focus, selected history and expand state.
+- RED then GREEN smoke verifies actual maximize/restore, visible sidebar, same task controls and retained draft; capture and inspect both layouts. Existing ConversationUiSmoke/ComposerSmoke must remain green.

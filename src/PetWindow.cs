@@ -92,7 +92,8 @@ namespace Dafeiyu
         private UpdateCoordinator updates;
         private UpdateNoticeWindow updateNotice;
         public bool IsUpdating {get{return updates!=null && updates.IsApplying;}}
-        public bool HasHistorySaveWarning {get{return Settings.SaveChatHistory && conversation!=null && (!String.IsNullOrEmpty(conversation.HistoryWarning) || !String.IsNullOrEmpty(conversation.AgentTaskWarning));}}
+        public bool HasHistorySaveWarning {get{return conversation!=null && ((Settings.SaveChatHistory && !String.IsNullOrEmpty(conversation.HistoryWarning)) || !String.IsNullOrEmpty(conversation.AgentTaskWarning));}}
+        public string PendingSaveWarning {get{return conversation!=null && !String.IsNullOrEmpty(conversation.AgentTaskWarning)?conversation.AgentTaskWarning:"聊天记录尚未保存，请先导出或处理保存问题后再更新。";}}
         public UpdateCoordinator Updates {get{return updates ?? (updates=new UpdateCoordinator(this));}}
         public bool CanApplyUpdate(bool manual)
         {
@@ -103,7 +104,7 @@ namespace Dafeiyu
         public async Task PrepareUpdateAsync()
         {
             if(conversation!=null)await conversation.FlushHistoryAsync();
-            if(HasHistorySaveWarning)throw new InvalidOperationException("聊天记录尚未保存，请先导出或处理保存问题后再更新。");
+            if(HasHistorySaveWarning)throw new InvalidOperationException(PendingSaveWarning);
             SavePosition();
             try{Store.Save(Settings);}
             catch(Exception error){if(!(error is IOException || error is UnauthorizedAccessException))throw;throw new InvalidOperationException("设置尚未保存，请检查目录权限后重试更新。",error);}
@@ -642,6 +643,7 @@ namespace Dafeiyu
             if(!preferences.IsVisible) preferences.Show(); preferences.Activate(); preferences.RefreshState();
             if(connections) preferences.SelectConnections();
         }
+        public void ShowWorkSettings(){if(ReturnToGuide())return;ShowSettings();if(preferences!=null)preferences.SelectWorkSettings();}
         public void ShowLiveSettings(){if(ReturnToGuide())return;ShowSettings(true);if(preferences!=null)preferences.SelectAiSection(3);}
         public void ShowOnboarding()
         {

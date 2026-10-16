@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -179,6 +179,18 @@ namespace Dafeiyu.Tests
                     using(var server=new Fixture(new[]{Json(body)}))using(var api=new ApiClient())
                     {int events=0;var workspace=new AgentWorkspace(folder.Path){MaximumTurns=3};await Fails(()=>api.ChatAgentAsync(Config(server,false),Messages(),workspace,null,null,e=>events++,false,CancellationToken.None),"循环上限");Equal(0,events);await Within(server.Done);Equal(1,server.Bodies.Count);}
                 }
+            });
+            Run("repeated identical errors stop after three real protocol rounds",async delegate
+            {
+                foreach(bool anthropic in new[]{false,true})using(var folder=new WorkspaceFolder())using(var server=new Fixture(new[]{Json(ToolReply(anthropic,"a","read_file",new{path="missing"})),Json(ToolReply(anthropic,"b","read_file",new{path="missing"})),Json(ToolReply(anthropic,"c","read_file",new{path="missing"}))}))using(var api=new ApiClient())
+                {await Fails(()=>api.ChatAgentAsync(Config(server,anthropic),Messages(),new AgentWorkspace(folder.Path),null,null,null,false,CancellationToken.None),"重复失败三次");await Within(server.Done);Equal(3,server.Bodies.Count);}
+            });
+            Run("context compaction retains native tool identities and thinking signatures",delegate
+            {
+                var history=new List<object>{new{role="assistant",content="call"},new{role="tool",tool_call_id="tool-1",content=new string('x',20000)},new{role="assistant",content="newer"},new{role="user",content="continue"}};
+                AgentContextBudget.Compact(history,false);var reduced=Object(J(history[1]));Equal("tool-1",reduced["tool_call_id"]);Assert(((string)reduced["content"]).Length<1500,"old tool output not reduced");
+                var signature=new{type="thinking",thinking="opaque",signature="signature-1"};var blocks=new List<object>{signature,new{type="tool_result",tool_use_id="anthropic-1",content=new string('y',20000)}};
+                history=new List<object>{new{role="user",content=blocks},new{role="assistant",content="next"}};AgentContextBudget.Compact(history,true);string compact=J(history);Assert(compact.Contains("signature-1") && compact.Contains("anthropic-1") && compact.Contains("read_output"),"native content identity lost");return Task.FromResult(0);
             });
             Console.WriteLine("AgentProtocolTests: "+passed+" passed, "+failed+" failed");return failed==0?0:1;
         }

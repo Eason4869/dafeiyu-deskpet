@@ -57,6 +57,11 @@ namespace Dafeiyu.Tests
                 var unrestricted=ConversationSession.OpenAgentWorkspace(cfg.Copy());Check(!unrestricted.RestrictToRoot && Directory.Exists(unrestricted.Root),"complete access selection reaches the workspace factory");
                 Field(panel,"AgentWorkspace").Text=project;Field(panel,"AgentMaxTurns").Text="1";Field(panel,"AgentTimeoutMinutes").Text="1";Field(panel,"AgentGoal").Text=new string('目',4000);
                 Check(Save(panel) && pet.Store.Load().AgentGoal.Length==4000,"minimum task bounds and a 4000-character goal save successfully");
+                Field(panel,"CommandRecipeId").Text="build";Field(panel,"CommandRecipeExecutable").Text=typeof(object).Assembly.Location;
+                Check(Dirty(panel),"unsaved command text marks work settings dirty");
+                Check(Save(panel) && pet.Store.Load().AgentCommandRecipes.Contains("build"),"saving work settings commits the pending command editor fields");
+                Field(panel,"CommandRecipeId").Text="invalid";Field(panel,"CommandRecipeExecutable").Text="missing.exe";
+                Check(!Save(panel) && Dirty(panel),"invalid command draft cannot be silently discarded by settings save");
                 Console.WriteLine("Work settings tests: "+checks+" passed");return 0;
             }
             catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}

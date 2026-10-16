@@ -107,7 +107,7 @@ namespace Dafeiyu
                     if (name == "read_output" && args.ContainsKey("output_id")) return SavedOutput(GetString(args,"output_id",null),GetInt(args,"offset",0,0,24000),GetInt(args,"limit",6000,1,12000));
                     if (name == "read_output") return ReadOutput(GetString(args,"command_id",null),GetInt(args,"offset",0,0,256*1024),GetInt(args,"limit",6000,1,12000));
                     if (name == "read_file") return ReadFile(path, GetInt(args, "offset", 0, 0, 1000000), GetInt(args, "limit", 200, 1, 1000), token);
-                    if (name == "search_files") return Search(path, GetString(args, "query", null), GetString(args,"pattern",""), token);
+                    if (name == "search_files") return Search(path, GetString(args, "query", null), GetString(args,"pattern",""), args.ContainsKey("regex") && args["regex"] is bool && (bool)args["regex"], token);
                     if (name == "create_directory")
                     {
                         token.ThrowIfCancellationRequested();
@@ -142,7 +142,8 @@ namespace Dafeiyu
                 catch (OperationCanceledException) { throw; }
                 catch (DecoderFallbackException) { return "错误：文件不是有效的 UTF-8 文本，未进行写入。"; }
                 catch (EncoderFallbackException) { return "错误：内容包含无效 Unicode 字符，未进行写入。"; }
-                catch (ArgumentException ex) { return "错误：" + ex.Message; }
+                catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { return "错误：正则搜索超时，请缩小范围或简化表达式。"; }
+            catch (ArgumentException ex) { return "错误：" + ex.Message; }
                 catch (UnauthorizedAccessException) { return RestrictToRoot ? "错误：拒绝访问。请使用工作目录内的普通文件，禁止链接、受保护目录和越界路径。" : "错误：拒绝访问。请检查系统访问权限；禁止设备路径、链接及硬链接。"; }
                 catch (FileNotFoundException) { return "错误：文件不存在，请先用 list_files 查看目录。"; }
                 catch (DirectoryNotFoundException) { return "错误：目录不存在，请先用 list_files 查看目录。"; }
@@ -225,9 +226,10 @@ namespace Dafeiyu
             }
         }
 
-        private string Search(string path, string query, string pattern, CancellationToken token)
+        private string Search(string path, string query, string pattern, bool useRegex, CancellationToken token)
         {
             if (String.IsNullOrEmpty(query) || query.Length > 1000) throw new ArgumentException("query 应为 1 至 1000 个字符的普通文本。");
+            var expression=useRegex?new System.Text.RegularExpressions.Regex(query,System.Text.RegularExpressions.RegexOptions.IgnoreCase|System.Text.RegularExpressions.RegexOptions.CultureInvariant,TimeSpan.FromMilliseconds(100)):null;
             var filter=String.IsNullOrEmpty(pattern)?null:FilePattern(pattern);
             var queue = new Queue<KeyValuePair<string, int>>();
             queue.Enqueue(new KeyValuePair<string, int>(path, 0));
@@ -263,7 +265,7 @@ namespace Dafeiyu
                             while ((line = reader.ReadLine()) != null)
                             {
                                 token.ThrowIfCancellationRequested(); number++;
-                                if (line.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                                if (expression==null ? line.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0 : !expression.IsMatch(line)) continue;
                                 output.Append(Relative(entry)).Append(':').Append(number).Append(": ").AppendLine(line.Length > 400 ? line.Substring(0, 400) + "…" : line);
                                 if (++matches >= 100 || output.Length >= MaxResultChars - 600) return Clip(output + "[已截断：结果达到上限]");
                             }
@@ -351,7 +353,7 @@ namespace Dafeiyu
                     }
                 }
                 else if (Directory.Exists(path)) throw new ArgumentException("写入路径是目录。");
-                else if(observed.ContainsKey(path))throw new ArgumentException("读取过的文件已被删除，请核对后重试。");
+                else if(observed.ContainsKey(path) && observed[path]!=null)throw new ArgumentException("读取过的文件已被删除，请核对后重试。");
                 string temp = Path.Combine(Path.GetDirectoryName(path), ".deskpet-write-" + Guid.NewGuid().ToString("N") + ".tmp");
                 try
                 {

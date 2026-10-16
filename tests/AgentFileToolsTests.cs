@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -24,6 +24,8 @@ namespace Dafeiyu.Tests
                 Check(last.Contains("file-204.txt") && !last.Contains("file-000.txt"),"next directory page reaches entries after the original cap");
                 string found=Call(w,"find_files",new {pattern="**/*.cs"});Check(found.Contains("src/one.cs") && !found.Contains("hidden.cs"),"glob search excludes dependency trees");
                 Check(Call(w,"search_files",new {query="needle",pattern="**/*.cs"}).Contains("src/one.cs"),"content search accepts a file pattern");
+                Check(Call(w,"search_files",new {query="n[e]+dle",regex=true,pattern="**/*.cs"}).Contains("src/one.cs"),"bounded regular expression search matches code text");
+                Check(Call(w,"search_files",new {query="[",regex=true}).StartsWith("错误："),"invalid regular expression reports a tool error");
                 string batch=Call(w,"read_files",new {paths=new[]{"file-000.txt","src/one.cs"}});Check(batch.Contains("item 0") && batch.Contains("hello needle"),"batch read returns both real files");
                 Check(Call(w,"read_files",new {paths=new[]{"../outside.txt"}}).StartsWith("错误："),"batch read preserves traversal protection");
                 Check(Call(w,"read_files",new {paths=Enumerable.Repeat("file-000.txt",9).ToArray()}).StartsWith("错误："),"batch size is bounded");

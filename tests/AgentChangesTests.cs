@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -22,6 +22,7 @@ namespace Dafeiyu.Tests
             Check(Call(w,"write_file",new{path="a.txt",content="overwrite"}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"a.txt"))=="external","external edit cannot be silently overwritten");
             Check(Call(w,"restore_file",new{path="a.txt"}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"a.txt"))=="external","restore refuses overwriting newer external edits");
             Check(!Call(w,"restore_file",new{path="b.txt"}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"b.txt"))=="beta","restore uses original file backup");
+            Check(!Call(w,"apply_patch",new{edits=new[]{new{path="nested/new/code.txt",content="created"}}}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"nested/new/code.txt"))=="created","patch can create nested files without preflight directory mutations");
             w.ReadOnly=true;Check(Call(w,"apply_patch",patch).StartsWith("错误：") && Call(w,"restore_file",new{path="b.txt"}).StartsWith("错误："),"plan mode rejects patch and restore");
             Console.WriteLine("Agent changes tests: "+n+" passed");return 0;
         }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}}

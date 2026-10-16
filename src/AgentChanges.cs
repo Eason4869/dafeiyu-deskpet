@@ -14,6 +14,10 @@ namespace Dafeiyu
         [DataMember] public string Path,BeforeHash,AfterHash,BackupPath,Status;
         public AgentChange Copy(){return (AgentChange)MemberwiseClone();}
     }
+    public sealed class AgentChangePreview
+    {
+        public string Path,Before,Current;public bool ChangedAgain,Truncated;
+    }
     public sealed partial class AgentWorkspace
     {
         readonly Dictionary<string,string> observed=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -40,10 +44,11 @@ namespace Dafeiyu
             foreach(object item in edits){
                 token.ThrowIfCancellationRequested();var edit=item as Dictionary<string,object>;if(edit==null)throw new ArgumentException("编辑项目必须是对象。");
                 string path=Resolve(GetString(edit,"path",null));if(!seen.Add(path))throw new ArgumentException("补丁不能重复编辑同一文件。");
-                using(LockDirectories(Path.GetDirectoryName(path),false)){
+                string parent=Path.GetDirectoryName(path);while(!Directory.Exists(parent)){token.ThrowIfCancellationRequested();parent=Path.GetDirectoryName(parent);if(parent==null)throw new DirectoryNotFoundException();}
+                using(LockDirectories(parent,false)){
                     string content;
                     if(edit.ContainsKey("content")){
-                        if(File.Exists(path) || Directory.Exists(path))throw new ArgumentException("新建目标已存在，请使用 old_text 精确修改。");content=GetString(edit,"content",null);
+                        if(File.Exists(path) || Directory.Exists(path))throw new ArgumentException("新建目标已存在，请使用 old_text 精确修改。");content=GetString(edit,"content",null);observed[path]=null;
                     }else{
                         byte[] bytes=ReadBytes(path,token);CheckExpected(path,bytes);RememberRead(path,bytes);content=DecodeText(bytes);
                         string old=GetString(edit,"old_text",null),replacement=GetString(edit,"new_text",null);
@@ -72,5 +77,13 @@ namespace Dafeiyu
             }
         }
         string ListChanges(){return new JavaScriptSerializer().Serialize(Changes.Select(c=>new{path=Relative(c.Path),before=c.BeforeHash,after=c.AfterHash,backup=c.BackupPath,status=c.Status}).ToArray());}
+        public AgentChangePreview PreviewChange(string input,CancellationToken token)
+        {
+            string path=Resolve(input);AgentChange change;lock(changes)change=changes.LastOrDefault(c=>String.Equals(c.Path,path,StringComparison.OrdinalIgnoreCase));if(change==null)throw new ArgumentException("当前任务没有此文件的变更记录。");
+            string before="",current="";bool changed=true;
+            if(change.BackupPath!=null)using(LockDirectories(Path.GetDirectoryName(change.BackupPath),false))before=DecodeText(ReadBytes(change.BackupPath,token));
+            using(LockDirectories(Path.GetDirectoryName(path),false)){if(File.Exists(path)){byte[] bytes=ReadBytes(path,token);current=DecodeText(bytes);changed=ContentHash(bytes)!=change.AfterHash;}else current="[当前文件不存在]";}
+            return new AgentChangePreview{Path=path,Before=before.Length>12000?before.Substring(0,12000):before,Current=current.Length>12000?current.Substring(0,12000):current,Truncated=before.Length>12000 || current.Length>12000,ChangedAgain=changed};
+        }
     }
 }

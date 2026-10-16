@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -24,6 +24,14 @@ namespace Dafeiyu.Tests
             Check(storeType.GetMethod("Load").Invoke(store,new object[]{"other-persona",root})==null,"persona cannot load another persona checkpoint");
             w.ReadOnly=true;Check(!Call(w,"update_plan",new{steps=new[]{new{text="Read only",status="pending"}}}).StartsWith("错误："),"planning can record task progress without modifying project files");
             Check(Call(w,"update_plan",new{steps=new[]{new{text="bad",status="invented"}}}).StartsWith("错误："),"invalid plan statuses are rejected");
+            File.WriteAllText(Path.Combine(root,"resume.txt"),"original");var original=new AgentWorkspace(root);original.BeginTask(new AgentTaskState{Workspace=root});Call(original,"read_file",new{path="resume.txt"});Call(original,"edit_file",new{path="resume.txt",old_text="original",new_text="changed"});
+            original.FinishTask("interrupted","stopped");var restartStore=new AgentTaskStore(Path.Combine(root,"restart"));restartStore.SaveAsync(original.TaskState).GetAwaiter().GetResult();var loaded=restartStore.Load("",root);
+            Check(File.ReadAllText(Path.Combine(root,"resume.txt"))=="changed" && loaded.Changes.Count==1,"loading checkpoint preserves changes without replaying operations");
+            var resumed=new AgentWorkspace(root);resumed.BeginTask(loaded);Check(!Call(resumed,"restore_file",new{path="resume.txt"}).StartsWith("错误：") && File.ReadAllText(Path.Combine(root,"resume.txt"))=="original","explicit restore works after checkpoint save and restart");
+            var malformed=new AgentTaskState{Workspace=root};malformed.Plan.Add(null);
+            byte[] plain;using(var memory=new MemoryStream()){new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(AgentTaskState)).WriteObject(memory,malformed);plain=memory.ToArray();}File.WriteAllBytes(file,SecretProtection.Protect(plain));
+            var typedStore=new AgentTaskStore(directory);Check(typedStore.Load("",root)==null && typedStore.Warning.Length>0,"malformed checkpoint elements are rejected safely");
+            typedStore.ClearAsync("",root).GetAwaiter().GetResult();Check(!File.Exists(file) && typedStore.Warning.Length==0,"explicit clearing permits a fresh checkpoint");
             Console.WriteLine("Agent task tests: "+checks+" passed");return 0;
         }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}}
     }

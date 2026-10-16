@@ -24,7 +24,7 @@ namespace Dafeiyu
             {
                 return baseline!=null && (access.SelectedIndex!=(baseline.AgentFullAccess?0:1) || workspace.Text!=(baseline.AgentWorkspace??"") || goal.Text!=(baseline.AgentGoal??"") ||
                     plan.IsChecked!=baseline.AgentPlanMode || backup.IsChecked!=baseline.AgentBackupFiles || detailed.IsChecked!=baseline.AgentDetailedProcess ||
-                    commandEnabled.IsChecked!=baseline.AgentCommandsEnabled || commandTimeout.Text!=baseline.AgentCommandTimeoutSeconds.ToString(CultureInfo.InvariantCulture) || commandEditor.Json!=(baseline.AgentCommandRecipes??"[]") || turns.Text!=baseline.AgentMaxTurns.ToString(CultureInfo.InvariantCulture) || timeout.Text!=baseline.AgentTimeoutMinutes.ToString(CultureInfo.InvariantCulture));
+                    commandEnabled.IsChecked!=baseline.AgentCommandsEnabled || commandTimeout.Text!=baseline.AgentCommandTimeoutSeconds.ToString(CultureInfo.InvariantCulture) || commandEditor.HasDraft || commandEditor.Json!=(baseline.AgentCommandRecipes??"[]") || turns.Text!=baseline.AgentMaxTurns.ToString(CultureInfo.InvariantCulture) || timeout.Text!=baseline.AgentTimeoutMinutes.ToString(CultureInfo.InvariantCulture));
             }
         }
         public WorkSettingsPanel(PetWindow companion)
@@ -96,6 +96,7 @@ namespace Dafeiyu
                 string target=ValidateDirectory(workspace.Text,access.SelectedIndex==1);
                 if(goal.Text.Length>4000)throw new InvalidOperationException("持续目标不能超过 4000 个字符，请缩短后保存。");
                 int commandSeconds;if(!Int32.TryParse(commandTimeout.Text,out commandSeconds) || commandSeconds<1 || commandSeconds>600)throw new InvalidOperationException("命令超时应为 1～600 的整数秒。");
+                if(!commandEditor.CommitDraft())throw new InvalidOperationException("项目命令草稿无效，请检查命令名称、程序路径和参数。");
                 candidate=pet.Settings.Copy();candidate.AgentCommandsEnabled=commandEnabled.IsChecked==true;candidate.AgentCommandRecipes=commandEditor.Json;candidate.AgentCommandTimeoutSeconds=commandSeconds;
                 if(candidate.AgentCommandsEnabled){if(!Directory.Exists(target))throw new InvalidOperationException("执行命令前请选择已存在的项目目录。");new AgentWorkspace(target,access.SelectedIndex==1).ConfigureCommands(true,candidate.AgentCommandRecipes);}
                 candidate.AgentFullAccess=access.SelectedIndex==0;candidate.AgentWorkspace=target;candidate.AgentPlanMode=plan.IsChecked==true;

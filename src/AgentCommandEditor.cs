@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,6 +14,10 @@ namespace Dafeiyu
         readonly ListBox list=new ListBox{MinHeight=60,MaxHeight=140,Margin=new Thickness(0,4,0,8)};
         readonly TextBox id=Ui.Field(),executable=Ui.Field(),arguments=Ui.Field("",true);
         readonly List<AgentCommand> recipes=new List<AgentCommand>();readonly Func<string> workspace;readonly TextBlock notice=Ui.Text("",11,Ui.Muted);
+        string draftBaseline="";
+        string DraftText{get{return id.Text+"\0"+executable.Text+"\0"+arguments.Text;}}
+        internal bool HasDraft{get{return DraftText!=draftBaseline;}}
+        internal bool CommitDraft(){return !HasDraft || SaveRecipe();}
         internal string Json{get{return new JavaScriptSerializer{MaxJsonLength=65536}.Serialize(recipes);}}
         internal AgentCommandEditor(Func<string> project)
         {
@@ -25,23 +29,25 @@ namespace Dafeiyu
             Children.Add(Ui.Text("参数（每行一个；无需额外加引号）",12,Ui.Muted));Children.Add(arguments);
             var buttons=new WrapPanel{Margin=new Thickness(0,8,0,0)};
             var add=Ui.Button("保存此命令");add.Name="SaveCommandRecipe";add.Click+=delegate{SaveRecipe();};buttons.Children.Add(add);
-            var remove=Ui.Button("移除此命令");remove.Click+=delegate{var current=list.SelectedItem as AgentCommand;if(current!=null){recipes.Remove(current);Refresh();id.Clear();executable.Clear();arguments.Clear();}};buttons.Children.Add(remove);Children.Add(buttons);Children.Add(notice);
-            list.SelectionChanged+=delegate{var current=list.SelectedItem as AgentCommand;if(current==null)return;id.Text=current.Id;executable.Text=current.Executable;arguments.Text=String.Join(Environment.NewLine,current.Arguments??new string[0]);};
+            var remove=Ui.Button("移除此命令");remove.Click+=delegate{var current=list.SelectedItem as AgentCommand;if(current!=null){recipes.Remove(current);Refresh();id.Clear();executable.Clear();arguments.Clear();draftBaseline=DraftText;}};buttons.Children.Add(remove);Children.Add(buttons);Children.Add(notice);
+            list.SelectionChanged+=delegate{var current=list.SelectedItem as AgentCommand;if(current==null)return;id.Text=current.Id;executable.Text=current.Executable;arguments.Text=String.Join(Environment.NewLine,current.Arguments??new string[0]);draftBaseline=DraftText;};
         }
         internal void Load(string json)
         {
-            recipes.Clear();try{recipes.AddRange(new JavaScriptSerializer{MaxJsonLength=65536}.Deserialize<AgentCommand[]>(String.IsNullOrWhiteSpace(json)?"[]":json)??new AgentCommand[0]);}catch(ArgumentException){notice.Text="命令配置无法读取，请重新配置后保存。";}catch(InvalidOperationException){notice.Text="命令配置无法读取，请重新配置后保存。";}Refresh();
+            id.Clear();executable.Clear();arguments.Clear();draftBaseline=DraftText;notice.Text="";recipes.Clear();try{recipes.AddRange(new JavaScriptSerializer{MaxJsonLength=65536}.Deserialize<AgentCommand[]>(String.IsNullOrWhiteSpace(json)?"[]":json)??new AgentCommand[0]);}catch(ArgumentException){notice.Text="命令配置无法读取，请重新配置后保存。";}catch(InvalidOperationException){notice.Text="命令配置无法读取，请重新配置后保存。";}Refresh();
         }
         void Refresh(){list.ItemsSource=null;list.ItemsSource=recipes;list.DisplayMemberPath="Id";}
-        void SaveRecipe()
+        bool SaveRecipe()
         {
             string name=id.Text.Trim(),exe=executable.Text.Trim(),root=(workspace()??"").Trim();
-            if(name.Length==0 || name.Length>80 || !Path.IsPathRooted(exe) || !File.Exists(exe) || !Path.IsPathRooted(root) || !Directory.Exists(root)){notice.Text="请填写命令名称、已存在的程序完整路径，并选择已存在的项目目录。";return;}
-            var old=list.SelectedItem as AgentCommand;if(recipes.Any(r=>r!=old && r.Id==name)){notice.Text="命令名称已存在，请使用不同名称。";return;}
-            if(old==null && recipes.Count>=32){notice.Text="最多配置 32 条命令。";return;}
+            if(name.Length==0 || name.Length>80 || !Path.IsPathRooted(exe) || !File.Exists(exe) || !Path.IsPathRooted(root) || !Directory.Exists(root)){notice.Text="请填写命令名称、已存在的程序完整路径，并选择已存在的项目目录。";return false;}
+            var argumentValues=arguments.Text.Split(new[]{"\r\n","\n"},StringSplitOptions.None);
+            if(argumentValues.Length>100 || argumentValues.Any(a=>a.Length>8000 || a.IndexOf('\0')>=0)){notice.Text="参数数量或长度超过限制。";return false;}
+            var old=list.SelectedItem as AgentCommand;if(recipes.Any(r=>r!=old && r.Id==name)){notice.Text="命令名称已存在，请使用不同名称。";return false;}
+            if(old==null && recipes.Count>=32){notice.Text="最多配置 32 条命令。";return false;}
             var recipe=new AgentCommand{Id=name,Executable=Path.GetFullPath(exe),Workspace=Path.GetFullPath(root),Arguments=arguments.Text.Split(new[]{"\r\n","\n"},StringSplitOptions.None)};
             if(recipe.Arguments.Length==1 && recipe.Arguments[0].Length==0)recipe.Arguments=new string[0];
-            if(old!=null)recipes[recipes.IndexOf(old)]=recipe;else recipes.Add(recipe);Refresh();list.SelectedItem=recipe;notice.Text="命令已加入草稿；点击保存工作设置后生效。";
+            if(old!=null)recipes[recipes.IndexOf(old)]=recipe;else recipes.Add(recipe);Refresh();list.SelectedItem=recipe;draftBaseline=DraftText;notice.Text="命令已加入草稿；点击保存工作设置后生效。";return true;
         }
     }
 }

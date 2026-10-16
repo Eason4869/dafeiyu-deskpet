@@ -279,6 +279,22 @@ namespace Dafeiyu
             var loaded=taskStore.Load(id,path);lock(gate){if(active!=null || personaId!=id)return;if(loaded!=null)agentTasks[id]=loaded;else agentTasks.Remove(id);}
             var changed=AgentTaskChanged;if(changed!=null)changed();
         }
+        public async Task<string> RestoreAgentFileAsync(string path,PetSettings settings)
+        {
+            var state=CurrentAgentTask;if(state==null)throw new InvalidOperationException("没有可恢复的任务记录。");ValidateTaskProject(state,settings);var op=Begin(settings,ConversationStage.Thinking);
+            try{op.Workspace=OpenAgentWorkspace(op.Snapshot);op.Workspace.TaskChanged=task=>RecordAgentTask(op,task);op.Workspace.BeginTask(state);string result=await op.Workspace.ExecuteAsync("restore_file",new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new{path=path}),op.Cancel.Token);op.Workspace.FinishTask(result.StartsWith("错误：")?"error":"complete",result);LastNotice=result;return result;}finally{End(op);}
+        }
+        public Task<AgentChangePreview> PreviewAgentChangeAsync(string path,PetSettings settings)
+        {
+            var state=CurrentAgentTask;if(state==null)throw new InvalidOperationException("没有文件变更记录。");ValidateTaskProject(state,settings);var snapshot=settings.Copy();snapshot.AgentCommandsEnabled=false;
+            return Task.Run(delegate{var workspace=OpenAgentWorkspace(snapshot);workspace.BeginTask(state);return workspace.PreviewChange(path,CancellationToken.None);});
+        }
+        static void ValidateTaskProject(AgentTaskState task,PetSettings settings)
+        {if(!String.Equals(System.IO.Path.GetFullPath(settings.AgentWorkspace).TrimEnd('\\','/'),System.IO.Path.GetFullPath(task.Workspace).TrimEnd('\\','/'),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("当前项目与任务检查点不一致，请先切回原项目。");}
+        public async Task ClearAgentTaskAsync(PetSettings settings)
+        {
+            string id=PersonaId;var op=Begin(settings,ConversationStage.Thinking);try{if(taskStore!=null)await taskStore.ClearAsync(id,settings.AgentWorkspace);lock(gate)agentTasks.Remove(id);var changed=AgentTaskChanged;if(changed!=null)changed();}finally{End(op);}
+        }
         public Task ResumeAgentTaskAsync(PetSettings settings,string name)
         {
             if(!settings.AgentEnabled)throw new InvalidOperationException("请先切换到工作模式再继续任务。");

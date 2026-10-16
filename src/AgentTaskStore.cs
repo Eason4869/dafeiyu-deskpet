@@ -35,13 +35,14 @@ namespace Dafeiyu
                 if(new FileInfo(path).Length>8*1024*1024)throw new SerializationException();byte[] plain=SecretProtection.Unprotect(File.ReadAllBytes(path));if(plain.Length>8*1024*1024)throw new SerializationException();AgentTaskState state;
                 using(var memory=new MemoryStream(plain))state=(AgentTaskState)new DataContractJsonSerializer(typeof(AgentTaskState)).ReadObject(memory);
                 if(state==null || state.Version!=1 || state.PersonaId!=(persona??"") || !String.Equals(Path.GetFullPath(state.Workspace).TrimEnd('\\','/'),Path.GetFullPath(workspace).TrimEnd('\\','/'),StringComparison.OrdinalIgnoreCase) || state.Plan==null || state.Plan.Count>20 || state.Changes==null || state.Changes.Count>256 || state.Commands==null || state.Commands.Count>8 || state.Tools==null || state.Tools.Count>100 || state.Outputs==null || state.Outputs.Count>32)throw new SerializationException();
+                if(state.Plan.Any(p=>p==null || p.Text==null || p.Text.Length>250 || (p.Status!="pending" && p.Status!="in_progress" && p.Status!="complete")) || state.Changes.Any(c=>c==null || String.IsNullOrEmpty(c.Path) || c.AfterHash==null) || state.Commands.Any(c=>c==null || c.Output==null || c.Output.Length>256*1024) || state.Tools.Any(t=>t==null || t.Id==null) || state.Outputs.Any(o=>o.Value==null || o.Value.Length>24000))throw new SerializationException();
                 if(state.Status=="running"){state.Status="interrupted";state.Notice="上次任务在完成前中断；继续前会先核对项目现状。";foreach(var t in state.Tools.Where(t=>t.Status=="running"))t.Status="error";}
                 Warn(path,"");return state;
             }catch(Exception e){if(!StorageError(e))throw;lock(gate)unreadable.Add(path);Warn(path,"任务检查点无法读取，原文件已保留。");return null;}
         }
         public Task ClearAsync(string persona,string workspace)
         {
-            string path=FilePath(persona,workspace);lock(gate){worker=worker.ContinueWith(delegate{try{File.Delete(path);lock(gate)unreadable.Remove(path);Warn(path,"");}catch(Exception e){if(!StorageError(e))throw;Warn(path,"任务记录删除失败，请检查数据目录权限。");}},TaskScheduler.Default);return worker;}
+            string path=FilePath(persona,workspace);lock(gate){worker=worker.ContinueWith(delegate{try{if(Directory.Exists(directory))File.Delete(path);lock(gate)unreadable.Remove(path);Warn(path,"");}catch(Exception e){if(!StorageError(e))throw;Warn(path,"任务记录删除失败，请检查数据目录权限。");}},TaskScheduler.Default);return worker;}
         }
         static bool StorageError(Exception e){return e is IOException || e is UnauthorizedAccessException || e is CryptographicException || e is SerializationException || e is ArgumentException || e is System.Xml.XmlException;}
     }

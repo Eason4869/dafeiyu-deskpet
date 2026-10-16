@@ -318,11 +318,26 @@ try
     Check(modeItems.Select(i => i.Name).SequenceEqual(new[] { "ConversationMode", "WorkMode" }) && modeItems.All(i => i.ToggleType == MenuItemToggleType.Radio), "mode menu contains exactly two exclusive conversation and work choices");
     Check(modeItems[0].IsChecked && !modeItems[1].IsChecked && modeItems[1].IsEnabled == OperatingSystem.IsWindows(), "conversation is initially selected and unsupported Mac work mode is disabled");
     var chatDraft = composerChat.GetLogicalDescendants().OfType<TextBox>().Single(t => t.Name == "ChatDraft");
+    composerChat.Activate(); chatDraft.Focus(); Dispatcher.UIThread.RunJobs();
+    Check(chatDraft.IsFocused && !controller.Settings.AgentEnabled, "keyboard mode test starts focused in pure conversation");
+    // Test our handler's consumption separately: the full Avalonia route also
+    // sets Handled when normal Tab focus navigation runs on an unsupported OS.
+    var modeHandler = typeof(ChatWindow).GetMethod("DraftKeyDown", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+    var handlerTab = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.None };
+    modeHandler.Invoke(composerChat, new object[] { chatDraft, handlerTab });
+    Check(controller.Settings.AgentEnabled == OperatingSystem.IsWindows() && handlerTab.Handled == OperatingSystem.IsWindows(), "mode handler consumes bare Tab only on supported Windows runtime");
+    modeItems[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); chatDraft.Focus();
     var toggleMode = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.None }; chatDraft.RaiseEvent(toggleMode);
-    Check(controller.Settings.AgentEnabled == OperatingSystem.IsWindows() && toggleMode.Handled == OperatingSystem.IsWindows(), "bare Tab switches to work only on a supported Windows runtime");
+    Dispatcher.UIThread.RunJobs();
+    Check(controller.Settings.AgentEnabled == OperatingSystem.IsWindows(), "routed bare Tab switches to work only on a supported Windows runtime");
+    Check(toggleMode.Handled && chatDraft.IsFocused == OperatingSystem.IsWindows(), "Windows mode shortcut retains draft focus while unsupported platforms navigate normally");
     Check(modeButton.GetLogicalDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any(p => p.Name == (OperatingSystem.IsWindows() ? "WorkPencilGlyph" : "ConversationBubbleGlyph")), "Tab immediately swaps the visible mode glyph to the pencil only when work mode is available");
-    var shiftTab = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.Shift }; chatDraft.RaiseEvent(shiftTab);
-    Check(controller.Settings.AgentEnabled == OperatingSystem.IsWindows(), "Shift Tab keeps the selected mode while Avalonia handles focus navigation");
+    var handlerShiftTab = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.Shift };
+    modeHandler.Invoke(composerChat, new object[] { chatDraft, handlerShiftTab });
+    Check(!handlerShiftTab.Handled && controller.Settings.AgentEnabled == OperatingSystem.IsWindows(), "mode handler leaves Shift Tab to native navigation without changing mode");
+    chatDraft.Focus();
+    var shiftTab = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.Shift }; chatDraft.RaiseEvent(shiftTab); Dispatcher.UIThread.RunJobs();
+    Check(controller.Settings.AgentEnabled == OperatingSystem.IsWindows() && shiftTab.Handled && !chatDraft.IsFocused, "Shift Tab bypasses mode shortcut and is consumed by normal focus navigation");
     modeItems[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); Dispatcher.UIThread.RunJobs();
     Check(!controller.Settings.AgentEnabled && !new SettingsStore(Path.Combine(controller.DataDirectory, "settings.json")).Load().AgentEnabled, "conversation selection persists without starting work");
     Check(modeButton.GetLogicalDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any(p => p.Name == "ConversationBubbleGlyph"), "returning to conversation restores its bubble glyph");

@@ -13,6 +13,7 @@ import stat
 import struct
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCH_CPUS = {0x01000007: 'x86_64', 0x0100000C: 'arm64'}
@@ -153,6 +154,25 @@ def run(arguments, **kwargs):
     return subprocess.run([str(x) for x in arguments], check=True, **kwargs)
 
 
+def create_disk_image(source: Path, destination: Path, mode: str):
+    arguments = ['hdiutil', 'create', '-volname', 'DeskPet Preview' if mode == 'preview' else 'DeskPet',
+                 '-srcfolder', source, '-format', 'UDZO', '-ov', destination]
+    for attempt in range(3):
+        try:
+            response = run(arguments, capture_output=True, text=True, timeout=300)
+            if response.stdout:
+                print(response.stdout, end='', flush=True)
+            return
+        except subprocess.CalledProcessError as error:
+            details = (error.stdout or '') + (error.stderr or '')
+            print(details, file=sys.stderr, flush=True)
+            if attempt == 2 or not re.search(r'Resource busy|Resource temporarily unavailable', details, re.IGNORECASE):
+                raise
+            delay = 2 ** (attempt + 1)
+            print(f'hdiutil create is temporarily busy; retry {attempt + 2}/3 in {delay}s', flush=True)
+            time.sleep(delay)
+
+
 def create_icon(output: Path):
     iconset = output / 'DeskPet.iconset'
     iconset.mkdir()
@@ -273,7 +293,7 @@ def main():
     (image_root / 'Applications').symlink_to('/Applications', target_is_directory=True)
     (image_root / '安装说明.txt').write_text('将 DeskPet.app 拖入 Applications，再从应用程序打开。\n' + ('这是未经 Apple Developer ID 签名或公证的预览，尚未正式发布。\n' if args.mode == 'preview' else ''), encoding='utf-8')
     dmg = output / (stem + '.dmg')
-    run(['hdiutil', 'create', '-volname', 'DeskPet Preview' if args.mode == 'preview' else 'DeskPet', '-srcfolder', image_root, '-format', 'UDZO', '-ov', dmg])
+    create_disk_image(image_root, dmg, args.mode)
     if args.mode == 'release':
         identity, _ = release_requirements(os.environ)
         run(['codesign', '--sign', identity, '--timestamp', dmg])

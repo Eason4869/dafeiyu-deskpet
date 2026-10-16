@@ -3,6 +3,7 @@ import json
 import os
 import plistlib
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from mac_package import PackagingError, create_bundle, macho_architectures, release_requirements, sign_bundle, validate_bundle
+from mac_package import PackagingError, create_bundle, create_disk_image, macho_architectures, release_requirements, sign_bundle, validate_bundle
 
 
 class MacPackagingTests(unittest.TestCase):
@@ -89,6 +90,25 @@ class MacPackagingTests(unittest.TestCase):
         helper = next(call.args[0] for call in command.call_args_list if Path(call.args[0][-1]).name == 'createdump')
         self.assertIn('runtime', helper)
         self.assertIn('--timestamp', helper)
+
+    def test_disk_image_retries_only_transient_busy_errors(self):
+        busy = subprocess.CalledProcessError(1, ['hdiutil'], stderr='hdiutil: create failed - Resource busy')
+        success = subprocess.CompletedProcess(['hdiutil'], 0, stdout='created: preview.dmg\n', stderr='')
+        with patch('mac_package.run', side_effect=[busy, success]) as command, patch('mac_package.time.sleep') as sleep:
+            create_disk_image(self.root, self.root / 'preview.dmg', 'preview')
+        self.assertEqual(2, command.call_count)
+        sleep.assert_called_once_with(2)
+        bad_input = subprocess.CalledProcessError(1, ['hdiutil'], stderr='hdiutil: create failed - No such file')
+        with patch('mac_package.run', side_effect=bad_input) as command, patch('mac_package.time.sleep') as sleep:
+            with self.assertRaises(subprocess.CalledProcessError):
+                create_disk_image(self.root, self.root / 'preview.dmg', 'preview')
+        self.assertEqual(1, command.call_count)
+        sleep.assert_not_called()
+        with patch('mac_package.run', side_effect=busy) as command, patch('mac_package.time.sleep') as sleep:
+            with self.assertRaises(subprocess.CalledProcessError):
+                create_disk_image(self.root, self.root / 'preview.dmg', 'preview')
+        self.assertEqual(3, command.call_count)
+        self.assertEqual([2, 4], [call.args[0] for call in sleep.call_args_list])
 
     def test_missing_native_bridge_rejected(self):
         (self.publish / 'libDeskPetMac.dylib').unlink()

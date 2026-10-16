@@ -13,18 +13,21 @@ namespace Dafeiyu.Tests
         static async Task Run()
         {
             string path=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"queue-test-"+Guid.NewGuid().ToString("N"),"queue.json");
-            var api=new Api();var cfg=new PetSettings{ReadReplies=false,Text=new ConnectionSettings{BaseUrl="http://127.0.0.1:1/v1",Model="fixture"}};
+            // Hold completion until the assertions observe actual API entry.
+            var api=new Api{Release=new TaskCompletionSource<bool>()};var cfg=new PetSettings{ReadReplies=false,Text=new ConnectionSettings{BaseUrl="http://127.0.0.1:1/v1",Model="fixture"}};
             using(var session=new ConversationSession(api,new Speech(),()=>null))
             using(var queue=new ConversationQueue(session,()=>cfg,()=>"E包",path))
             {
                 session.SelectPersona("e-bao");queue.Enqueue("one");await Until(()=>api.Calls.Count==1);queue.Enqueue("two");queue.Enqueue("three");
-                Check(queue.Items.Count==2,"busy sends enter visible queue");await Until(()=>api.Calls.Count==3 && !queue.IsRunning);
+                Check(queue.Items.Count==2,"busy sends enter visible queue");api.Release.SetResult(true);await Until(()=>api.Calls.Count==3 && !queue.IsRunning);
                 Check(String.Join(",",api.Calls)=="one,two,three" && api.Maximum==1,"queue sends serially in order");
-                queue.Enqueue("stop-me");queue.Enqueue("keep-me");await queue.PauseAsync();
+                api.WaitForCancellation="stop-me";queue.Enqueue("stop-me");await Until(()=>api.Calls.Last()=="stop-me");
+                queue.Enqueue("keep-me");await queue.PauseAsync();api.WaitForCancellation=null;
                 Check(queue.IsPaused && queue.Items.Single().Text=="keep-me","stop pauses and preserves remaining messages");
                 string id=queue.Items.Single().Id;queue.Edit(id,"edited");Check(queue.Items.Single().Text=="edited","queued text is editable");queue.Resume();await Until(()=>!queue.IsRunning && queue.Items.Count==0);
                 Check(api.Calls.Last()=="edited","resume sends edited text");
-                queue.Enqueue("stop without waiting items");await Task.Delay(20);await queue.PauseAsync();queue.Enqueue("explicit new send");await Until(()=>!queue.IsRunning && queue.Items.Count==0);
+                api.WaitForCancellation="stop without waiting items";queue.Enqueue("stop without waiting items");await Until(()=>api.Calls.Last()=="stop without waiting items");
+                await queue.PauseAsync();api.WaitForCancellation=null;queue.Enqueue("explicit new send");await Until(()=>!queue.IsRunning && queue.Items.Count==0);
                 Check(api.Calls.Last()=="explicit new send","new send after stopping an empty queue starts normally");
                 // Keep the original request in flight even if a busy CI scheduler
                 // resumes this test after the fixture's normal 120ms response time.
@@ -32,10 +35,10 @@ namespace Dafeiyu.Tests
                 queue.Enqueue("after");await Task.Delay(300);await queue.InterruptAsync("make it shorter");api.WaitForCancellation=null;await Until(()=>!queue.IsRunning && queue.Items.Count==0);
                 Check(String.Join(",",api.Calls.Skip(api.Calls.Count-3))=="original question,make it shorter,after","steering takes priority then resumes previous queue");
                 var request=api.Requests[api.Requests.Count-2];Check(request.Any(m=>m.Content=="original question") && request.Any(m=>m.Content.Contains("partial") && m.Content.Contains("未完成")),"steering includes original question and marked partial reply");
-                api.CancelRelease=new TaskCompletionSource<bool>();queue.Enqueue("cancel race");await Until(()=>api.Calls.Last()=="cancel race");queue.Enqueue("keep after race");
+                api.WaitForCancellation="cancel race";api.CancelRelease=new TaskCompletionSource<bool>();queue.Enqueue("cancel race");await Until(()=>api.Calls.Last()=="cancel race");queue.Enqueue("keep after race");
                 var steering=queue.InterruptAsync("priority race");var stopping=queue.PauseAsync();api.CancelRelease.SetResult(true);await Task.WhenAll(steering,stopping);
                 Check(queue.IsPaused && !queue.IsRunning && String.Join(",",queue.Items.Select(m=>m.Text))=="priority race,keep after race","explicit stop during steering keeps priority and remaining entries paused");
-                api.CancelRelease=null;foreach(var item in queue.Items)queue.Remove(item.Id);queue.Resume();
+                api.WaitForCancellation=null;api.CancelRelease=null;foreach(var item in queue.Items)queue.Remove(item.Id);queue.Resume();
                 api.Fail=true;queue.Enqueue("failure");queue.Enqueue("still waiting");await Until(()=>queue.IsPaused && !queue.IsRunning);
                 Check(queue.Items.Count==2 && queue.Items[0].Text=="failure","failure keeps failed text and pauses following messages");
                 queue.Remove(queue.Items[0].Id);Check(queue.Items.Single().Text=="still waiting","queued entry can be removed");
@@ -64,11 +67,11 @@ namespace Dafeiyu.Tests
                 using(var restored=new ConversationQueue(restoredSession,()=>cfg,()=>"E包",path))
                 {restoredSession.SelectPersona("e-bao");Check(restored.IsPaused && String.Join(",",restored.Items.Select(m=>m.Text))=="C edited,B,A","reordered encrypted queue survives reopening with edits and IDs");}
                 session.SelectPersona("other");Check(!queue.MoveBefore(c,null),"a stale drag cannot move a row into another companion queue");session.SelectPersona("e-bao");
-                queue.Resume();await Until(()=>api.Calls.Count==2);
+                api.Release=new TaskCompletionSource<bool>();queue.Resume();await Until(()=>api.Calls.Count==2);
                 Check(!queue.MoveBefore(c,b),"an entry that started sending cannot be reinserted by a stale drop");
                 Check(!queue.MoveBefore(b,c) && queue.Items[0].Id==b,"a target that started sending safely rejects stale drop");
                 queue.Remove(a);Check(!queue.MoveBefore(a,b) && !queue.MoveBefore(b,a),"deleted source and deleted destination are both safe no-ops");
-                await Until(()=>!queue.IsRunning && queue.Items.Count==0);
+                api.Release.SetResult(true);await Until(()=>!queue.IsRunning && queue.Items.Count==0);
                 Check(String.Join(",",api.Calls)=="active,C edited,B" && api.Maximum==1,"actual subsequent requests follow reordered pending sequence serially");
             }
         }
